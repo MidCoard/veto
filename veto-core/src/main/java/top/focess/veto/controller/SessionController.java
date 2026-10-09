@@ -19,7 +19,7 @@ import top.focess.veto.agent.SessionAgentRegistry;
 import top.focess.veto.agent.TurnRecord;
 import top.focess.veto.agent.workspace.WorkspaceAdmissionPolicy;
 import top.focess.veto.api.llm.ToolResultPresentationMode;
-import top.focess.veto.contract.IpcFrame;
+import top.focess.veto.contract.Frame;
 import top.focess.veto.controller.dto.*;
 import top.focess.veto.i18n.Msg;
 import top.focess.veto.integration.plugins.SessionPlugins;
@@ -34,7 +34,7 @@ import top.focess.veto.vault.KeysteadVault;
  * REST facade over {@link SessionService} for remote UIs (veto-ui).
  *
  * <p>Unlike the terminal path - which maps the terminal's cwd to the workspace via the {@link
- * IpcFrame.Hello} handshake - a remote UI has no cwd to report, so it declares the workspace roots
+ * Frame.Hello} handshake - a remote UI has no cwd to report, so it declares the workspace roots
  * explicitly in the create request body. The userId is the authenticated vault userId;
  * activation/attachment is a UI concern (the UI holds the returned session id and submits prompts
  * through its own transport), so this controller only manages the session lifecycle, not prompt

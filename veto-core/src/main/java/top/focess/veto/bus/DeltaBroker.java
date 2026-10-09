@@ -12,10 +12,11 @@ import java.util.function.Consumer;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
+import top.focess.veto.contract.EventFrame;
 
 /**
  * Sits between the agent loop and the transport layer ({@link WebSocketBus}) and multiplexes
- * per-session {@link DeltaFrame} streams to subscribed consumers.
+ * per-session {@link EventFrame} streams to subscribed consumers.
  *
  * <p>The broker atomically assigns increasing sequence numbers per session. Subscribers run inline
  * on each publisher's thread, with session subscribers before wildcard subscribers. Concurrent
@@ -32,11 +33,11 @@ import org.springframework.stereotype.Component;
 public class DeltaBroker {
 
     /** Per-session listeners. */
-    private final @NonNull ConcurrentMap<UUID, List<Consumer<DeltaFrame>>> listeners =
+    private final @NonNull ConcurrentMap<UUID, List<Consumer<EventFrame>>> listeners =
             new ConcurrentHashMap<>();
 
     /** Wildcard subscribers (receive every frame regardless of sessionId). */
-    private final @NonNull List<Consumer<DeltaFrame>> wildcardListeners =
+    private final @NonNull List<Consumer<EventFrame>> wildcardListeners =
             new CopyOnWriteArrayList<>();
 
     /** Per-session monotonic sequence. */
@@ -44,10 +45,10 @@ public class DeltaBroker {
 
     /** Subscribe to a session's frame stream. Returns a handle that unsubscribes on close. */
     public @NonNull AutoCloseable subscribe(
-            @NonNull UUID sessionId, @NonNull Consumer<DeltaFrame> listener) {
+            @NonNull UUID sessionId, @NonNull Consumer<EventFrame> listener) {
         listeners.computeIfAbsent(sessionId, k -> new CopyOnWriteArrayList<>()).add(listener);
         return () -> {
-            List<Consumer<DeltaFrame>> list = listeners.get(sessionId);
+            List<Consumer<EventFrame>> list = listeners.get(sessionId);
             if (list != null) {
                 list.remove(listener);
             }
@@ -59,27 +60,27 @@ public class DeltaBroker {
      * (e.g. the WebSocket bus) that fan out to a single downstream client and don't care which
      * session each frame originated from. Returns a handle that unsubscribes on close.
      */
-    public @NonNull AutoCloseable subscribeAll(@NonNull Consumer<DeltaFrame> listener) {
+    public @NonNull AutoCloseable subscribeAll(@NonNull Consumer<EventFrame> listener) {
         wildcardListeners.add(listener);
         return () -> wildcardListeners.remove(listener);
     }
 
     /** Publish a frame: assigns a sequence, fans out to all subscribers of the session. */
-    public void publish(@NonNull DeltaFrame frame) {
-        long seq =
-                sequences
-                        .computeIfAbsent(frame.sessionId(), k -> new AtomicLong(0))
-                        .incrementAndGet();
-        DeltaFrame sequenced =
-                new DeltaFrame(
-                        frame.sessionId(),
+    public void publish(@NonNull EventFrame frame) {
+        UUID sessionId = frame.sessionId();
+        if (sessionId == null)
+            throw new IllegalArgumentException("Session broker requires a session id");
+        long seq = sequences.computeIfAbsent(sessionId, k -> new AtomicLong(0)).incrementAndGet();
+        EventFrame sequenced =
+                new EventFrame(
+                        sessionId,
                         seq,
                         frame.emittedAt(),
                         frame.kind(),
                         frame.text(),
                         frame.attrs());
-        List<Consumer<DeltaFrame>> subs = listeners.getOrDefault(frame.sessionId(), List.of());
-        for (Consumer<DeltaFrame> sub : subs) {
+        List<Consumer<EventFrame>> subs = listeners.getOrDefault(sessionId, List.of());
+        for (Consumer<EventFrame> sub : subs) {
             try {
                 sub.accept(sequenced);
             } catch (RuntimeException e) {
@@ -89,13 +90,13 @@ public class DeltaBroker {
                         .warn(
                                 "DeltaBroker: subscriber threw on session {} (frame seq={},"
                                         + " kind={})",
-                                frame.sessionId(),
+                                sessionId,
                                 sequenced.sequence(),
                                 sequenced.kind(),
                                 e);
             }
         }
-        for (Consumer<DeltaFrame> sub : wildcardListeners) {
+        for (Consumer<EventFrame> sub : wildcardListeners) {
             try {
                 sub.accept(sequenced);
             } catch (RuntimeException e) {
@@ -103,7 +104,7 @@ public class DeltaBroker {
                         .warn(
                                 "DeltaBroker: wildcard subscriber threw on session {} (frame"
                                         + " seq={}, kind={})",
-                                frame.sessionId(),
+                                sessionId,
                                 sequenced.sequence(),
                                 sequenced.kind(),
                                 e);

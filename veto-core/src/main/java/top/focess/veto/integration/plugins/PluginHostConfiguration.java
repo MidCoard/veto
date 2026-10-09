@@ -19,8 +19,8 @@ import top.focess.veto.api.plugin.PluginHost;
 import top.focess.veto.api.plugin.contract.JsonValue;
 import top.focess.veto.api.plugin.contract.JsonValues;
 import top.focess.veto.bus.DeltaBroker;
-import top.focess.veto.bus.DeltaFrame;
 import top.focess.veto.bus.SessionInvalidations;
+import top.focess.veto.contract.EventFrame;
 import top.focess.veto.session.SessionService;
 import top.focess.veto.util.Nullness;
 import top.focess.veto.vault.ExecutionSecurity;
@@ -91,11 +91,11 @@ public class PluginHostConfiguration {
                                         "data",
                                         mapper.valueToTree(JsonValues.toMap(facts)));
                         broker.publish(
-                                new DeltaFrame(
+                                new EventFrame(
                                         UUID.fromString(session),
                                         0,
                                         null,
-                                        DeltaFrame.Kind.PLUGIN_EVENT,
+                                        EventFrame.Kind.PLUGIN_EVENT,
                                         "",
                                         attrs));
                     }

@@ -8,9 +8,9 @@ import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import top.focess.command.*;
-import top.focess.veto.contract.IpcFrame;
-import top.focess.veto.contract.IpcFrame.HintInfo;
-import top.focess.veto.contract.IpcMeta;
+import top.focess.veto.contract.Frame;
+import top.focess.veto.contract.Frame.HintInfo;
+import top.focess.veto.contract.FrameMeta;
 import top.focess.veto.terminal.IpcServer;
 
 /**
@@ -74,24 +74,23 @@ public class CommandRegistry {
     /**
      * Dispatches the raw input string as either a slash-command or a plain-text LLM prompt.
      *
-     * <p>If the trimmed input is empty, returns a {@link IpcFrame.Done} with empty metadata. If it
+     * <p>If the trimmed input is empty, returns a {@link Frame.Done} with empty metadata. If it
      * starts with {@code /}, it is dispatched as a slash-command via {@link CommandManager};
      * otherwise it is forwarded to the {@link PromptHandler} as an LLM prompt.
      *
      * @param sender the command sender for the active terminal session
      * @param raw the raw input string; may be {@code null} or empty
-     * @return a {@link IpcFrame.TerminalResponse} ({@link IpcFrame.Done}, {@link IpcFrame.Error},
-     *     or {@link IpcFrame.Terminate}); never {@code null}
+     * @return a {@link Frame.TerminalResponse} ({@link Frame.Done}, {@link Frame.Error}, or {@link
+     *     Frame.Terminate}); never {@code null}
      */
-    public IpcFrame.@NonNull TerminalResponse dispatch(
-            @NonNull VetoCommandSender sender, String raw) {
+    public Frame.@NonNull TerminalResponse dispatch(@NonNull VetoCommandSender sender, String raw) {
         if (raw == null || raw.isEmpty()) {
-            return new IpcFrame.Done(Map.of(), null);
+            return new Frame.Done(Map.of(), null);
         }
 
         String trimmed = raw.trim();
         if (trimmed.isEmpty()) {
-            return new IpcFrame.Done(Map.of(), null);
+            return new Frame.Done(Map.of(), null);
         }
 
         if (!trimmed.startsWith("/")) {
@@ -101,15 +100,15 @@ public class CommandRegistry {
         }
     }
 
-    private IpcFrame.@NonNull TerminalResponse dispatchAgentPrompt(
+    private Frame.@NonNull TerminalResponse dispatchAgentPrompt(
             @NonNull VetoCommandSender sender, @NonNull String prompt) {
         if (promptHandler == null) {
-            return IpcFrame.Error.ofError("Agent not available.");
+            return Frame.Error.ofError("Agent not available.");
         }
         return promptHandler.handle(prompt, sender.terminalId(), sender);
     }
 
-    private IpcFrame.@NonNull TerminalResponse dispatchSlashCommand(
+    private Frame.@NonNull TerminalResponse dispatchSlashCommand(
             @NonNull VetoCommandSender sender, @NonNull String commandLine) {
 
         String input = commandLine.substring(1);
@@ -123,22 +122,22 @@ public class CommandRegistry {
             log.info("Dispatch result for '{}': {}", commandName, cr);
 
             if (cr == CommandResult.COMMAND_NOT_FOUND) {
-                return IpcFrame.Error.ofError("Unknown command, try /help.");
+                return Frame.Error.ofError("Unknown command, try /help.");
             } else if (cr == CommandResult.REFUSE_EXCEPTION) {
                 Exception exc = result.exception();
                 if (exc instanceof TerminateException) {
-                    return new IpcFrame.Terminate(((TerminateException) exc).getReason());
+                    return new Frame.Terminate(((TerminateException) exc).getReason());
                 }
                 if (exc instanceof LogoutException) {
-                    return new IpcFrame.Done(buildDoneMeta(sender, true), null);
+                    return new Frame.Done(buildDoneMeta(sender, true), null);
                 }
                 String msg = result.getMessage().orElse("Command failed.");
-                return IpcFrame.Error.ofError(msg);
+                return Frame.Error.ofError(msg);
             }
 
             // Success case
             Map<String, Object> doneMeta = buildDoneMeta(sender, false);
-            return new IpcFrame.Done(doneMeta, null);
+            return new Frame.Done(doneMeta, null);
         } catch (Exception e) {
             // Exception messages and causes can echo command arguments, including secrets.
             log.error(
@@ -148,7 +147,7 @@ public class CommandRegistry {
                     e.getClass().getSimpleName(),
                     Arrays.toString(e.getStackTrace()));
             String msg = e.getMessage() != null ? e.getMessage() : "Command failed.";
-            return IpcFrame.Error.ofError(msg);
+            return Frame.Error.ofError(msg);
         }
     }
 
@@ -156,17 +155,17 @@ public class CommandRegistry {
             @NonNull VetoCommandSender sender, boolean wasLogout) {
         Map<String, Object> meta = new HashMap<>();
         if (wasLogout) {
-            meta.put(IpcMeta.CLEAR_SESSION, true);
+            meta.put(FrameMeta.CLEAR_SESSION, true);
         } else if (sender.isLoggedIn()) {
             String username = sender.username();
             if (username != null) {
-                meta.put(IpcMeta.USERNAME, username);
+                meta.put(FrameMeta.USERNAME, username);
             }
-            meta.put(IpcMeta.SESSION, sender.terminalId());
+            meta.put(FrameMeta.SESSION, sender.terminalId());
             if (promptHandler != null) {
                 var agent = promptHandler.activeAgent(sender.terminalId());
                 if (agent != null) {
-                    meta.put(IpcMeta.TURN_NUMBER, agent.history().size());
+                    meta.put(FrameMeta.TURN_NUMBER, agent.history().size());
                 }
             }
         }
@@ -243,9 +242,9 @@ public class CommandRegistry {
      * @param sender the command sender for the active terminal session
      * @param partial the partial command string, including the leading {@code /}; may be {@code
      *     null} or empty
-     * @return a list of {@link IpcFrame.Completion} candidates; never {@code null}, may be empty
+     * @return a list of {@link Frame.Completion} candidates; never {@code null}, may be empty
      */
-    public @NonNull List<IpcFrame.Completion> complete(
+    public @NonNull List<Frame.Completion> complete(
             @NonNull VetoCommandSender sender, String partial) {
         if (partial == null || partial.isEmpty()) return List.of();
 
@@ -268,7 +267,7 @@ public class CommandRegistry {
                             if (!hasSpace) {
                                 candidate = "/" + candidate;
                             }
-                            return new IpcFrame.Completion(candidate, cc.description(), groupLabel);
+                            return new Frame.Completion(candidate, cc.description(), groupLabel);
                         })
                 .toList();
     }

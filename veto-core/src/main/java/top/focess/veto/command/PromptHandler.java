@@ -13,8 +13,9 @@ import top.focess.veto.agent.Agent;
 import top.focess.veto.agent.AgentService;
 import top.focess.veto.api.agent.AgentResult;
 import top.focess.veto.api.llm.LlmBinding;
-import top.focess.veto.contract.IpcFrame;
-import top.focess.veto.contract.IpcMeta;
+import top.focess.veto.bus.DeltaBroker;
+import top.focess.veto.contract.Frame;
+import top.focess.veto.contract.FrameMeta;
 import top.focess.veto.session.LlmConfig;
 import top.focess.veto.session.SessionService;
 import top.focess.veto.vault.KeysteadVault;
@@ -42,6 +43,7 @@ public class PromptHandler {
     private static final @NonNull Duration EPISODE_TIMEOUT = Duration.ofMinutes(5);
 
     private final @NonNull KeysteadVault vault;
+    private final @NonNull DeltaBroker broker;
     private final @NonNull AgentService agentService;
     private final @NonNull SessionService sessionService;
 
@@ -56,8 +58,10 @@ public class PromptHandler {
     public PromptHandler(
             @NonNull KeysteadVault vault,
             @NonNull AgentService agentService,
-            @NonNull SessionService sessionService) {
+            @NonNull SessionService sessionService,
+            @NonNull DeltaBroker broker) {
         this.vault = vault;
+        this.broker = broker;
         this.agentService = agentService;
         this.sessionService = sessionService;
     }
@@ -98,19 +102,20 @@ public class PromptHandler {
      * Handle a plain-text prompt by delegating to {@link AgentService}, streaming the agent's
      * user-facing messages to the sender as they are emitted, and returning the terminal frame.
      *
-     * <p>Never returns {@code null} - always {@link IpcFrame.Done} on success or {@link
-     * IpcFrame.Error} on failure. Must not throw for any recoverable failure (every {@code
-     * Exception} is caught and returned as an {@link IpcFrame.Error}).
+     * <p>Never returns {@code null} - always {@link Frame.Done} on success or {@link Frame.Error}
+     * on failure. Must not throw for any recoverable failure (every {@code Exception} is caught and
+     * returned as an {@link Frame.Error}).
      */
-    public IpcFrame.@NonNull TerminalResponse handle(
+    @SuppressWarnings("try") // Subscription is owned here solely for guaranteed scope cleanup.
+    public Frame.@NonNull TerminalResponse handle(
             @NonNull String prompt, @NonNull String terminalId, @NonNull VetoCommandSender sender) {
         UUID user = sender.userId();
         if (user != null && !vault.isUnlocked(user)) user = null;
         if (user == null) {
-            return IpcFrame.Error.ofError("Not logged in. Use /login.");
+            return Frame.Error.ofError("Not logged in. Use /login.");
         }
         if (prompt.isEmpty()) {
-            return IpcFrame.Error.ofError("Empty prompt.");
+            return Frame.Error.ofError("Empty prompt.");
         }
 
         Optional<LlmConfig> opt = sessionService.resolveLlmConfig(terminalId);
@@ -122,7 +127,7 @@ public class PromptHandler {
             opt = sessionService.resumeLastSession(terminalId, user, sender.cwd());
         }
         if (opt.isEmpty()) {
-            return IpcFrame.Error.ofError(
+            return Frame.Error.ofError(
                     "No active session in this workspace. Use /session create <pattern> or"
                             + " /session activate <name>.");
         }
@@ -137,45 +142,40 @@ public class PromptHandler {
                         config.options(),
                         config.baseUrl());
 
-        try {
-            // Stream each user-facing message the agent emits while the episode runs, then block
-            // for
-            // the result. The sink is attached/detached inside AgentService.submit.
+        try (var subscription = broker.subscribe(UUID.fromString(sessionId), sender::sendEvent)) {
+            // Forward canonical broker events while waiting for the episode result.
             AgentResult result =
                     agentService.submit(
                             sessionId,
                             prompt,
                             binding,
                             EPISODE_TIMEOUT,
-                            sender::output,
+                            null,
                             sender::sendVetoPrompt,
-                            sender::outputThought,
-                            sender::sendToolCall,
-                            sender::sendToolResult,
                             user);
 
             Map<String, Object> doneMeta = new HashMap<>();
             String displayName = sender.username();
-            if (displayName != null) doneMeta.put(IpcMeta.USERNAME, displayName);
-            doneMeta.put(IpcMeta.TURN_NUMBER, turnsOf(result));
+            if (displayName != null) doneMeta.put(FrameMeta.USERNAME, displayName);
+            doneMeta.put(FrameMeta.TURN_NUMBER, turnsOf(result));
 
             if (result.success()) {
-                // The message text was already streamed as Delta frames; Done carries meta only.
-                return new IpcFrame.Done(doneMeta, null);
+                // The message text was already streamed as event frames; Done carries meta only.
+                return new Frame.Done(doneMeta, null);
             }
             // Failure (breaker trip / error): the reason was not streamed, so surface it in Error.
             String resultMessage = result.message();
             String reason = resultMessage.isBlank() ? "Agent failed." : resultMessage;
-            return IpcFrame.Error.ofError(reason);
+            return Frame.Error.ofError(reason);
         } catch (TimeoutException e) {
             log.warn("Agent episode timed out for session {}", sessionId);
-            return IpcFrame.Error.ofError("Agent timed out.");
+            return Frame.Error.ofError("Agent timed out.");
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            return IpcFrame.Error.ofError("Interrupted.");
+            return Frame.Error.ofError("Interrupted.");
         } catch (Exception e) {
             log.error("Prompt failed for session {}", sessionId, e);
-            return IpcFrame.Error.ofError("Agent failed: " + e.getMessage());
+            return Frame.Error.ofError("Agent failed: " + e.getMessage());
         }
     }
 

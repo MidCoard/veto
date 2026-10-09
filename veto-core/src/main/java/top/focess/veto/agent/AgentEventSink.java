@@ -1,7 +1,7 @@
 package top.focess.veto.agent;
 
 import org.jspecify.annotations.NonNull;
-import top.focess.veto.bus.DeltaFrame;
+import top.focess.veto.contract.EventFrame;
 
 /**
  * Narrow core publication port invoked inline by an agent runtime's producing threads.
@@ -13,7 +13,7 @@ import top.focess.veto.bus.DeltaFrame;
 @FunctionalInterface
 public interface AgentEventSink {
     /** Publish one delta frame to the underlying transport. */
-    void publish(@NonNull DeltaFrame frame);
+    void publish(@NonNull EventFrame frame);
 
     /** A sink that discards every frame. */
     static @NonNull AgentEventSink none() {

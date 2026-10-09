@@ -3,9 +3,12 @@ package top.focess.veto.controller;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
+import java.time.Instant;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.TimeoutException;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import top.focess.veto.agent.AgentProfiles;
@@ -15,9 +18,12 @@ import top.focess.veto.api.llm.LlmBinding;
 import top.focess.veto.api.llm.ProviderType;
 import top.focess.veto.api.llm.ToolResultPresentationMode;
 import top.focess.veto.api.plugin.agent.AgentProfile;
+import top.focess.veto.bus.DeltaBroker;
 import top.focess.veto.command.PromptHandler;
 import top.focess.veto.command.SessionCommandService;
 import top.focess.veto.command.VetoCommandSender;
+import top.focess.veto.contract.EventFrame;
+import top.focess.veto.contract.Frame;
 import top.focess.veto.controller.dto.SubmitPromptRequest;
 import top.focess.veto.model.tier.ModelBinding;
 import top.focess.veto.model.tier.ModelTier;
@@ -55,7 +61,9 @@ class PromptBindingTest {
                 .thenReturn(
                         Optional.of(
                                 new SessionService.SessionConfig(
-                                        "session-id", config, ToolResultPresentationMode.BASIC)));
+                                        "00000000-0000-0000-0000-000000000001",
+                                        config,
+                                        ToolResultPresentationMode.BASIC)));
         var response =
                 new PromptController(sessions, agents, vault, mock(SessionCommandService.class))
                         .prompt("session", new SubmitPromptRequest("Explain TCP"));
@@ -66,7 +74,7 @@ class PromptBindingTest {
         var binding = ArgumentCaptor.forClass(LlmBinding.class);
         verify(agents)
                 .submitNow(
-                        eq("session-id"),
+                        eq("00000000-0000-0000-0000-000000000001"),
                         eq("Explain TCP"),
                         binding.capture(),
                         eq(TestUsers.OWNER));
@@ -84,34 +92,65 @@ class PromptBindingTest {
         when(sender.userId()).thenReturn(TestUsers.OWNER);
         when(vault.isUnlocked(TestUsers.OWNER)).thenReturn(true);
         when(sessions.resolveLlmConfig("terminal")).thenReturn(Optional.of(config));
-        when(sessions.activeSession("terminal")).thenReturn(Optional.of("session-id"));
-        when(agents.submit(
-                        anyString(),
-                        anyString(),
-                        any(),
-                        any(),
-                        any(),
-                        any(),
-                        any(),
-                        any(),
-                        any(),
-                        any()))
+        when(sessions.activeSession("terminal"))
+                .thenReturn(Optional.of("00000000-0000-0000-0000-000000000001"));
+        when(agents.submit(anyString(), anyString(), any(), any(), isNull(), any(), any()))
                 .thenReturn(AgentResult.success("done", Map.of()));
-        new PromptHandler(vault, agents, sessions).handle("Explain TCP", "terminal", sender);
+        new PromptHandler(vault, agents, sessions, new DeltaBroker())
+                .handle("Explain TCP", "terminal", sender);
         var binding = ArgumentCaptor.forClass(LlmBinding.class);
         verify(agents)
                 .submit(
-                        eq("session-id"),
+                        eq("00000000-0000-0000-0000-000000000001"),
                         eq("Explain TCP"),
                         binding.capture(),
                         any(),
-                        any(),
-                        any(),
-                        any(),
-                        any(),
+                        isNull(),
                         any(),
                         eq(TestUsers.OWNER));
         assertEquals(model.llmOptions(), binding.getValue().options());
+    }
+
+    @Test
+    void terminalForwardsCanonicalEventsAndDetachesAfterFailure() throws Exception {
+        var sessions = mock(SessionService.class);
+        var agents = mock(AgentService.class);
+        var vault = mock(KeysteadVault.class);
+        var sender = mock(VetoCommandSender.class);
+        var broker = new DeltaBroker();
+        var id = UUID.fromString("00000000-0000-0000-0000-000000000001");
+        when(sender.userId()).thenReturn(TestUsers.OWNER);
+        when(vault.isUnlocked(TestUsers.OWNER)).thenReturn(true);
+        when(sessions.resolveLlmConfig("terminal")).thenReturn(Optional.of(config));
+        when(sessions.activeSession("terminal")).thenReturn(Optional.of(id.toString()));
+        var frame =
+                new EventFrame(
+                        id,
+                        0,
+                        Instant.parse("2026-10-10T00:00:00Z"),
+                        EventFrame.Kind.TOOL_CALL,
+                        "tool",
+                        Map.of());
+        when(agents.submit(anyString(), anyString(), any(), any(), isNull(), any(), any()))
+                .thenAnswer(
+                        invocation -> {
+                            broker.publish(frame);
+                            throw new TimeoutException("test");
+                        });
+        var result =
+                new PromptHandler(vault, agents, sessions, broker)
+                        .handle("prompt", "terminal", sender);
+        assertInstanceOf(Frame.Error.class, result);
+        var delivered = ArgumentCaptor.forClass(EventFrame.class);
+        verify(sender).sendEvent(delivered.capture());
+        var event = delivered.getValue();
+        assertEquals(id, event.sessionId());
+        assertEquals(1, event.sequence());
+        assertEquals(frame.emittedAt(), event.emittedAt());
+        assertEquals(frame.kind(), event.kind());
+        assertEquals(frame.text(), event.text());
+        broker.publish(frame);
+        verify(sender, times(1)).sendEvent(any());
     }
 
     @Test

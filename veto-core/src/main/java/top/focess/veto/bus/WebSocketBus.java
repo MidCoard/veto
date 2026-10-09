@@ -1,12 +1,13 @@
 package top.focess.veto.bus;
 
-import static top.focess.veto.util.LogValues.safe;
-
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import java.io.IOException;
+import java.net.URI;
+import java.util.List;
 import java.util.Map;
-import java.util.concurrent.*;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
@@ -14,178 +15,203 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.socket.CloseStatus;
 import org.springframework.web.socket.TextMessage;
+import org.springframework.web.socket.WebSocketHttpHeaders;
 import org.springframework.web.socket.WebSocketSession;
 import org.springframework.web.socket.client.standard.StandardWebSocketClient;
 import org.springframework.web.socket.handler.TextWebSocketHandler;
-import top.focess.veto.model.DAGPayload;
+import org.springframework.web.socket.sockjs.client.SockJsClient;
+import org.springframework.web.socket.sockjs.client.WebSocketTransport;
+import top.focess.veto.VetoVersion;
+import top.focess.veto.contract.DAGPayload;
+import top.focess.veto.contract.Frame;
+import top.focess.veto.contract.FrameCodec;
+import top.focess.veto.contract.ProtocolClient;
+import top.focess.veto.transport.websocket.WebSocketChannel;
 
-/**
- * bus Communication Bus - WebSocket transport layer. Single umbilical to the Java Spring Boot cloud
- * backend. Handles bidirectional routing of DAG task payloads with heartbeat and reconnection.
- */
+/** Application routes over the same protocol connection used by the ZeroMQ terminal. */
 @Component
-public class WebSocketBus extends TextWebSocketHandler {
-
+public class WebSocketBus {
     private static final @NonNull Logger log =
             LoggerFactory.getLogger("top.focess.veto.bus.WebSocketBus");
-
     private final @NonNull BusConfiguration config;
-    private final @NonNull ObjectMapper objectMapper;
-    private final @NonNull HeartbeatManager heartbeatManager;
-    private final @NonNull ReconnectionHandler reconnectionHandler;
-
-    private volatile WebSocketSession session;
-    private final @NonNull Map<@NonNull String, @NonNull Consumer<DAGPayload>> dagRouteTable =
+    private final @NonNull ReconnectionHandler reconnection;
+    private final @NonNull AtomicLong generation = new AtomicLong();
+    private final @NonNull Map<@NonNull String, @NonNull Consumer<DAGPayload>> dagRoutes =
             new ConcurrentHashMap<>();
-    private final @NonNull Map<@NonNull String, @NonNull Consumer<String>> messageRouteTable =
+    private final @NonNull Map<@NonNull String, @NonNull Consumer<String>> messageRoutes =
             new ConcurrentHashMap<>();
+    private volatile Connection connection;
 
-    /** Creates the transport with its configuration, codec, and heartbeat/reconnection helpers. */
     public WebSocketBus(
-            @NonNull BusConfiguration config,
-            @NonNull ObjectMapper objectMapper,
-            @NonNull HeartbeatManager heartbeatManager,
-            @NonNull ReconnectionHandler reconnectionHandler) {
+            @NonNull BusConfiguration config, @NonNull ReconnectionHandler reconnection) {
         this.config = config;
-        this.objectMapper = objectMapper;
-        this.heartbeatManager = heartbeatManager;
-        this.reconnectionHandler = reconnectionHandler;
+        this.reconnection = reconnection;
     }
 
-    /** Connect to the cloud backend WebSocket endpoint. */
-    public @NonNull CompletableFuture<Boolean> connect(@NonNull String backendUrl) {
-        CompletableFuture<Boolean> future = new CompletableFuture<>();
+    /** A remote backend login token is required, just as for browser connections. */
+    public synchronized @NonNull CompletableFuture<Boolean> connect(
+            @NonNull String backendUrl, @NonNull String token) {
+        disconnect();
+        return startConnection(backendUrl, token, generation.get());
+    }
+
+    private synchronized @NonNull CompletableFuture<Boolean> startConnection(
+            @NonNull String backendUrl, @NonNull String token, long epoch) {
+        if (epoch != generation.get() || connection != null)
+            return CompletableFuture.completedFuture(false);
+        var attempt = new Connection();
+        connection = attempt;
+        var result = new CompletableFuture<Boolean>();
         Thread.ofVirtual()
+                .name("bus-protocol-reader")
                 .start(
                         () -> {
                             try {
-                                StandardWebSocketClient client = new StandardWebSocketClient();
-                                String wsUrl = backendUrl + config.getWebsocket().getPath();
-                                log.info("Bus: Connecting to {} ...", wsUrl);
-                                WebSocketSession wsSession = client.execute(this, wsUrl).get();
-                                this.session = wsSession;
-                                log.info(
-                                        "Bus: Connected successfully (session={})",
-                                        wsSession.getId());
-                                heartbeatManager.start(this);
-                                future.complete(true);
-                            } catch (Exception e) {
-                                log.error("Bus: Connection failed", e);
-                                reconnectionHandler.scheduleReconnect(this, backendUrl);
-                                future.complete(false);
+                                var headers = new WebSocketHttpHeaders();
+                                headers.add("X-Veto-Session-Token", token);
+                                var sockets =
+                                        new SockJsClient(
+                                                List.of(
+                                                        new WebSocketTransport(
+                                                                new StandardWebSocketClient())));
+                                sockets.execute(
+                                                attempt,
+                                                headers,
+                                                URI.create(
+                                                        backendUrl
+                                                                + config.getWebsocket().getPath()))
+                                        .get(10, TimeUnit.SECONDS);
+                                if (epoch != generation.get()) return;
+                                var transport = attempt.transport;
+                                if (transport == null)
+                                    throw new IllegalStateException(
+                                            "WebSocket transport was not established");
+                                var client =
+                                        new ProtocolClient(
+                                                transport,
+                                                VetoVersion.VERSION,
+                                                "",
+                                                config.getWebsocket().getHeartbeatIntervalMs());
+                                attempt.client = client;
+                                if (epoch != generation.get()) return;
+                                reconnection.reset();
+                                result.complete(true);
+                                while (epoch == generation.get() && !client.isClosed()) {
+                                    var frame = client.receive(250, TimeUnit.MILLISECONDS);
+                                    if (frame != null) route(frame);
+                                }
+                            } catch (Exception failure) {
+                                // Socket handshake exceptions can contain credentials; log only the
+                                // failure type.
+                                log.warn(
+                                        "Bus connection ended ({})",
+                                        failure.getClass().getSimpleName());
+                            } finally {
+                                result.complete(false);
+                                try {
+                                    attempt.close();
+                                } catch (RuntimeException cleanup) {
+                                    log.warn(
+                                            "Bus cleanup failed ({})",
+                                            cleanup.getClass().getSimpleName());
+                                }
+                                synchronized (WebSocketBus.this) {
+                                    if (connection == attempt) connection = null;
+                                    if (epoch == generation.get())
+                                        reconnection.scheduleReconnect(
+                                                () -> startConnection(backendUrl, token, epoch));
+                                }
                             }
                         });
-        return future;
+        return result;
     }
 
-    /** Register a DAG payload route. */
     public void registerDAGRoute(@NonNull String taskType, @NonNull Consumer<DAGPayload> handler) {
-        dagRouteTable.put(taskType, handler);
-        log.debug("Bus: Registered DAG route for taskType={}", taskType);
+        dagRoutes.put(taskType, handler);
     }
 
-    /** Register a generic message route. */
-    public void registerMessageRoute(
-            @NonNull String messageType, @NonNull Consumer<String> handler) {
-        messageRouteTable.put(messageType, handler);
-        log.debug("Bus: Registered message route for type={}", messageType);
+    public void registerMessageRoute(@NonNull String type, @NonNull Consumer<String> handler) {
+        messageRoutes.put(type, handler);
     }
 
-    /** Send a DAG payload to the cloud backend. */
-    public synchronized void sendDAGPayload(@NonNull DAGPayload payload) {
-        WebSocketSession current = session;
-        if (current == null || !current.isOpen()) {
-            log.warn("Bus: Cannot send DAG payload, not connected");
-            return;
-        }
-        try {
-            String json = objectMapper.writeValueAsString(payload);
-            current.sendMessage(new TextMessage(json));
-            log.debug(
-                    "Bus: Sent DAG payload id={}, type={}", payload.getId(), payload.getTaskType());
-        } catch (IOException e) {
-            log.error("Bus: Failed to send DAG payload", e);
-        }
+    public void sendDAGPayload(@NonNull DAGPayload payload) {
+        sendMessage(new Frame.DagPayload(payload, null));
     }
 
-    /** Send a raw message. */
-    public synchronized void sendMessage(@NonNull String message) {
-        WebSocketSession current = session;
-        if (current == null || !current.isOpen()) {
-            log.warn("Bus: Cannot send message, not connected");
-            return;
-        }
-        try {
-            current.sendMessage(new TextMessage(message));
-        } catch (IOException e) {
-            log.error("Bus: Failed to send message", e);
-        }
+    public void sendMessage(Frame.@NonNull ClientFrame frame) {
+        var active = connection;
+        var client = active == null ? null : active.client;
+        if (client == null || client.isClosed())
+            throw new IllegalStateException("Bus is not connected");
+        client.send(frame);
     }
 
-    @Override
-    protected void handleTextMessage(
-            @NonNull WebSocketSession session, @NonNull TextMessage message) {
-        String payload = message.getPayload();
-        try {
-            DAGPayload dagPayload =
-                    objectMapper.readValue(payload, new TypeReference<DAGPayload>() {});
-            if (dagPayload == null) {
-                throw new IOException("Bus received an empty DAG payload");
-            }
-            Consumer<DAGPayload> handler = dagRouteTable.get(dagPayload.getTaskType());
-            if (handler != null) {
-                handler.accept(dagPayload);
-            } else {
-                log.warn("Bus: No route for taskType={}", dagPayload.getTaskType());
-            }
-        } catch (Exception e) {
-            // Try generic message routing
-            Consumer<String> fallback = messageRouteTable.get("fallback");
-            if (fallback != null) {
-                fallback.accept(payload);
-            } else {
-                log.warn("Bus: Unhandled message ({} bytes)", payload.length());
-            }
+    private void route(Frame.@NonNull ServerFrame frame) {
+        if (frame instanceof Frame.DagPayload dag) {
+            var handler = dagRoutes.get(dag.data().getTaskType());
+            if (handler != null) handler.accept(dag.data());
+        } else {
+            var handler = messageRoutes.get("fallback");
+            if (handler != null) handler.accept(FrameCodec.encodeString(frame));
         }
-    }
-
-    @Override
-    public void afterConnectionClosed(
-            @NonNull WebSocketSession session, @NonNull CloseStatus status) {
-        log.warn(
-                "Bus: Connection closed (code={}, reason={})",
-                status.getCode(),
-                safe(status.getReason()));
-        this.session = null;
-        heartbeatManager.stop();
-        String backendUrl = reconnectionHandler.getLastBackendUrl();
-        if (backendUrl != null) {
-            reconnectionHandler.scheduleReconnect(this, backendUrl);
-        }
-    }
-
-    @Override
-    public void handleTransportError(
-            @NonNull WebSocketSession session, @NonNull Throwable exception) {
-        log.error("Bus: Transport error", exception);
     }
 
     public boolean isConnected() {
-        WebSocketSession current = session;
-        return current != null && current.isOpen();
+        var active = connection;
+        var client = active == null ? null : active.client;
+        return client != null && !client.isClosed();
     }
 
-    /** Stops heartbeats and closes the backend connection if one is open. */
-    public void disconnect() {
-        heartbeatManager.stop();
-        WebSocketSession current = session;
-        if (current != null && current.isOpen()) {
-            try {
-                current.close(CloseStatus.NORMAL);
-            } catch (IOException e) {
-                log.warn("Bus: Error during disconnect", e);
-            }
+    public synchronized void disconnect() {
+        generation.incrementAndGet();
+        reconnection.reset();
+        var active = connection;
+        connection = null;
+        if (active != null) active.close();
+    }
+
+    private static final class Connection extends TextWebSocketHandler {
+        private volatile WebSocketChannel.Client transport;
+        private volatile ProtocolClient client;
+        private final @NonNull AtomicBoolean closed = new AtomicBoolean();
+
+        @Override
+        public void afterConnectionEstablished(@NonNull WebSocketSession socket) {
+            var channel =
+                    new WebSocketChannel.Client(
+                            text -> socket.sendMessage(new TextMessage(text)), socket::close);
+            transport = channel;
+            if (closed.get()) channel.close();
         }
-        this.session = null;
+
+        @Override
+        protected void handleTextMessage(
+                @NonNull WebSocketSession socket, @NonNull TextMessage message) {
+            var channel = transport;
+            if (channel != null && !channel.accept(message.getPayload()))
+                log.warn("Bus rejected an invalid server frame");
+        }
+
+        @Override
+        public void afterConnectionClosed(
+                @NonNull WebSocketSession socket, @NonNull CloseStatus status) {
+            var channel = transport;
+            if (channel != null) channel.close();
+        }
+
+        @Override
+        public void handleTransportError(
+                @NonNull WebSocketSession socket, @NonNull Throwable failure) {
+            var channel = transport;
+            if (channel != null) channel.close();
+        }
+
+        private void close() {
+            closed.set(true);
+            var active = client;
+            if (active != null) active.close();
+            var channel = transport;
+            if (channel != null) channel.close();
+        }
     }
 }

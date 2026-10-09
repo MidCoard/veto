@@ -7,7 +7,7 @@ import java.util.Map;
 import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.bus.DeltaBroker;
-import top.focess.veto.bus.DeltaFrame;
+import top.focess.veto.contract.EventFrame;
 
 /**
  * Inline adapter that publishes into the configured session broker with this agent's identity.
@@ -32,12 +32,12 @@ public final class DeltaBrokerEventSink implements AgentEventSink {
     }
 
     @Override
-    public void publish(@NonNull DeltaFrame frame) {
+    public void publish(@NonNull EventFrame frame) {
         if (broker == null) return;
         Map<String, JsonNode> attributes = new HashMap<>(frame.attrs());
         attributes.put("agentId", TextNode.valueOf(agentId));
         broker.publish(
-                new DeltaFrame(
+                new EventFrame(
                         sessionId,
                         frame.sequence(),
                         frame.emittedAt(),

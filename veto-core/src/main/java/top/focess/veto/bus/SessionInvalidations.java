@@ -11,6 +11,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
+import top.focess.veto.contract.EventFrame;
 import top.focess.veto.model.AgentInstanceRepository;
 
 /**
@@ -63,9 +64,9 @@ public class SessionInvalidations {
         var values = JsonNodeFactory.instance.arrayNode();
         for (String resource : resources) values.add(resource);
         broker.publish(
-                DeltaFrame.builder()
+                EventFrame.builder()
                         .sessionId(sessionId)
-                        .kind(DeltaFrame.Kind.SESSION_INVALIDATED)
+                        .kind(EventFrame.Kind.SESSION_INVALIDATED)
                         .attr("resources", values)
                         .build());
     }

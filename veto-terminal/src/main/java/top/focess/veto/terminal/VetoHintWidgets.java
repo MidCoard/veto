@@ -5,8 +5,8 @@ import org.jline.reader.LineReader;
 import org.jline.reader.LineReader.SuggestionType;
 import org.jline.widget.Widgets;
 import org.jspecify.annotations.NonNull;
-import top.focess.veto.contract.IpcClient;
-import top.focess.veto.contract.IpcFrame;
+import top.focess.veto.contract.Frame;
+import top.focess.veto.contract.ProtocolClient;
 
 /**
  * JLine {@link Widgets} subclass that hooks buffer-change widgets to fetch and display inline
@@ -34,7 +34,7 @@ public final class VetoHintWidgets extends Widgets {
 
     private static final long HINT_TIMEOUT_MS = 500;
 
-    private final @NonNull IpcClient client;
+    private final @NonNull ProtocolClient client;
     private boolean enabled;
 
     /**
@@ -42,9 +42,9 @@ public final class VetoHintWidgets extends Widgets {
      * key widget implementations for intercepting user editing actions.
      *
      * @param reader the JLine LineReader instance
-     * @param client the IpcClient used to fetch autocomplete/tail-tip hints from the backend
+     * @param client the ProtocolClient used to fetch autocomplete/tail-tip hints from the backend
      */
-    public VetoHintWidgets(@NonNull LineReader reader, @NonNull IpcClient client) {
+    public VetoHintWidgets(@NonNull LineReader reader, @NonNull ProtocolClient client) {
         super(reader);
         this.client = client;
 
@@ -197,8 +197,7 @@ public final class VetoHintWidgets extends Widgets {
 
         // Starts with "/" and ends with a space — trigger a new hint fetch.
         if (line.endsWith(" ")) {
-            IpcFrame.HintResult hintResult =
-                    client.hint(line, HINT_TIMEOUT_MS, TimeUnit.MILLISECONDS);
+            Frame.HintResult hintResult = client.hint(line, HINT_TIMEOUT_MS, TimeUnit.MILLISECONDS);
             if (hintResult != null) {
                 String display = hintResult.hint().displayText();
                 setTailTip(display);

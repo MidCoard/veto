@@ -1,97 +1,55 @@
 package top.focess.veto.bus;
 
+import jakarta.annotation.PreDestroy;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
 import org.jspecify.annotations.NonNull;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
-/** Exponential backoff reconnection handler for bus Communication Bus. */
+/** Application retry policy; each attempt creates a fresh protocol connection. */
 @Component
 public class ReconnectionHandler {
-
-    private static final @NonNull Logger log =
-            LoggerFactory.getLogger("top.focess.veto.bus.ReconnectionHandler");
-
     private final @NonNull BusConfiguration config;
-    private final @NonNull AtomicInteger reconnectAttempts = new AtomicInteger(0);
     private final @NonNull ScheduledExecutorService scheduler =
             Executors.newSingleThreadScheduledExecutor(
                     r -> {
-                        Thread t = new Thread(r, "veto-reconnect");
-                        t.setDaemon(true);
-                        return t;
+                        var thread = new Thread(r, "veto-reconnect");
+                        thread.setDaemon(true);
+                        return thread;
                     });
+    private ScheduledFuture<?> pending;
+    private int attempts;
+    private boolean stopped;
 
-    private volatile String lastBackendUrl;
-    private volatile boolean reconnecting = false;
-
-    /** Creates the handler driven by the {@code veto.bus} reconnection configuration. */
     public ReconnectionHandler(@NonNull BusConfiguration config) {
         this.config = config;
     }
 
-    /** Schedule an exponential-backoff reconnection attempt. */
-    public void scheduleReconnect(@NonNull WebSocketBus bus, @NonNull String backendUrl) {
-        if (backendUrl.isEmpty()) {
-            log.warn("bus Reconnect: No backend URL to reconnect to");
-            return;
-        }
-        this.lastBackendUrl = backendUrl;
-
-        int attempt = reconnectAttempts.incrementAndGet();
-        int maxAttempts = config.getWebsocket().getMaxReconnectAttempts();
-
-        if (attempt > maxAttempts) {
-            log.error("bus Reconnect: Exhausted {} reconnect attempts. Giving up.", maxAttempts);
-            reconnectAttempts.set(0);
-            return;
-        }
-
+    public synchronized void scheduleReconnect(@NonNull Runnable attempt) {
+        if (stopped) return;
+        if (++attempts > config.getWebsocket().getMaxReconnectAttempts()) return;
+        if (pending != null) pending.cancel(false);
         long delay =
-                (long) (config.getWebsocket().getReconnectDelayMs() * Math.pow(2, attempt - 1));
-        delay = Math.min(delay, 120_000); // Cap at 2 minutes
-
-        reconnecting = true;
-        log.info("bus Reconnect: Scheduling attempt {}/{} in {}ms", attempt, maxAttempts, delay);
-
-        scheduler.schedule(
-                () -> {
-                    log.info("bus Reconnect: Attempt {}/{} ...", attempt, maxAttempts);
-                    bus.connect(backendUrl)
-                            .thenAccept(
-                                    success -> {
-                                        if (success) {
-                                            reconnectAttempts.set(0);
-                                            reconnecting = false;
-                                            log.info(
-                                                    "bus Reconnect: Successfully reconnected on attempt {}",
-                                                    attempt);
-                                        }
-                                    });
-                },
-                delay,
-                TimeUnit.MILLISECONDS);
+                (long)
+                        Math.min(
+                                120_000,
+                                config.getWebsocket().getReconnectDelayMs()
+                                        * Math.pow(2, attempts - 1));
+        pending = scheduler.schedule(attempt, delay, TimeUnit.MILLISECONDS);
     }
 
-    /** Reset the reconnection state (call after successful initial connect). */
-    public void reset() {
-        reconnectAttempts.set(0);
-        reconnecting = false;
+    public synchronized void reset() {
+        if (pending != null) pending.cancel(false);
+        pending = null;
+        attempts = 0;
     }
 
-    public boolean isReconnecting() {
-        return reconnecting;
-    }
-
-    public int getAttemptCount() {
-        return reconnectAttempts.get();
-    }
-
-    public String getLastBackendUrl() {
-        return lastBackendUrl;
+    @PreDestroy
+    public synchronized void shutdown() {
+        stopped = true;
+        reset();
+        scheduler.shutdown();
     }
 }

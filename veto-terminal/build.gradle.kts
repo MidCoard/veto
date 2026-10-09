@@ -36,10 +36,13 @@ val slf4jVersion: String by rootProject.extra
 val logbackVersion: String by rootProject.extra
 
 dependencies {
+    testImplementation("org.junit.jupiter:junit-jupiter:5.10.2")
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher:1.10.2")
+
     // JSpecify nullability contracts are part of normal compilation and reflection metadata.
     implementation("org.jspecify:jspecify:1.0.0")
 
-    // veto-protocol (wire types + shared interaction protocol + palette + logging).
+    // Shared wire values, codecs and protocol transports.
     // Deliberately NOT veto-core (no Spring).
     implementation(project(":veto-protocol"))
 
@@ -116,12 +119,6 @@ tasks.withType<JavaCompile> {
     options.compilerArgs.add("UTF-8")
 }
 
-// src/test currently contains HintTest, a manual live-backend harness with main(), not a JUnit
-// test. Keep compiling it (including NullAway) without treating zero discovered tests as failure.
-tasks.named<Test>("test") {
-    failOnNoDiscoveredTests = false
-}
-
 tasks.named<JavaExec>("run") {
     standardInput = System.`in`
 }
@@ -134,3 +131,5 @@ tasks.register<JavaExec>("runDebug") {
     standardInput = System.`in`
     args = listOf("--debug")
 }
+
+tasks.withType<Test> { useJUnitPlatform() }

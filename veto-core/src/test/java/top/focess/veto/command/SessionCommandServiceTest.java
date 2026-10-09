@@ -16,7 +16,7 @@ import top.focess.veto.agent.AgentService;
 import top.focess.veto.agent.RequestHandle;
 import top.focess.veto.agent.VetoAgent;
 import top.focess.veto.bus.DeltaBroker;
-import top.focess.veto.bus.DeltaFrame;
+import top.focess.veto.contract.EventFrame;
 import top.focess.veto.session.SessionService;
 import top.focess.veto.session.SessionService.SessionConfig;
 import top.focess.veto.vault.TestUsers;
@@ -103,14 +103,14 @@ class SessionCommandServiceTest {
         var agents = mock(AgentService.class);
         var service = new SessionCommandService(sessions, agents, broker);
         var id = UUID.randomUUID();
-        List<@NonNull DeltaFrame> frames = new ArrayList<>();
+        List<@NonNull EventFrame> frames = new ArrayList<>();
         var subscription = broker.subscribe(id, frames::add);
         try {
             service.notice(id.toString(), "child", "/signup secret-password");
             service.notice(id.toString(), null, "ordinary prompt");
             assertEquals(1, frames.size());
             var frame = frames.getFirst();
-            assertEquals(DeltaFrame.Kind.NOTICE, frame.kind());
+            assertEquals(EventFrame.Kind.NOTICE, frame.kind());
             var agentId = frame.attrs().get("agentId");
             if (agentId == null) throw new AssertionError("Missing notice scope");
             assertEquals("child", agentId.asText());

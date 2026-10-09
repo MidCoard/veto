@@ -37,11 +37,10 @@ class SeqCorrelatorTest {
         SeqCorrelator c = new SeqCorrelator();
         long seq = c.next();
         c.register(seq);
-        IpcFrame.CompleteResult result =
-                new IpcFrame.CompleteResult(
-                        List.of(new IpcFrame.Completion("/x", null, null)), seq);
+        Frame.CompleteResult result =
+                new Frame.CompleteResult(List.of(new Frame.Completion("/x", null, null)), seq);
         c.deliver(result);
-        IpcFrame.SeqResponse got = requireResponse(c.await(seq, 1, TimeUnit.SECONDS));
+        Frame.SeqResponse got = requireResponse(c.await(seq, 1, TimeUnit.SECONDS));
         assertSame(result, got);
     }
 
@@ -54,7 +53,7 @@ class SeqCorrelatorTest {
         // Handler is gone after a timed-out await: a late deliver is dropped, a second await
         // returns
         // null immediately.
-        c.deliver(new IpcFrame.CompleteResult(List.of(), seq));
+        c.deliver(new Frame.CompleteResult(List.of(), seq));
         assertNull(c.await(seq, 50, TimeUnit.MILLISECONDS));
     }
 
@@ -68,7 +67,7 @@ class SeqCorrelatorTest {
     void deliverWithNoHandlerIsDroppedNotThrown() {
         SeqCorrelator c = new SeqCorrelator();
         // No handler for seq=42 — must not throw.
-        c.deliver(new IpcFrame.CompleteResult(List.of(), 42L));
+        c.deliver(new Frame.CompleteResult(List.of(), 42L));
     }
 
     @Test
@@ -77,7 +76,7 @@ class SeqCorrelatorTest {
         // correlated — they must never match a registered handler, even seq=0.
         SeqCorrelator c = new SeqCorrelator();
         c.register(0L);
-        c.deliver(IpcFrame.Error.ofError("streaming error"));
+        c.deliver(Frame.Error.ofError("streaming error"));
         assertNull(c.await(0L, 50, TimeUnit.MILLISECONDS));
     }
 
@@ -88,11 +87,11 @@ class SeqCorrelatorTest {
         c.register(seq);
         c.discard(seq);
         // After discard, deliver is dropped and await returns null.
-        c.deliver(new IpcFrame.CompleteResult(List.of(), seq));
+        c.deliver(new Frame.CompleteResult(List.of(), seq));
         assertNull(c.await(seq, 50, TimeUnit.MILLISECONDS));
     }
 
-    private static IpcFrame.@NonNull SeqResponse requireResponse(IpcFrame.SeqResponse response) {
+    private static Frame.@NonNull SeqResponse requireResponse(Frame.SeqResponse response) {
         if (response != null) {
             return response;
         }

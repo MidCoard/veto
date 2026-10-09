@@ -40,7 +40,7 @@ import top.focess.veto.api.event.BeforeToolEvent;
 import top.focess.veto.api.llm.ToolCall;
 import top.focess.veto.api.llm.ToolResultPresentationMode;
 import top.focess.veto.api.plugin.Scope;
-import top.focess.veto.bus.DeltaFrame;
+import top.focess.veto.contract.EventFrame;
 
 /**
  * Screens tool batches, obtains approvals and executes under host-issued permits.
@@ -544,9 +544,9 @@ final class AgentToolExecution {
                                 resolution.source(),
                                 Instant.now().toString()));
         output.publishFrame(
-                DeltaFrame.builder()
+                EventFrame.builder()
                         .sessionId(sessionId)
-                        .kind(DeltaFrame.Kind.VETO_RESOLVED)
+                        .kind(EventFrame.Kind.VETO_RESOLVED)
                         .attr("agentId", agentId)
                         .attr("callId", callId)
                         .attr("option", resolution.option().name())

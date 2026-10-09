@@ -67,9 +67,10 @@ the deterministic danger result remains active.
 
 ```text
 veto/
-|-- veto-protocol/   Shared frames, transports, client-session state, and serialization contracts
+|-- veto-protocol/   Frame contracts, codecs, protocol transports, and generated browser bindings
+|-- veto-nullness-checker/ Build-only Checker Framework extension for non-null Java class literals
 |-- veto-core/       Spring Boot backend, agent runtime, security gateway, persistence, and tools
-|-- veto-terminal/   JLine/Mordant terminal application; depends on veto-protocol, not veto-core
+|-- veto-terminal/   JLine/Mordant application, client interaction state, themes and logging
 |-- veto-api/        Shared authoring contract: tool/capability annotations, contribution registration model, standard contract interfaces, and the experimental Java plugin lifecycle
 |-- veto-builtin/    Workspace tools and create_group, registered through veto-api
 |-- veto-llm-providers/  Cloud LLM SDK adapters, registered through veto-api
@@ -202,7 +203,7 @@ Default listeners:
 | --- | --- |
 | REST and application WebSocket | `http://127.0.0.1:8443` |
 | terminal IPC | `tcp://127.0.0.1:5555` |
-| routing WebSocket service | port `9090`, path `/veto/bus` |
+| routing WebSocket service | port `9090`, path `/ws/veto/bus` |
 | gRPC routing service | port `9091` |
 
 On first use, create the initial administrator through the UI or `/api/auth/setup`. The default
@@ -313,7 +314,7 @@ Veto currently provides several independent controls, but they have different as
 - **Audit:** local records are hash-chained and tamper-evident. A local writable log cannot be
   described as tamper-proof against the same host user.
 - **WebSocket:** the login token is validated during the handshake, origins are deployer-scoped,
-  and each DeltaFrame is delivered only to connections owned by the frame's persisted Session
+  and each EventFrame is delivered only to connections owned by the frame's persisted Session
   owner.
 - **Subprocess execution:** commands are passed as executable plus `argv[]`; Veto does not construct
   a shell command string. The child receives the host terminal environment, except sandbox-owned
@@ -437,8 +438,19 @@ is generated output and must not be committed.
 - Preserve the explicit-nullness contract: reference returns and parameters are nullable unless
   they carry `@NonNull`; primitive types are outside that contract.
 - Run focused tests while iterating and the complete `check` task before a release.
-- Keep protocol compatibility logic in `veto-protocol`; `veto-terminal` must not depend on
-  `veto-core`.
+- Keep shared message contracts and format codecs in `veto-protocol`; IPC and WebSocket use
+  its `ProtocolJson` codec for UTF-8 bytes and JSON text. Authentication, backend dispatch and
+  recipient routing belong to the application. Both transports use the same `Frame` hierarchy
+  and `type` discriminator, including `EventFrame` for streaming events. ZeroMQ transport and
+  connection code live in `veto-protocol`; terminal interaction, rendering and logging live in
+  `veto-terminal`. `ProtocolClient` runs the shared handshake, IO, heartbeat and correlation
+  over either `ZmqChannel.Client` or `WebSocketChannel.Client`; Spring WebSocket endpoints use
+  the matching server adapter and retain application authentication/routing. Browser clients consume
+  the dependency-free `@veto/protocol` package in `veto-protocol/frontend`. Its schema and fixtures
+  are generated from Java contracts with `:veto-protocol:generateFrontendBindings` and checked by
+  tests. `veto-terminal` must not depend on `veto-core`.
+- Development/beta migrations replace obsolete implementations completely; do not retain
+  compatibility aliases or fallback implementations.
 
 ## License
 

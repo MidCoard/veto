@@ -10,7 +10,7 @@ import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import top.focess.veto.agent.TurnRecord;
 import top.focess.veto.bus.DeltaBroker;
-import top.focess.veto.bus.DeltaFrame;
+import top.focess.veto.contract.EventFrame;
 
 /**
  * The raw-turn write-through log. Called from the {@code AgentRunner} after each turn is appended;
@@ -38,9 +38,9 @@ public class TurnLogService {
                 () -> {
                     try {
                         deltaBroker.publish(
-                                DeltaFrame.builder()
+                                EventFrame.builder()
                                         .sessionId(sessionId)
-                                        .kind(DeltaFrame.Kind.RECORD_UPDATED)
+                                        .kind(EventFrame.Kind.RECORD_UPDATED)
                                         .attr("turnNumber", turnNumber)
                                         .build());
                     } catch (RuntimeException error) {

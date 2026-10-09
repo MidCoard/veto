@@ -2,35 +2,35 @@ package top.focess.veto.bus;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CopyOnWriteArrayList;
 import org.junit.jupiter.api.Test;
+import top.focess.veto.contract.EventFrame;
 
-/** Tests for the DeltaFrame broker. */
+/** Tests for the EventFrame broker. */
 class DeltaBrokerTest {
 
     @Test
     void publishFansOutToSubscribers() throws Exception {
         DeltaBroker broker = new DeltaBroker();
         UUID sessionId = UUID.randomUUID();
-        List<DeltaFrame> received1 = new CopyOnWriteArrayList<>();
-        List<DeltaFrame> received2 = new CopyOnWriteArrayList<>();
+        List<EventFrame> received1 = new CopyOnWriteArrayList<>();
+        List<EventFrame> received2 = new CopyOnWriteArrayList<>();
         try (AutoCloseable s1 = broker.subscribe(sessionId, received1::add);
                 AutoCloseable s2 = broker.subscribe(sessionId, received2::add)) {
             assertNotNull(s1);
             assertNotNull(s2);
             broker.publish(
-                    DeltaFrame.builder()
+                    EventFrame.builder()
                             .sessionId(sessionId)
-                            .kind(DeltaFrame.Kind.ASSISTANT_MESSAGE)
+                            .kind(EventFrame.Kind.ASSISTANT_MESSAGE)
                             .text("hello")
                             .build());
             broker.publish(
-                    DeltaFrame.builder()
+                    EventFrame.builder()
                             .sessionId(sessionId)
-                            .kind(DeltaFrame.Kind.ASSISTANT_THOUGHT)
+                            .kind(EventFrame.Kind.ASSISTANT_THOUGHT)
                             .text("thinking...")
                             .build());
             assertEquals(2, received1.size());
@@ -45,21 +45,21 @@ class DeltaBrokerTest {
     void unsubscribeStopsDelivery() throws Exception {
         DeltaBroker broker = new DeltaBroker();
         UUID sessionId = UUID.randomUUID();
-        List<DeltaFrame> received = new CopyOnWriteArrayList<>();
+        List<EventFrame> received = new CopyOnWriteArrayList<>();
         AutoCloseable handle = broker.subscribe(sessionId, received::add);
         broker.publish(
-                DeltaFrame.builder()
+                EventFrame.builder()
                         .sessionId(sessionId)
-                        .kind(DeltaFrame.Kind.ASSISTANT_MESSAGE)
+                        .kind(EventFrame.Kind.ASSISTANT_MESSAGE)
                         .text("a")
                         .build());
         assertEquals(1, received.size());
         // Unsubscribe.
         handle.close();
         broker.publish(
-                DeltaFrame.builder()
+                EventFrame.builder()
                         .sessionId(sessionId)
-                        .kind(DeltaFrame.Kind.ASSISTANT_MESSAGE)
+                        .kind(EventFrame.Kind.ASSISTANT_MESSAGE)
                         .text("b")
                         .build());
         // The unsubscribed listener should not have received the second frame.
@@ -70,14 +70,14 @@ class DeltaBrokerTest {
     void sequencesAreMonotonicPerSession() throws Exception {
         DeltaBroker broker = new DeltaBroker();
         UUID sessionId = UUID.randomUUID();
-        List<DeltaFrame> received = new CopyOnWriteArrayList<>();
+        List<EventFrame> received = new CopyOnWriteArrayList<>();
         try (AutoCloseable s = broker.subscribe(sessionId, received::add)) {
             assertNotNull(s);
             for (int i = 0; i < 10; i++) {
                 broker.publish(
-                        DeltaFrame.builder()
+                        EventFrame.builder()
                                 .sessionId(sessionId)
-                                .kind(DeltaFrame.Kind.ASSISTANT_THOUGHT)
+                                .kind(EventFrame.Kind.ASSISTANT_THOUGHT)
                                 .text("step " + i)
                                 .build());
             }
@@ -86,23 +86,5 @@ class DeltaBrokerTest {
         for (int i = 0; i < 10; i++) {
             assertEquals(i + 1L, received.get(i).sequence());
         }
-    }
-
-    @Test
-    void deltaFrameRoundTripsJson() {
-        ObjectMapper mapper = new ObjectMapper();
-        DeltaFrame original =
-                DeltaFrame.builder()
-                        .sessionId(UUID.randomUUID())
-                        .sequence(42L)
-                        .kind(DeltaFrame.Kind.TOOL_RESULT)
-                        .text("file contents")
-                        .build();
-        String json = original.toJson(mapper);
-        DeltaFrame parsed = DeltaFrame.fromJson(mapper, json);
-        assertEquals(original.sessionId(), parsed.sessionId());
-        assertEquals(original.sequence(), parsed.sequence());
-        assertEquals(original.kind(), parsed.kind());
-        assertEquals(original.text(), parsed.text());
     }
 }

@@ -5,7 +5,7 @@ import static org.mockito.Mockito.*;
 
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
-import top.focess.veto.contract.IpcFrame;
+import top.focess.veto.contract.Frame;
 import top.focess.veto.contract.Version;
 import top.focess.veto.terminal.IpcServer;
 
@@ -20,7 +20,7 @@ class VetoCommandSenderInputTest {
                             return null;
                         })
                 .when(server)
-                .send(eq("terminal"), any(IpcFrame.Prompt.class));
+                .send(eq("terminal"), any(Frame.Prompt.class));
 
         var future = sender.inputAsync("Prompt", false, 1_000);
 

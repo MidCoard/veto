@@ -8,7 +8,7 @@ import com.github.ajalt.mordant.terminal.Terminal
 /**
  * Java-friendly bridge over Mordant's Kotlin API. Detects terminal ANSI capability and downgrades
  * to plain text on dumb terminals so output never shows raw escape sequences. Used by [MordantTheme]
- * to map [top.focess.veto.client.core.StyleToken]s to ANSI strings.
+ * to map [top.focess.veto.terminal.client.StyleToken]s to ANSI strings.
  */
 object MordantTerminal {
 

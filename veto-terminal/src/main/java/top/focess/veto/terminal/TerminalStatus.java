@@ -5,9 +5,9 @@ import org.jline.terminal.Terminal;
 import org.jline.utils.AttributedString;
 import org.jline.utils.Status;
 import org.jspecify.annotations.NonNull;
-import top.focess.veto.client.core.ClientSession;
-import top.focess.veto.client.core.StyleToken;
-import top.focess.veto.client.core.Theme;
+import top.focess.veto.terminal.client.ClientSession;
+import top.focess.veto.terminal.client.StyleToken;
+import top.focess.veto.terminal.client.Theme;
 
 /**
  * Draws the session status bar on JLine's bottom status line.

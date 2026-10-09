@@ -42,7 +42,7 @@ import top.focess.veto.api.llm.LlmBinding;
 import top.focess.veto.api.llm.ToolResultPresentationMode;
 import top.focess.veto.api.plugin.agent.AgentProfile;
 import top.focess.veto.bus.DeltaBroker;
-import top.focess.veto.bus.DeltaFrame;
+import top.focess.veto.contract.EventFrame;
 import top.focess.veto.event.EventManager;
 import top.focess.veto.i18n.Msg;
 import top.focess.veto.integration.plugins.SessionPlugins;
@@ -195,7 +195,7 @@ public class AgentService {
     /**
      * Fire-and-forget submit: resolves (or creates) the agent, binds the model configuration, and
      * starts the episode, returning as soon as the run is enqueued. The episode's progress and
-     * outcome travel as {@link DeltaFrame} events on the {@code DeltaBroker} (session-scoped), and
+     * outcome travel as {@link EventFrame} events on the {@code DeltaBroker} (session-scoped), and
      * the durable result lands in the turn log — callers subscribe and read, they do not block
      * here. This is the transport shape the web UI uses: REST submits, WebSocket streams, REST GET
      * history stays the authoritative read.

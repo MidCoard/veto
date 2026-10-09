@@ -30,7 +30,7 @@ import top.focess.veto.api.llm.exceptions.LlmRateLimitException;
 import top.focess.veto.api.llm.exceptions.LlmTimeoutException;
 import top.focess.veto.api.llm.exceptions.ModelCapabilityException;
 import top.focess.veto.api.llm.exceptions.ModelSchemaException;
-import top.focess.veto.bus.DeltaFrame;
+import top.focess.veto.contract.EventFrame;
 import top.focess.veto.i18n.Msg;
 import top.focess.veto.llm.core.ToolResultPresenter;
 import top.focess.veto.util.Nullness;
@@ -148,7 +148,7 @@ final class AgentOutput {
         events.thought(thought, turnNumber());
     }
 
-    void publishFrame(@NonNull DeltaFrame frame) {
+    void publishFrame(@NonNull EventFrame frame) {
         events.publishFrame(frame);
     }
 
@@ -283,7 +283,7 @@ final class AgentOutput {
         if (requestId != null) failure.put("requestId", requestId);
         appendTurn(new TurnRecord(nextTurn(), TurnType.EXECUTION_ERROR, failure, null));
         publishFrame(
-                events.frame(DeltaFrame.Kind.ERROR)
+                events.frame(EventFrame.Kind.ERROR)
                         .attr("turnNumber", turnNumber())
                         .text(text)
                         .build());
@@ -293,7 +293,7 @@ final class AgentOutput {
     void completed(RequestHandle task, @NonNull AgentResult result) {
         // Publish before completing the future, so awaiting clients observe the terminal event.
         publishFrame(
-                events.frame(DeltaFrame.Kind.EPISODE_DONE)
+                events.frame(EventFrame.Kind.EPISODE_DONE)
                         .attr("requestId", task == null ? "" : task.episode.id())
                         .attr("turnNumber", turnNumber())
                         .attr("success", result.success())
@@ -305,7 +305,7 @@ final class AgentOutput {
         String notice = LoopBreaker.tripNotice(view.get().locale());
         emitMessage(notice);
         publishFrame(
-                events.frame(DeltaFrame.Kind.BREAKER_TRIPPED)
+                events.frame(EventFrame.Kind.BREAKER_TRIPPED)
                         .attr("turnNumber", turnNumber())
                         .attr("maxCallsPerEpisode", task.episode.breaker().maxCallsPerEpisode())
                         .text(notice)
@@ -315,7 +315,7 @@ final class AgentOutput {
     void compacted(@NonNull String summary, int count) {
         emitMessage(Msg.get(view.get().locale(), "error.agent.compactDone", count));
         publishFrame(
-                events.frame(DeltaFrame.Kind.COMPACTION)
+                events.frame(EventFrame.Kind.COMPACTION)
                         .attr("turnNumber", turnNumber())
                         .attr("compactedTurns", count)
                         .text(summary)

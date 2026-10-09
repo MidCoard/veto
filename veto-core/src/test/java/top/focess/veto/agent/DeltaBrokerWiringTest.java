@@ -22,15 +22,15 @@ import top.focess.veto.api.llm.LlmOptions;
 import top.focess.veto.api.llm.ProviderType;
 import top.focess.veto.api.llm.VetoResponse;
 import top.focess.veto.bus.DeltaBroker;
-import top.focess.veto.bus.DeltaFrame;
 import top.focess.veto.bus.SessionInvalidations;
+import top.focess.veto.contract.EventFrame;
 import top.focess.veto.llm.core.ToolResultPresenter;
 import top.focess.veto.llm.core.UniformLLMCaller;
 import top.focess.veto.vault.TestUsers;
 
 /**
  * Verifies the Part-8 emission seam: an agent's user-facing message is published as a per-session
- * {@link DeltaFrame} to the {@link DeltaBroker} (which the {@code DeltaBusBridge} then forwards to
+ * {@link EventFrame} to the {@link DeltaBroker} (which the {@code DeltaBusBridge} then forwards to
  * WebSocket clients). The broker assigns a monotonic sequence; the frame text is the message
  * verbatim.
  */
@@ -90,9 +90,9 @@ class DeltaBrokerWiringTest {
     }
 
     @Test
-    void emitMessagePublishesDeltaFrameToBroker() throws Exception {
+    void emitMessagePublishesEventFrameToBroker() throws Exception {
         DeltaBroker broker = new DeltaBroker();
-        List<DeltaFrame> frames = new CopyOnWriteArrayList<>();
+        List<EventFrame> frames = new CopyOnWriteArrayList<>();
         broker.subscribeAll(frames::add);
 
         AgentService service =
@@ -106,24 +106,24 @@ class DeltaBrokerWiringTest {
                         TestUsers.OWNER);
 
         assertTrue(result.success(), "episode should finish successfully");
-        assertFalse(frames.isEmpty(), "a DeltaFrame should be published on emitMessage");
+        assertFalse(frames.isEmpty(), "a EventFrame should be published on emitMessage");
         var content =
                 frames.stream()
-                        .filter(frame -> frame.kind() != DeltaFrame.Kind.SESSION_INVALIDATED)
+                        .filter(frame -> frame.kind() != EventFrame.Kind.SESSION_INVALIDATED)
                         .toList();
         assertEquals(3, content.size(), "thought, message and episode outcome remain distinct");
-        assertEquals(DeltaFrame.Kind.ASSISTANT_THOUGHT, content.get(0).kind());
+        assertEquals(EventFrame.Kind.ASSISTANT_THOUGHT, content.get(0).kind());
         assertEquals("2 + 2 = 4.", content.get(0).text());
-        assertEquals(DeltaFrame.Kind.ASSISTANT_MESSAGE, content.get(1).kind());
+        assertEquals(EventFrame.Kind.ASSISTANT_MESSAGE, content.get(1).kind());
         assertEquals("The answer is 4.", content.get(1).text());
-        assertEquals(DeltaFrame.Kind.EPISODE_DONE, content.get(2).kind());
+        assertEquals(EventFrame.Kind.EPISODE_DONE, content.get(2).kind());
         assertTrue(content.get(0).sequence() < content.get(1).sequence());
         assertTrue(content.get(1).sequence() < content.get(2).sequence());
         assertTrue(
                 frames.stream()
                         .anyMatch(
                                 frame ->
-                                        frame.kind() == DeltaFrame.Kind.SESSION_INVALIDATED
+                                        frame.kind() == EventFrame.Kind.SESSION_INVALIDATED
                                                 && String.valueOf(frame.attrs().get("resources"))
                                                         .contains("execution")),
                 "execution changes must reach clients independently of conversation content");

@@ -14,7 +14,7 @@ import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 import top.focess.veto.api.agent.ToolCallEvent;
 import top.focess.veto.api.llm.ToolCall;
-import top.focess.veto.bus.DeltaFrame;
+import top.focess.veto.contract.EventFrame;
 
 class AgentEventsTest {
     @Test
@@ -46,7 +46,7 @@ class AgentEventsTest {
         assertEquals(expected, mapper.writeValueAsString(call.args()));
         assertEquals(expected, mapper.writeValueAsString(required(history.payload().get("args"))));
 
-        var frames = new ArrayList<DeltaFrame>();
+        var frames = new ArrayList<EventFrame>();
         var laterEvents = new ArrayList<ToolCallEvent>();
         var session = UUID.randomUUID();
         var events = new AgentEvents("agent", mapper, frames::add, session);

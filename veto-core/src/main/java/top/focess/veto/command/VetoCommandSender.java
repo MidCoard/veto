@@ -4,6 +4,7 @@ import java.util.UUID;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
+import java.util.concurrent.atomic.AtomicLong;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -11,9 +12,8 @@ import top.focess.command.AbstractCommandSender;
 import top.focess.command.CommandPermission;
 import top.focess.command.CommandSender;
 import top.focess.veto.agent.intercept.VetoPrompt;
-import top.focess.veto.api.agent.ToolCallEvent;
-import top.focess.veto.api.agent.ToolResultEvent;
-import top.focess.veto.contract.IpcFrame;
+import top.focess.veto.contract.EventFrame;
+import top.focess.veto.contract.Frame;
 import top.focess.veto.contract.Version;
 import top.focess.veto.terminal.IpcServer;
 import top.focess.veto.vault.UserEntity;
@@ -23,20 +23,20 @@ import top.focess.veto.vault.UserEntity;
  *
  * <h3>Output</h3>
  *
- * {@link #output(String)} pushes {@code IpcFrame.Delta} entries onto the shared outbox queue. The
- * IO thread in {@link IpcServer} drains the queue and sends frames on the ZMQ ROUTER socket.
+ * {@link #output(String)} pushes {@code EventFrame} entries onto the shared outbox queue. The IO
+ * thread in {@link IpcServer} drains the queue and sends frames on the ZMQ ROUTER socket.
  *
  * <h3>Input</h3>
  *
- * {@link #inputAsync(String, boolean, long)} sends a {@link IpcFrame.Prompt} frame so the terminal
+ * {@link #inputAsync(String, boolean, long)} sends a {@link Frame.Prompt} frame so the terminal
  * knows to collect input, then creates a {@link CompletableFuture} (via {@link
  * AbstractCommandSender#inputAsync(long)}) and parks on it. The session worker calls {@link
- * #receiveInput(String)} when an {@link IpcFrame.Input} frame arrives — completing the future and
+ * #receiveInput(String)} when an {@link Frame.Input} frame arrives — completing the future and
  * unblocking the dispatch worker. No extra threads are spawned.
  *
  * <h3>Two-level cancel</h3>
  *
- * A {@link IpcFrame.Cancel} has two levels:
+ * A {@link Frame.Cancel} has two levels:
  *
  * <ol>
  *   <li><b>Prompted</b> — the command is parked in {@code input} awaiting a reply. Cancel dismisses
@@ -56,6 +56,7 @@ public final class VetoCommandSender extends AbstractCommandSender {
             LoggerFactory.getLogger("top.focess.veto.command.VetoCommandSender");
 
     private final @NonNull IpcServer ipcServer;
+    private final @NonNull AtomicLong outputSequence = new AtomicLong();
     private volatile Identity identity;
 
     private record Identity(@NonNull UUID userId, @NonNull String username) {}
@@ -64,7 +65,7 @@ public final class VetoCommandSender extends AbstractCommandSender {
     private final @NonNull Version clientProductVersion;
 
     /**
-     * The current working directory the terminal reported in its {@link IpcFrame.Hello} handshake,
+     * The current working directory the terminal reported in its {@link Frame.Hello} handshake,
      * used as the session's workspace root when {@code /session create} does not name one
      * explicitly. Never {@code null} - the terminal always reports its JVM working dir.
      */
@@ -85,9 +86,9 @@ public final class VetoCommandSender extends AbstractCommandSender {
      * @param user the initially authenticated account, or {@code null} if not yet logged in
      * @param terminalId the ZMQ DEALER identity of the owning terminal
      * @param clientProductVersion the product version the connecting terminal reported in its
-     *     {@link IpcFrame.Hello} handshake; never {@code null} - {@link Version#UNKNOWN} when the
+     *     {@link Frame.Hello} handshake; never {@code null} - {@link Version#UNKNOWN} when the
      *     terminal did not report a meaningful version
-     * @param cwd the current working directory the terminal reported in its {@link IpcFrame.Hello}
+     * @param cwd the current working directory the terminal reported in its {@link Frame.Hello}
      *     handshake, mapped to the session's workspace at {@code /session create} time; never
      *     {@code null} - the terminal always reports its JVM working dir
      */
@@ -161,7 +162,7 @@ public final class VetoCommandSender extends AbstractCommandSender {
     }
 
     /**
-     * Returns the product version the connecting terminal reported in its {@link IpcFrame.Hello}
+     * Returns the product version the connecting terminal reported in its {@link Frame.Hello}
      * handshake.
      *
      * @return the terminal's product version; never {@code null} - {@link Version#UNKNOWN} when the
@@ -173,7 +174,7 @@ public final class VetoCommandSender extends AbstractCommandSender {
 
     /**
      * Returns the current working directory the connecting terminal reported in its {@link
-     * IpcFrame.Hello} handshake, mapped to the session's workspace at {@code /session create} time.
+     * Frame.Hello} handshake, mapped to the session's workspace at {@code /session create} time.
      *
      * @return the terminal's cwd; never {@code null} - the terminal always reports its JVM working
      *     dir
@@ -194,7 +195,7 @@ public final class VetoCommandSender extends AbstractCommandSender {
     // ── output (CommandSender contract) ───────────────────────────────────
 
     /**
-     * Sends a streaming content chunk to the terminal as a {@link IpcFrame.Delta} frame.
+     * Sends a streaming content chunk to the terminal as a {@link EventFrame} frame.
      *
      * <p>Null or empty messages are silently ignored. The frame is enqueued to the outbox of the
      * owning {@link IpcServer} and delivered by the IO thread.
@@ -204,46 +205,18 @@ public final class VetoCommandSender extends AbstractCommandSender {
     @Override
     public void output(String message) {
         if (message == null || message.isEmpty()) return;
-        ipcServer.send(terminalId, new IpcFrame.Delta(message));
+        ipcServer.send(
+                terminalId,
+                EventFrame.builder()
+                        .sequence(outputSequence.incrementAndGet())
+                        .kind(EventFrame.Kind.COMMAND_MESSAGE)
+                        .text(message)
+                        .build());
     }
 
-    /**
-     * Sends a streaming <em>thought</em> chunk to the terminal as a thought-kind {@link
-     * IpcFrame.Delta} frame. The terminal renders thoughts distinct (muted/dim) from user-facing
-     * messages delivered via {@link #output}, so the user can follow the agent's reasoning without
-     * it competing with the answer.
-     *
-     * <p>Null or empty thoughts are silently ignored.
-     *
-     * @param thought the interim reasoning text to stream; {@code null} or empty silently dropped
-     */
-    public void outputThought(String thought) {
-        if (thought == null || thought.isEmpty()) return;
-        ipcServer.send(terminalId, IpcFrame.Delta.thought(thought));
-    }
-
-    /**
-     * Streams a tool call the agent is about to execute to the terminal as a {@link
-     * IpcFrame.ToolCall} frame, so the terminal can render a Claude-Code-style indicator and the
-     * user can see exactly which tool the agent invoked with which arguments. Receives the agent's
-     * domain {@link ToolCallEvent} and constructs the terminal wire frame HERE, at the transport
-     * edge (the agent emits domain events and never builds an {@code IpcFrame}). Called on the
-     * agent virtual thread after the TOOL_CALL turn has been durably persisted.
-     */
-    public void sendToolCall(@NonNull ToolCallEvent call) {
-        ipcServer.send(terminalId, new IpcFrame.ToolCall(call.toolName(), call.args()));
-    }
-
-    /**
-     * Streams the framed observation the model receives for a tool call to the terminal as a {@link
-     * IpcFrame.ToolResult} frame. The body is the self-describing "Observation (tool(args)) [...]"
-     * text the model sees, so the terminal can render a single result and the user can verify which
-     * call it belongs to without tracking call/result pairs. Receives the agent's domain {@link
-     * ToolResultEvent} and constructs the terminal wire frame here, at the transport edge. Called
-     * on the agent virtual thread after the TOOL_RESPONSE turn has been durably persisted.
-     */
-    public void sendToolResult(@NonNull ToolResultEvent result) {
-        ipcServer.send(terminalId, new IpcFrame.ToolResult(result.body(), result.success()));
+    /** Forwards the canonical broker event without translating or rebuilding its payload. */
+    public void sendEvent(@NonNull EventFrame frame) {
+        ipcServer.send(terminalId, frame);
     }
 
     // ── input (CommandSender contract overrides & overloads) ──────────────────────────────
@@ -267,10 +240,10 @@ public final class VetoCommandSender extends AbstractCommandSender {
     /**
      * Blocks until the terminal user provides input, optionally masking the characters.
      *
-     * <p>Sends a {@link IpcFrame.Prompt} frame to the terminal with the given text and mask flag,
-     * then waits up to 90 seconds for the terminal to respond with an {@link IpcFrame.Input} frame.
-     * If the user cancels the prompt (via {@link IpcFrame.Cancel}), returns {@code null} instead of
-     * throwing — the command checks for null and decides how to proceed (re-prompt, abort, etc.).
+     * <p>Sends a {@link Frame.Prompt} frame to the terminal with the given text and mask flag, then
+     * waits up to 90 seconds for the terminal to respond with an {@link Frame.Input} frame. If the
+     * user cancels the prompt (via {@link Frame.Cancel}), returns {@code null} instead of throwing
+     * — the command checks for null and decides how to proceed (re-prompt, abort, etc.).
      *
      * @param text the prompt text to display above the input field; use {@code ""} for none
      * @param mask {@code true} to mask input characters (e.g. for passwords)
@@ -305,11 +278,11 @@ public final class VetoCommandSender extends AbstractCommandSender {
     }
 
     /**
-     * Sends a {@link IpcFrame.Prompt} frame to the terminal and asynchronously waits for the user's
+     * Sends a {@link Frame.Prompt} frame to the terminal and asynchronously waits for the user's
      * reply.
      *
      * <p>The future is completed by {@link #receiveInput(String)} when the session worker receives
-     * the corresponding {@link IpcFrame.Input} frame from the terminal.
+     * the corresponding {@link Frame.Input} frame from the terminal.
      *
      * @param text the prompt message displayed above the input field
      * @param mask {@code true} to mask input characters (e.g. for passwords)
@@ -319,7 +292,7 @@ public final class VetoCommandSender extends AbstractCommandSender {
     public @NonNull CompletableFuture<String> inputAsync(
             @NonNull String text, boolean mask, long timeoutMillis) {
         var future = super.inputAsync(timeoutMillis);
-        ipcServer.send(terminalId, new IpcFrame.Prompt(text, mask));
+        ipcServer.send(terminalId, new Frame.Prompt(text, mask));
         return future;
     }
 
@@ -352,15 +325,15 @@ public final class VetoCommandSender extends AbstractCommandSender {
     // ── HITL veto ────────────────────────────────────────────────────────
 
     /**
-     * Sends a HITL veto prompt to the terminal as a {@link IpcFrame.Prompt} carrying a {@link
-     * IpcFrame.VetoPayload}, and stashes the veto's (agentId, callId) so the inbound {@link
-     * IpcFrame.Input} reply (or a {@link IpcFrame.Cancel}) can resolve it. Called from the agent's
-     * veto emission seam (the veto sink), on the agent virtual thread.
+     * Sends a HITL veto prompt to the terminal as a {@link Frame.Prompt} carrying a {@link
+     * Frame.VetoPayload}, and stashes the veto's (agentId, callId) so the inbound {@link
+     * Frame.Input} reply (or a {@link Frame.Cancel}) can resolve it. Called from the agent's veto
+     * emission seam (the veto sink), on the agent virtual thread.
      */
     public synchronized void sendVetoPrompt(@NonNull VetoPrompt vp) {
         pendingVeto = new PendingVeto(vp.agentId(), vp.callId());
-        IpcFrame.VetoPayload payload =
-                new IpcFrame.VetoPayload(
+        Frame.VetoPayload payload =
+                new Frame.VetoPayload(
                         vp.agentId(),
                         vp.callId(),
                         vp.tool(),
@@ -368,7 +341,7 @@ public final class VetoCommandSender extends AbstractCommandSender {
                         vp.options().stream().map(Enum::name).toList(),
                         vp.args());
         String summary = "HITL: " + vp.tool() + " (" + vp.scenario() + ")";
-        ipcServer.send(terminalId, new IpcFrame.Prompt(summary, false, payload));
+        ipcServer.send(terminalId, new Frame.Prompt(summary, false, payload));
     }
 
     /**

@@ -2,6 +2,7 @@ package top.focess.veto.terminal;
 
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
+import java.time.Instant;
 import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.Map;
@@ -22,20 +23,21 @@ import top.focess.veto.VetoVersion;
 import top.focess.veto.agent.AgentService;
 import top.focess.veto.command.CommandRegistry;
 import top.focess.veto.command.VetoCommandSender;
-import top.focess.veto.contract.IpcClient;
-import top.focess.veto.contract.IpcFrame;
-import top.focess.veto.contract.IpcFrame.HintInfo;
-import top.focess.veto.contract.IpcMeta;
+import top.focess.veto.contract.Frame;
+import top.focess.veto.contract.Frame.HintInfo;
+import top.focess.veto.contract.FrameMeta;
+import top.focess.veto.contract.ProtocolClient;
 import top.focess.veto.contract.ServerTransport;
 import top.focess.veto.contract.Transport;
 import top.focess.veto.contract.Version;
-import top.focess.veto.contract.ZmqChannel;
+import top.focess.veto.transport.zmq.ZmqChannel;
 import top.focess.veto.vault.ExecutionSecurity;
 
 /**
- * Backend IPC server — the {@link IpcClient} counterpart. Multiplexes many terminal sessions over a
- * single ZMQ ROUTER socket. (The asymmetry with {@link IpcClient}'s single-DEALER, single-socket
- * shape is by design: the server is 1:N, the client is 1:1 — they are not mirror images.)
+ * Backend IPC server — the {@link ProtocolClient} counterpart. Multiplexes many terminal sessions
+ * over a single ZMQ ROUTER socket. (The asymmetry with {@link ProtocolClient}'s single-DEALER,
+ * single-socket shape is by design: the server is 1:N, the client is 1:1 — they are not mirror
+ * images.)
  *
  * <h3>Three-pool threading model</h3>
  *
@@ -43,11 +45,11 @@ import top.focess.veto.vault.ExecutionSecurity;
  *   <li><b>Pool 1 — Infrastructure</b> (2 fixed platform threads): runs {@link #ioLoop} and {@link
  *       #heartbeatLoop}. The IO thread is the <em>sole</em> owner of the transport; no other thread
  *       ever calls {@link ServerTransport#recv(long)} or {@link ServerTransport#send(String,
- *       IpcFrame)}.
+ *       Frame)}.
  *   <li><b>Pool 2 — Session workers</b> (one virtual thread per connected terminal): each session
  *       has a dedicated {@link BlockingQueue} mailbox. The session worker drains that mailbox and
  *       processes non-Request frames <em>synchronously</em>, preserving per-session ordering
- *       without any explicit locking. {@link IpcFrame.Request} frames are submitted to Pool 3.
+ *       without any explicit locking. {@link Frame.Request} frames are submitted to Pool 3.
  *   <li><b>Pool 3 — Request pool</b> (virtual thread per task): executes {@code registry.dispatch},
  *       which may block for an extended period (AI inference, tool calls, etc.). The server
  *       enforces 1:1 request serialization: at most one request runs at a time per session;
@@ -71,8 +73,8 @@ import top.focess.veto.vault.ExecutionSecurity;
  * <h3>Frame routing</h3>
  *
  * <ul>
- *   <li>{@link IpcFrame.Hello} — handled directly on the IO thread (fast path; session doesn't
- *       exist yet). On success the session is created and its worker virtual thread is spawned.
+ *   <li>{@link Frame.Hello} — handled directly on the IO thread (fast path; session doesn't exist
+ *       yet). On success the session is created and its worker virtual thread is spawned.
  *   <li>All other frames — enqueued to the session's mailbox via {@link Session#mailbox} and
  *       processed in arrival order by the session worker.
  * </ul>
@@ -80,8 +82,8 @@ import top.focess.veto.vault.ExecutionSecurity;
  * <h3>Session lifecycle</h3>
  *
  * <ul>
- *   <li>Created on {@link IpcFrame.Hello} (IO thread).
- *   <li>Closed on {@link IpcFrame.Bye} (session worker), heartbeat timeout (heartbeat thread), or
+ *   <li>Created on {@link Frame.Hello} (IO thread).
+ *   <li>Closed on {@link Frame.Bye} (session worker), heartbeat timeout (heartbeat thread), or
  *       server shutdown. Closing is idempotent via {@link Session#closed} ({@link AtomicBoolean}).
  * </ul>
  */
@@ -195,7 +197,7 @@ public class IpcServer {
      *
      * <ol>
      *   <li>Sets {@link #running} to {@code false} so loops exit after their current iteration.
-     *   <li>Sends a {@link IpcFrame.Terminate} frame to every connected terminal.
+     *   <li>Sends a {@link Frame.Terminate} frame to every connected terminal.
      *   <li>Waits 100 ms to allow the IO thread to flush outgoing terminate frames.
      *   <li>Shuts down session and request pools ({@code shutdownNow}).
      *   <li>Awaits infrastructure pool termination (up to 3 seconds).
@@ -209,7 +211,7 @@ public class IpcServer {
         // late frames are flushed too; enqueuing while running avoids the race where the loop
         // exits before they're sent.)
         for (Session session : sessions.values()) {
-            send(session.identity, new IpcFrame.Terminate("Server shutting down."));
+            send(session.identity, new Frame.Terminate("Server shutting down."));
         }
         // Brief pause to let the IO loop flush the Terminate frames while it is still running.
         try {
@@ -296,14 +298,14 @@ public class IpcServer {
     /**
      * Routes a frame that just arrived from the ZMQ socket.
      *
-     * <p>{@link IpcFrame.Hello} is handled synchronously here on the IO thread: the session does
-     * not exist yet, so there is no mailbox to enqueue into. Every other frame is enqueued to the
+     * <p>{@link Frame.Hello} is handled synchronously here on the IO thread: the session does not
+     * exist yet, so there is no mailbox to enqueue into. Every other frame is enqueued to the
      * session's mailbox for ordered processing by the session worker.
      *
      * <p>Must only be called from the IO thread.
      */
-    private void routeFrame(@NonNull String identity, @NonNull IpcFrame frame) {
-        if (frame instanceof IpcFrame.Hello hello) {
+    private void routeFrame(@NonNull String identity, @NonNull Frame frame) {
+        if (frame instanceof Frame.Hello hello) {
             // Hello is a special bootstrapping frame — handle inline before the session exists.
             handleHello(identity, hello);
             return;
@@ -323,7 +325,7 @@ public class IpcServer {
                     peerLabel(identity));
             send(
                     identity,
-                    new IpcFrame.Terminate(
+                    new Frame.Terminate(
                             "Session no longer valid (server restarted?) — please reconnect."));
             return;
         }
@@ -343,28 +345,32 @@ public class IpcServer {
     }
 
     private void rejectFrame(
-            @NonNull String identity, @NonNull IpcFrame frame, @NonNull RuntimeException failure) {
+            @NonNull String identity, @NonNull Frame frame, @NonNull RuntimeException failure) {
         log.warn(
                 "Rejected {} frame from {}",
                 frame.getClass().getSimpleName(),
                 peerLabel(identity),
                 failure);
-        long seq = frame instanceof IpcFrame.SeqRequest request ? request.seq() : 0;
-        send(identity, new IpcFrame.Error("Frame could not be processed.", seq));
+        long seq = frame instanceof Frame.SeqRequest request ? request.seq() : 0;
+        send(identity, new Frame.Error("Frame could not be processed.", seq));
     }
 
     /**
-     * Handles a {@link IpcFrame.Hello} handshake directly on the IO thread.
+     * Handles a {@link Frame.Hello} handshake directly on the IO thread.
      *
      * <p>Rejects the connection if an active session already exists for the given identity.
      * Otherwise creates the session, starts its worker virtual thread, and sends {@link
-     * IpcFrame.Welcome} back.
+     * Frame.Welcome} back.
      */
-    private void handleHello(@NonNull String identity, IpcFrame.@NonNull Hello hello) {
+    private void handleHello(@NonNull String identity, Frame.@NonNull Hello hello) {
+        if (hello.version() != Frame.PROTOCOL_VERSION) {
+            send(identity, new Frame.Error("Unsupported protocol version", hello.seq()));
+            return;
+        }
         if (sessions.containsKey(identity)) {
             // The IO thread is the only writer to `sessions`, so containsKey + put is safe here.
             log.warn("Duplicate identity {} — rejecting handshake", peerLabel(identity));
-            send(identity, new IpcFrame.Error("Duplicate identity connected.", hello.seq()));
+            send(identity, new Frame.Error("Duplicate identity connected.", hello.seq()));
             return;
         }
         Version clientProductVersion = hello.productVersion();
@@ -374,14 +380,14 @@ public class IpcServer {
         // Spawn the session worker — virtual thread parks on mailbox.take between frames.
         sessionPool.submit(() -> sessionLoop(session));
 
-        int negotiated = Math.min(hello.version(), IpcFrame.PROTOCOL_VERSION);
+        int negotiated = Frame.PROTOCOL_VERSION;
         log.debug(
                 "HELLO {}: v{} → negotiated v{} (client product {})",
                 peerLabel(identity),
                 hello.version(),
                 negotiated,
                 clientProductVersion);
-        send(identity, new IpcFrame.Welcome(negotiated, hello.seq(), VetoVersion.VERSION));
+        send(identity, new Frame.Welcome(negotiated, hello.seq(), VetoVersion.VERSION));
     }
 
     // ── Pool 2 — Session worker loop ─────────────────────────────────────
@@ -391,13 +397,13 @@ public class IpcServer {
      *
      * <p>Blocks on {@link Session#mailbox} and processes each frame sequentially. This guarantees
      * per-session ordering with no synchronization overhead — only one thread ever processes a
-     * given session's frames at a time. {@link IpcFrame.Request} frames are the single exception:
-     * they are submitted to {@link #requestPool} so long-running commands never stall this loop.
+     * given session's frames at a time. {@link Frame.Request} frames are the single exception: they
+     * are submitted to {@link #requestPool} so long-running commands never stall this loop.
      */
     private void sessionLoop(@NonNull Session session) {
         log.debug("Session worker started for {}", peerLabel(session.identity));
         while (!session.closed.get() && running) {
-            IpcFrame frame;
+            Frame frame;
             try {
                 // Poll with a 1-second timeout so we re-check `running` and `closed` periodically.
                 frame = session.mailbox.poll(1, TimeUnit.SECONDS);
@@ -423,21 +429,21 @@ public class IpcServer {
     /**
      * Dispatches a single frame on the session worker thread.
      *
-     * <p>All frames except {@link IpcFrame.Request} are handled inline — they are fast, stateful
-     * operations that must run in order relative to each other (e.g. {@link IpcFrame.Cancel} must
-     * see the futures that were registered by previous {@link IpcFrame.Request} dispatches). {@link
-     * IpcFrame.Request} is the only frame type that may block for a significant duration and is
+     * <p>All frames except {@link Frame.Request} are handled inline — they are fast, stateful
+     * operations that must run in order relative to each other (e.g. {@link Frame.Cancel} must see
+     * the futures that were registered by previous {@link Frame.Request} dispatches). {@link
+     * Frame.Request} is the only frame type that may block for a significant duration and is
      * therefore off-loaded to {@link #requestPool}.
      */
     @SuppressWarnings(
             "LoggingSimilarMessage") // Request/result trace pairs intentionally share a prefix.
-    private void handleSessionFrame(@NonNull Session session, @NonNull IpcFrame frame) {
+    private void handleSessionFrame(@NonNull Session session, @NonNull Frame frame) {
         String identity = session.identity;
         UUID user = session.sender.userId();
         var security = ExecutionSecurity.open(user);
         try {
             switch (frame) {
-                case IpcFrame.Request req -> {
+                case Frame.Request req -> {
                     // 1:1 dispatch: if no request is in-flight, dispatch; otherwise queue.
                     session.requestLock.lock();
                     try {
@@ -454,7 +460,7 @@ public class IpcServer {
                     }
                 }
 
-                case IpcFrame.Input in -> {
+                case Frame.Input in -> {
                     log.trace("IN   {}", peerLabel(identity));
                     // Veto-first routing: a pending HITL veto consumes this Input as the
                     // chosen option name; only free-text inputs reach receiveInput. The 1:1
@@ -484,24 +490,24 @@ public class IpcServer {
                     }
                 }
 
-                case IpcFrame.Complete comp -> {
+                case Frame.Complete comp -> {
                     log.trace("COMP {}: {}", peerLabel(identity), comp.raw());
                     var completions = registry.complete(session.sender, comp.raw());
                     log.trace("COMP {}: → {} candidates", peerLabel(identity), completions.size());
-                    send(identity, new IpcFrame.CompleteResult(completions, comp.seq()));
+                    send(identity, new Frame.CompleteResult(completions, comp.seq()));
                 }
 
-                case IpcFrame.Hint h -> {
+                case Frame.Hint h -> {
                     log.trace("HINT {}: {}", peerLabel(identity), h.raw());
                     HintInfo hint = registry.hint(session.sender, h.raw());
                     log.trace(
                             "HINT {}: → {}",
                             peerLabel(identity),
                             hint == HintInfo.EMPTY ? "EMPTY" : hint.displayText());
-                    send(identity, new IpcFrame.HintResult(hint, h.seq()));
+                    send(identity, new Frame.HintResult(hint, h.seq()));
                 }
 
-                case IpcFrame.Cancel c -> {
+                case Frame.Cancel c -> {
                     // Two-level cancel:
                     //   1. If a prompt is pending — cancelCurrentPrompt() dismisses it (returns
                     //      true). The command continues; no terminal frame is sent.
@@ -549,7 +555,7 @@ public class IpcServer {
                                 session.terminalSent = true;
                                 send(
                                         identity,
-                                        new IpcFrame.Done(Map.of(IpcMeta.CANCELLED, true), null));
+                                        new Frame.Done(Map.of(FrameMeta.CANCELLED, true), null));
                                 if (task != null) {
                                     task.cancel(true);
                                 }
@@ -561,9 +567,7 @@ public class IpcServer {
                         } else {
                             // No in-flight request — the terminal thinks one is running and is
                             // blocked awaiting a terminal frame. Send an Error to unblock it.
-                            send(
-                                    identity,
-                                    IpcFrame.Error.ofError("No in-flight request to cancel."));
+                            send(identity, Frame.Error.ofError("No in-flight request to cancel."));
                             log.trace(
                                     "CANC {}: no in-flight request — sent error",
                                     peerLabel(identity));
@@ -573,7 +577,7 @@ public class IpcServer {
                     }
                 }
 
-                case IpcFrame.Bye b -> {
+                case Frame.Bye b -> {
                     log.trace("BYE  {}: terminal disconnecting", peerLabel(identity));
                     // Bye is fire-and-forget — the client tears down without waiting, and the
                     // server closes on receipt without sending anything back (no Done). Closing
@@ -581,18 +585,13 @@ public class IpcServer {
                     closeSession(session);
                 }
 
-                case IpcFrame.Heartbeat h ->
-                        // Heartbeat updates the timestamp; the heartbeat loop checks this value.
-                        session.lastActivityMillis = System.currentTimeMillis();
-
-                default -> {
-                    if (frame instanceof IpcFrame.Unknown(String type)) {
-                        log.warn(
-                                "Unknown frame type '{}' from {} — protocol version mismatch?",
-                                type,
-                                peerLabel(identity));
-                    }
+                case Frame.Heartbeat h -> {
+                    session.lastActivityMillis = System.currentTimeMillis();
+                    send(identity, new Frame.HeartbeatAck(h.seq(), Instant.now()));
                 }
+
+                default ->
+                        send(identity, new Frame.Error("Unsupported frame on this connection", 0));
             }
         } finally {
             security.close();
@@ -602,7 +601,7 @@ public class IpcServer {
     // ── Request dispatch ──────────────────────────────────────────────────
 
     /**
-     * Dispatches a {@link IpcFrame.Request} to the request pool and wires up the completion hook.
+     * Dispatches a {@link Frame.Request} to the request pool and wires up the completion hook.
      *
      * <p>Caller must hold {@link Session#requestLock}. Builds a {@link FutureTask} that runs {@link
      * CommandRegistry#dispatch}, stores it in {@code session.activeRequest}, resets {@link
@@ -622,7 +621,7 @@ public class IpcServer {
      * @param session the session that owns the request
      * @param req the request frame to dispatch
      */
-    private void dispatchRequestLocked(@NonNull Session session, IpcFrame.@NonNull Request req) {
+    private void dispatchRequestLocked(@NonNull Session session, Frame.@NonNull Request req) {
         // Caller holds requestLock.
         //
         // holder lets the body Callable reference the task it runs in — Java definite-assignment
@@ -636,7 +635,7 @@ public class IpcServer {
                                 new DelegatingSecurityContextCallable<Void>(
                                                 () -> {
                                                     try {
-                                                        IpcFrame.TerminalResponse response =
+                                                        Frame.TerminalResponse response =
                                                                 registry.dispatch(
                                                                         session.sender, req.raw());
                                                         sendTerminal(session, response, holder[0]);
@@ -668,7 +667,7 @@ public class IpcServer {
                                                                 t);
                                                         sendTerminal(
                                                                 session,
-                                                                IpcFrame.Error.ofError(
+                                                                Frame.Error.ofError(
                                                                         "Internal error: " + t),
                                                                 holder[0]);
                                                         return null;
@@ -711,7 +710,7 @@ public class IpcServer {
      * <p><b>Caller must hold {@link Session#requestLock}.</b>
      */
     private void dispatchNextOrIdleLocked(@NonNull Session session) {
-        IpcFrame.Request next = session.pendingRequests.pollFirst();
+        Frame.Request next = session.pendingRequests.pollFirst();
         if (next != null) {
             log.trace("REQ  {}: dequeuing next pending request", peerLabel(session.identity));
             dispatchRequestLocked(session, next);
@@ -735,12 +734,12 @@ public class IpcServer {
      * </ul>
      *
      * @param session the session owning the in-flight command
-     * @param frame the terminal frame ({@link IpcFrame.Done}/{@link IpcFrame.Error}/{@link
-     *     IpcFrame.Terminate}) to send
+     * @param frame the terminal frame ({@link Frame.Done}/{@link Frame.Error}/{@link
+     *     Frame.Terminate}) to send
      * @param owner the future owning this body — its own identity, to prove the slot is still its
      */
     private void sendTerminal(
-            @NonNull Session session, IpcFrame.@NonNull TerminalResponse frame, Future<?> owner) {
+            @NonNull Session session, Frame.@NonNull TerminalResponse frame, Future<?> owner) {
         session.requestLock.lock();
         try {
             if (session.activeRequest == owner && !session.terminalSent) {
@@ -775,7 +774,7 @@ public class IpcServer {
                 if (session.lastActivityMillis < cutoff && !session.closed.get()) {
                     log.info("Evicting timed-out session {}", peerLabel(session.identity));
                     // Notify the terminal before closing so it can display a message.
-                    send(session.identity, new IpcFrame.Terminate("Session timed out."));
+                    send(session.identity, new Frame.Terminate("Session timed out."));
                     closeSession(session);
                 }
             }
@@ -836,7 +835,7 @@ public class IpcServer {
      * @param identity the ZMQ DEALER identity of the target terminal
      * @param frame the frame to send
      */
-    public void send(@NonNull String identity, @NonNull IpcFrame frame) {
+    public void send(@NonNull String identity, @NonNull Frame frame) {
         int size = outboxSize.incrementAndGet();
         if (size > MAX_OUTBOX_SIZE) {
             outboxSize.decrementAndGet(); // not actually enqueuing — undo the reservation
@@ -858,8 +857,8 @@ public class IpcServer {
      *
      * @param identity the ZMQ DEALER identity of the connecting terminal
      * @param clientProductVersion the product version the terminal reported in its {@link
-     *     IpcFrame.Hello} handshake
-     * @param cwd the current working directory the terminal reported in its {@link IpcFrame.Hello}
+     *     Frame.Hello} handshake
+     * @param cwd the current working directory the terminal reported in its {@link Frame.Hello}
      *     handshake, mapped to the session's workspace at {@code /session create} time; never
      *     {@code null} - the terminal always reports its JVM working dir
      * @return a new, unauthenticated {@link VetoCommandSender}; never {@code null}
@@ -872,7 +871,7 @@ public class IpcServer {
     // ── Types ─────────────────────────────────────────────────────────────
 
     /** A frame that has been queued for sending by the IO thread. */
-    public record OutboxEntry(@NonNull String identity, @NonNull IpcFrame frame) {}
+    public record OutboxEntry(@NonNull String identity, @NonNull Frame frame) {}
 
     /**
      * All mutable state for a single connected terminal session.
@@ -893,7 +892,7 @@ public class IpcServer {
          * Incoming frame mailbox. Written by the IO thread via {@link #routeFrame}; consumed in
          * FIFO order by the session worker.
          */
-        final @NonNull BlockingQueue<@NonNull IpcFrame> mailbox = new LinkedBlockingQueue<>();
+        final @NonNull BlockingQueue<@NonNull Frame> mailbox = new LinkedBlockingQueue<>();
 
         /**
          * Per-session lock protecting the request lifecycle fields: {@link #activeRequest}, {@link
@@ -905,7 +904,7 @@ public class IpcServer {
         final @NonNull ReentrantLock requestLock = new ReentrantLock();
 
         /**
-         * Pending request queue. When a {@link IpcFrame.Request} arrives while another is already
+         * Pending request queue. When a {@link Frame.Request} arrives while another is already
          * in-flight ({@link #activeRequest} is non-null), it is appended here. The {@code
          * dispatchNextOrIdleLocked} callback polls the next request and dispatches it, implementing
          * server-side 1:1 request serialization. This mirrors the client-side {@code
@@ -913,7 +912,7 @@ public class IpcServer {
          *
          * <p>Protected by {@link #requestLock}.
          */
-        final @NonNull Deque<IpcFrame.@NonNull Request> pendingRequests = new ArrayDeque<>();
+        final @NonNull Deque<Frame.@NonNull Request> pendingRequests = new ArrayDeque<>();
 
         /**
          * The in-flight request task, or {@code null} if no command is running. A {@link
@@ -929,9 +928,9 @@ public class IpcServer {
          * Whether a terminal frame has been sent for the currently in-flight request. Claimed
          * (false→true) under {@link #requestLock} by whichever of {@code sendTerminal} or the
          * cancel handler wins the race — guaranteeing exactly one terminal frame per {@link
-         * IpcFrame.Request} (a cancel racing a normal completion produces only one). Reset to
-         * {@code false} when a new request is dispatched; set to {@code true} by {@code
-         * closeSession} to suppress a lingering body's frame after teardown.
+         * Frame.Request} (a cancel racing a normal completion produces only one). Reset to {@code
+         * false} when a new request is dispatched; set to {@code true} by {@code closeSession} to
+         * suppress a lingering body's frame after teardown.
          *
          * <p>Protected by {@link #requestLock} (a plain boolean — the lock serializes the
          * check-and-set, so no {@link AtomicBoolean} is needed).

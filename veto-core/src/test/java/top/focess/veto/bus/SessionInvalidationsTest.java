@@ -8,13 +8,14 @@ import java.util.UUID;
 import java.util.concurrent.CopyOnWriteArrayList;
 import org.junit.jupiter.api.Test;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
+import top.focess.veto.contract.EventFrame;
 import top.focess.veto.model.AgentInstanceRepository;
 
 class SessionInvalidationsTest {
     @Test
     void rollbackDoesNotPublishAndCommitDeliversOnlyResourceNames() throws Exception {
         DeltaBroker broker = new DeltaBroker();
-        List<DeltaFrame> frames = new CopyOnWriteArrayList<>();
+        List<EventFrame> frames = new CopyOnWriteArrayList<>();
         broker.subscribeAll(frames::add);
         AgentInstanceRepository agents = mock(AgentInstanceRepository.class);
         SessionInvalidations service = new SessionInvalidations(broker, agents);
@@ -34,7 +35,7 @@ class SessionInvalidationsTest {
             while (frames.isEmpty() && System.nanoTime() < deadline) Thread.sleep(5);
             assertEquals(1, frames.size());
             assertEquals(session, frames.get(0).sessionId());
-            assertEquals(DeltaFrame.Kind.SESSION_INVALIDATED, frames.get(0).kind());
+            assertEquals(EventFrame.Kind.SESSION_INVALIDATED, frames.get(0).kind());
             assertEquals(
                     "[\"agents\",\"execution\"]",
                     String.valueOf(frames.get(0).attrs().get("resources")));

@@ -15,7 +15,7 @@ import top.focess.veto.agent.intercept.VetoPrompt;
 import top.focess.veto.api.agent.ToolCallEvent;
 import top.focess.veto.api.agent.ToolResultEvent;
 import top.focess.veto.api.llm.ToolCall;
-import top.focess.veto.bus.DeltaFrame;
+import top.focess.veto.contract.EventFrame;
 
 /**
  * Inline agent-output listeners and transport notifications; never owns execution or persistence.
@@ -79,22 +79,22 @@ final class AgentEvents {
 
     void message(@NonNull String text, int turn) {
         messages.emit(text);
-        textFrame(DeltaFrame.Kind.ASSISTANT_MESSAGE, text, turn);
+        textFrame(EventFrame.Kind.ASSISTANT_MESSAGE, text, turn);
     }
 
     void thought(@NonNull String text, int turn) {
         if (text.isBlank()) return;
         thoughts.emit(text);
-        textFrame(DeltaFrame.Kind.ASSISTANT_THOUGHT, text, turn);
+        textFrame(EventFrame.Kind.ASSISTANT_THOUGHT, text, turn);
     }
 
-    DeltaFrame.@NonNull Builder frame(DeltaFrame.@NonNull Kind kind) {
-        return DeltaFrame.builder().sessionId(sessionId).kind(kind);
+    EventFrame.@NonNull Builder frame(EventFrame.@NonNull Kind kind) {
+        return EventFrame.builder().sessionId(sessionId).kind(kind);
     }
 
     void executionChanged() {
         publishFrame(
-                frame(DeltaFrame.Kind.SESSION_INVALIDATED)
+                frame(EventFrame.Kind.SESSION_INVALIDATED)
                         .attr("agentId", agentId)
                         .attr(
                                 "resources",
@@ -102,7 +102,7 @@ final class AgentEvents {
                         .build());
     }
 
-    private void textFrame(DeltaFrame.@NonNull Kind kind, @NonNull String text, int turn) {
+    private void textFrame(EventFrame.@NonNull Kind kind, @NonNull String text, int turn) {
         publishFrame(frame(kind).attr("turnNumber", turn).text(text).build());
     }
 
@@ -128,10 +128,10 @@ final class AgentEvents {
                     // is about to run. Carries the authoritative turnNumber + callId so a client
                     // can
                     // apply it incrementally and pair the later result without refetching history.
-                    DeltaFrame.@NonNull Builder b =
-                            DeltaFrame.builder()
+                    EventFrame.@NonNull Builder b =
+                            EventFrame.builder()
                                     .sessionId(sessionId)
-                                    .kind(DeltaFrame.Kind.TOOL_CALL)
+                                    .kind(EventFrame.Kind.TOOL_CALL)
                                     .attr("turnNumber", numbered.turnNumber())
                                     .attr("toolName", toolName)
                                     .attr("args", argumentFrame)
@@ -148,10 +148,10 @@ final class AgentEvents {
                 Object callId = numbered.payload().get("call_id");
                 if (content instanceof @NonNull String body) {
                     results.emit(new ToolResultEvent(body, Boolean.TRUE.equals(success)));
-                    DeltaFrame.@NonNull Builder b =
-                            DeltaFrame.builder()
+                    EventFrame.@NonNull Builder b =
+                            EventFrame.builder()
                                     .sessionId(sessionId)
-                                    .kind(DeltaFrame.Kind.TOOL_RESULT)
+                                    .kind(EventFrame.Kind.TOOL_RESULT)
                                     .attr("turnNumber", numbered.turnNumber())
                                     .attr("success", Boolean.TRUE.equals(success))
                                     .text(body);
@@ -167,7 +167,7 @@ final class AgentEvents {
         }
     }
 
-    void publishFrame(@NonNull DeltaFrame frame) {
+    void publishFrame(@NonNull EventFrame frame) {
         try {
             eventSink.publish(frame);
         } catch (RuntimeException e) {
@@ -202,10 +202,10 @@ final class AgentEvents {
         // Domain event: a veto is parked and waiting for the user's decision. Subscribers (the web
         // UI, the terminal adapter) render a prompt from this instead of polling; the user's reply
         // still goes through the authenticated resolve path.
-        DeltaFrame.@NonNull Builder frame =
-                DeltaFrame.builder()
+        EventFrame.@NonNull Builder frame =
+                EventFrame.builder()
                         .sessionId(sessionId)
-                        .kind(DeltaFrame.Kind.VETO_REQUIRED)
+                        .kind(EventFrame.Kind.VETO_REQUIRED)
                         .attr("agentId", agentId)
                         .attr("callId", callId)
                         .attr("toolName", call.toolName())

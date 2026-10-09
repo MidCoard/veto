@@ -27,7 +27,7 @@ import top.focess.veto.vault.KeysteadVault;
  * REST prompt submission endpoint — the command half of the transport rule (commands -> REST POST,
  * events -> WebSocket, authoritative reads -> REST GET). The episode starts and this call acks
  * immediately with 202 + the session id; progress (thoughts, tool calls/results, HITL vetoes) and
- * the episode outcome arrive as {@code DeltaFrame} events on the WS bus, and {@code GET
+ * the episode outcome arrive as {@code EventFrame} events on the WS bus, and {@code GET
  * /api/sessions/{name}/history} is the durable source of truth. A blocking collect-and-return call
  * would cap episode length at the HTTP timeout — HITL pauses alone outlast any such cap.
  */

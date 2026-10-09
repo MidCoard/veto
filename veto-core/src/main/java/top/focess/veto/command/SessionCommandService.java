@@ -13,7 +13,7 @@ import top.focess.veto.agent.Agent;
 import top.focess.veto.agent.AgentService;
 import top.focess.veto.api.agent.AgentResult;
 import top.focess.veto.bus.DeltaBroker;
-import top.focess.veto.bus.DeltaFrame;
+import top.focess.veto.contract.EventFrame;
 import top.focess.veto.i18n.Msg;
 import top.focess.veto.session.SessionService;
 
@@ -73,9 +73,9 @@ public class SessionCommandService {
 
     private void publishNotice(@NonNull String sessionId, String agentId, @NonNull String text) {
         var frame =
-                DeltaFrame.builder()
+                EventFrame.builder()
                         .sessionId(UUID.fromString(sessionId))
-                        .kind(DeltaFrame.Kind.NOTICE)
+                        .kind(EventFrame.Kind.NOTICE)
                         .text(text);
         if (agentId != null) frame.attr("agentId", agentId);
         broker.publish(frame.build());

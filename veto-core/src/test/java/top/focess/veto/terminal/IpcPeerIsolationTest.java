@@ -20,8 +20,8 @@ import top.focess.veto.agent.AgentService;
 import top.focess.veto.command.CommandRegistry;
 import top.focess.veto.command.PromptHandler;
 import top.focess.veto.command.VetoCommandSender;
-import top.focess.veto.contract.IpcCodec;
-import top.focess.veto.contract.IpcFrame;
+import top.focess.veto.contract.Frame;
+import top.focess.veto.contract.FrameCodec;
 import top.focess.veto.event.EventManager;
 import top.focess.veto.vault.AuthLifecycleManager;
 import top.focess.veto.vault.CurrentUser;
@@ -49,7 +49,7 @@ class IpcPeerIsolationTest {
                             if ("login".equals(raw)) sender.setUser(alice);
                             else if ("prompt".equals(raw))
                                 assertNull(sender.input("Confirm action", false));
-                            return new IpcFrame.Done(Map.of("loggedIn", sender.isLoggedIn()), null);
+                            return new Frame.Done(Map.of("loggedIn", sender.isLoggedIn()), null);
                         });
         var server = new IpcServer(registry, mock(AgentService.class), address);
         server.start();
@@ -57,13 +57,11 @@ class IpcPeerIsolationTest {
             var terminal = connect(context, address, "pending-input");
             assertEquals(true, request(terminal, "login").meta().get("loggedIn"));
             assertTrue(terminal.send("{\"type\":\"request\",\"raw\":\"prompt\"}"));
-            assertInstanceOf(IpcFrame.Prompt.class, receive(terminal));
+            assertInstanceOf(Frame.Prompt.class, receive(terminal));
             server.revokeUser(TestUsers.ALICE);
             assertEquals(
                     false,
-                    assertInstanceOf(IpcFrame.Done.class, receive(terminal))
-                            .meta()
-                            .get("loggedIn"));
+                    assertInstanceOf(Frame.Done.class, receive(terminal)).meta().get("loggedIn"));
             assertEquals(true, request(terminal, "login").meta().get("loggedIn"));
         } finally {
             server.stop();
@@ -99,7 +97,7 @@ class IpcPeerIsolationTest {
                             } else {
                                 assertEquals(sender.userId(), CurrentUser.id());
                             }
-                            return new IpcFrame.Done(Map.of("loggedIn", sender.isLoggedIn()), null);
+                            return new Frame.Done(Map.of("loggedIn", sender.isLoggedIn()), null);
                         });
         when(registry.complete(any(), anyString())).thenReturn(List.of());
         var server = new IpcServer(registry, mock(AgentService.class), address);
@@ -124,11 +122,11 @@ class IpcPeerIsolationTest {
             assertTrue(first.send("{\"type\":\"request\",\"raw\":\"queued\"}"));
             // Completion is ordered behind the queued frame on the session mailbox.
             assertTrue(first.send("{\"type\":\"complete\",\"raw\":\"barrier\",\"seq\":2}"));
-            assertInstanceOf(IpcFrame.CompleteResult.class, receive(first));
+            assertInstanceOf(Frame.CompleteResult.class, receive(first));
             lifecycle.logout(TestUsers.ALICE);
             release.countDown();
-            assertInstanceOf(IpcFrame.Done.class, receive(first));
-            var queued = assertInstanceOf(IpcFrame.Done.class, receive(first));
+            assertInstanceOf(Frame.Done.class, receive(first));
+            var queued = assertInstanceOf(Frame.Done.class, receive(first));
             assertEquals(false, queued.meta().get("loggedIn"));
             assertEquals(false, request(second, "probe").meta().get("loggedIn"));
             assertEquals(true, request(other, "probe").meta().get("loggedIn"));
@@ -147,15 +145,15 @@ class IpcPeerIsolationTest {
         dealer.connect(address);
         assertTrue(
                 dealer.send(
-                        "{\"type\":\"hello\",\"version\":1,\"seq\":1,"
+                        "{\"type\":\"hello\",\"version\":2,\"seq\":1,"
                                 + "\"productVersion\":\"0.0.0-unknown\",\"cwd\":\".\"}"));
-        assertInstanceOf(IpcFrame.Welcome.class, receive(dealer));
+        assertInstanceOf(Frame.Welcome.class, receive(dealer));
         return dealer;
     }
 
-    private static IpcFrame.@NonNull Done request(ZMQ.@NonNull Socket dealer, @NonNull String raw) {
+    private static Frame.@NonNull Done request(ZMQ.@NonNull Socket dealer, @NonNull String raw) {
         assertTrue(dealer.send("{\"type\":\"request\",\"raw\":\"" + raw + "\"}"));
-        return assertInstanceOf(IpcFrame.Done.class, receive(dealer));
+        return assertInstanceOf(Frame.Done.class, receive(dealer));
     }
 
     @Test
@@ -178,30 +176,32 @@ class IpcPeerIsolationTest {
             dealer.setIdentity("x".getBytes(StandardCharsets.UTF_8));
             dealer.setReceiveTimeOut(3_000);
             dealer.connect(address);
-            assertTrue(dealer.send("{\"type\":\"heartbeat\"}"));
-            assertInstanceOf(IpcFrame.Terminate.class, receive(dealer));
+            assertTrue(dealer.send("{\"type\":\"heartbeat\",\"seq\":0}"));
+            assertInstanceOf(Frame.Terminate.class, receive(dealer));
             assertTrue(
                     dealer.send(
-                            "{\"type\":\"hello\",\"version\":1,\"seq\":1,"
+                            "{\"type\":\"hello\",\"version\":2,\"seq\":1,"
                                     + "\"productVersion\":\"0.0.0-unknown\",\"cwd\":\".\"}"));
-            assertInstanceOf(IpcFrame.Welcome.class, receive(dealer));
+            assertInstanceOf(Frame.Welcome.class, receive(dealer));
+            assertTrue(dealer.send("{\"type\":\"heartbeat\",\"seq\":9}"));
+            assertEquals(9, assertInstanceOf(Frame.HeartbeatAck.class, receive(dealer)).seq());
             assertTrue(dealer.send("{malformed json"));
             assertTrue(dealer.send("{\"type\":\"complete\",\"raw\":\"explode\",\"seq\":2}"));
             var rejected = receive(dealer);
-            assertTrue(rejected instanceof IpcFrame.Error error && error.seq() == 2);
+            assertTrue(rejected instanceof Frame.Error error && error.seq() == 2);
             assertTrue(dealer.send("{\"type\":\"complete\",\"raw\":\"healthy\",\"seq\":3}"));
             var healthy = receive(dealer);
-            assertTrue(healthy instanceof IpcFrame.CompleteResult result && result.seq() == 3);
+            assertTrue(healthy instanceof Frame.CompleteResult result && result.seq() == 3);
             verify(registry).complete(any(), eq("healthy"));
         } finally {
             server.stop();
         }
     }
 
-    private static @NonNull IpcFrame receive(ZMQ.@NonNull Socket dealer) {
+    private static @NonNull Frame receive(ZMQ.@NonNull Socket dealer) {
         byte[] payload = dealer.recv();
         if (payload == null) throw new AssertionError("server did not respond");
-        var frame = IpcCodec.decode(payload);
+        var frame = FrameCodec.decode(payload);
         if (frame == null) throw new AssertionError("server sent an invalid frame");
         return frame;
     }

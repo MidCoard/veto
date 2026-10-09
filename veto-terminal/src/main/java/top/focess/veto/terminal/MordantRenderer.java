@@ -2,7 +2,7 @@ package top.focess.veto.terminal;
 
 import org.jline.reader.LineReader;
 import org.jspecify.annotations.NonNull;
-import top.focess.veto.client.core.Theme;
+import top.focess.veto.terminal.client.Theme;
 
 /**
  * Unified output seam for the REPL: every line of output goes through {@link LineReader#printAbove}

@@ -3,12 +3,11 @@ package top.focess.veto.contract;
 import org.jspecify.annotations.NonNull;
 
 /**
- * Transport half that sends frames from the terminal (client) to the backend — e.g. a ZMQ DEALER
- * socket that automatically prepends its identity and sends a bare payload.
+ * Transport half that sends frames from a client to the backend — e.g. a ZMQ DEALER socket that
+ * automatically prepends its identity and sends a bare payload.
  *
  * <p>Split from {@link ServerTransport} so the two send shapes cannot be confused: a client
- * transport only offers {@link #send(IpcFrame.ClientFrame)}, never the identity-addressed server
- * send.
+ * transport only offers {@link #send(Frame.ClientFrame)}, never the identity-addressed server send.
  */
 public non-sealed interface ClientTransport extends Transport {
 
@@ -17,5 +16,5 @@ public non-sealed interface ClientTransport extends Transport {
      *
      * @param frame the frame to send
      */
-    void send(IpcFrame.@NonNull ClientFrame frame);
+    void send(Frame.@NonNull ClientFrame frame);
 }

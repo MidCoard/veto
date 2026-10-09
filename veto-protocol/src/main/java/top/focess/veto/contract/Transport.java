@@ -3,12 +3,12 @@ package top.focess.veto.contract;
 import org.jspecify.annotations.NonNull;
 
 /**
- * Transport-agnostic seam for exchanging {@link IpcFrame}s between a terminal (client) and the
- * backend (server).
+ * Transport-agnostic seam for exchanging {@link Frame}s between a terminal (client) and the backend
+ * (server).
  *
- * <p>A local desktop deployment uses {@link ZmqChannel}; remote/cloud deployments wrap the same
- * frames in WSS or gRPC tunnels. The terminal's connection layer ({@code IpcClient}) depends on
- * this interface, never on ZMQ, so the transport can be swapped without touching the terminal.
+ * <p>The protocol module provides ZeroMQ and WebSocket implementations of these interfaces.
+ * Applications own authentication, authorization and routing. Terminal interaction and rendering
+ * remain outside this module.
  *
  * <h3>Receive timeout convention</h3>
  *
@@ -31,7 +31,7 @@ import org.jspecify.annotations.NonNull;
 public sealed interface Transport permits ClientTransport, ServerTransport {
 
     /** A received frame paired with its sender routing identity (empty for client-side DEALER). */
-    record FramedMsg(@NonNull String identity, @NonNull IpcFrame frame) {}
+    record FramedMsg(@NonNull String identity, @NonNull Frame frame) {}
 
     /**
      * Receives the next framed message.

@@ -1,22 +1,27 @@
 package top.focess.veto.bus;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.clearInvocations;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.core.type.TypeReference;
 import java.net.URI;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.mockito.ArgumentMatchers;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -26,8 +31,13 @@ import org.springframework.web.socket.CloseStatus;
 import org.springframework.web.socket.TextMessage;
 import org.springframework.web.socket.WebSocketHandler;
 import org.springframework.web.socket.WebSocketSession;
+import top.focess.veto.contract.EventFrame;
+import top.focess.veto.contract.Frame;
+import top.focess.veto.contract.ProtocolClient;
+import top.focess.veto.contract.ProtocolJson;
 import top.focess.veto.model.SessionEntity;
 import top.focess.veto.model.SessionRepository;
+import top.focess.veto.transport.websocket.WebSocketChannel;
 import top.focess.veto.vault.LoginSessionManager;
 import top.focess.veto.vault.TestUsers;
 import top.focess.veto.veto.VetoGateway;
@@ -65,8 +75,7 @@ class VetoWebSocketSecurityTest {
         SessionRepository sessions = mock(SessionRepository.class);
         LoginSessionManager tokens = new LoginSessionManager();
         VetoWebSocketHandler handler =
-                new VetoWebSocketHandler(
-                        new ObjectMapper(), mock(VetoGateway.class), sessions, tokens);
+                new VetoWebSocketHandler(mock(VetoGateway.class), sessions, tokens);
         WebSocketSession alice =
                 socket(
                         "alice-socket",
@@ -84,14 +93,108 @@ class VetoWebSocketSecurityTest {
         SessionEntity session = new SessionEntity(TestUsers.ALICE, "work");
         when(sessions.findById(session.getId())).thenReturn(Optional.of(session));
         handler.sendFrame(
-                DeltaFrame.builder()
+                EventFrame.builder()
                         .sessionId(UUID.fromString(session.getId()))
-                        .kind(DeltaFrame.Kind.ASSISTANT_MESSAGE)
+                        .kind(EventFrame.Kind.ASSISTANT_MESSAGE)
                         .text("private")
                         .build());
 
-        verify(alice).sendMessage(ArgumentMatchers.any(TextMessage.class));
+        var sent = ArgumentCaptor.forClass(TextMessage.class);
+        verify(alice).sendMessage(sent.capture());
+        var decoded =
+                ProtocolJson.decode(
+                        sent.getValue().getPayload(), new TypeReference<EventFrame>() {});
+        assertEquals(UUID.fromString(session.getId()), decoded.sessionId());
+        assertEquals("private", decoded.text());
         verify(bob, never()).sendMessage(ArgumentMatchers.any(TextMessage.class));
+    }
+
+    @Test
+    void malformedProtocolEnvelopesNeverReachTheGateway() throws Exception {
+        var tokens = new LoginSessionManager();
+        var token = tokens.createLoginSession(TestUsers.ALICE, "alice");
+        var gateway = mock(VetoGateway.class);
+        var handler = new VetoWebSocketHandler(gateway, mock(SessionRepository.class), tokens);
+        var socket = socket("alice", TestUsers.ALICE, token);
+        handler.afterConnectionEstablished(socket);
+        clearInvocations(socket);
+        handler.handleTextMessage(
+                socket,
+                new TextMessage(
+                        "{\"type\":\"heartbeat\",\"type\":\"veto.process\",\"payload\":\"private\"}"));
+        handler.handleTextMessage(
+                socket, new TextMessage("{\"type\":\"veto.process\",\"payload\":\"private\"} {}"));
+        verifyNoInteractions(gateway);
+        var sent = ArgumentCaptor.forClass(TextMessage.class);
+        verify(socket, times(2)).sendMessage(sent.capture());
+        for (var message : sent.getAllValues()) {
+            assertEquals(
+                    "error", ProtocolJson.readTree(message.getPayload()).path("type").asText());
+        }
+    }
+
+    @Test
+    void sharedFramesRetainWebSocketAdmissionBoundaries() throws Exception {
+        var tokens = new LoginSessionManager();
+        var gateway = mock(VetoGateway.class);
+        var handler = new VetoWebSocketHandler(gateway, mock(SessionRepository.class), tokens);
+        var socket =
+                socket(
+                        "alice",
+                        TestUsers.ALICE,
+                        tokens.createLoginSession(TestUsers.ALICE, "alice"));
+        handler.afterConnectionEstablished(socket);
+        handler.handleTextMessage(
+                socket, new TextMessage(ProtocolJson.encodeString(new Frame.Heartbeat(7))));
+        handler.handleTextMessage(
+                socket, new TextMessage(ProtocolJson.encodeString(new Frame.Request("/signup"))));
+        var sent = ArgumentCaptor.forClass(TextMessage.class);
+        verify(socket, times(3)).sendMessage(sent.capture());
+        var values = sent.getAllValues();
+        var welcome = ProtocolJson.readTree(values.get(0).getPayload());
+        assertEquals("welcome", welcome.path("type").asText());
+        assertEquals(Frame.PROTOCOL_VERSION, welcome.path("version").asInt());
+        assertEquals(
+                "heartbeat_ack",
+                ProtocolJson.readTree(values.get(1).getPayload()).path("type").asText());
+        assertEquals(7, ProtocolJson.readTree(values.get(1).getPayload()).path("seq").asInt());
+        assertEquals(
+                "error", ProtocolJson.readTree(values.get(2).getPayload()).path("type").asText());
+        verifyNoInteractions(gateway);
+    }
+
+    @Test
+    void sharedProtocolClientWorksThroughAuthenticatedWebSocketHandler() throws Exception {
+        var tokens = new LoginSessionManager();
+        var gateway = mock(VetoGateway.class);
+        var handler = new VetoWebSocketHandler(gateway, mock(SessionRepository.class), tokens);
+        var socket =
+                socket(
+                        "shared-client",
+                        TestUsers.ALICE,
+                        tokens.createLoginSession(TestUsers.ALICE, "alice"));
+        var channel =
+                new WebSocketChannel.Client(
+                        text -> handler.handleTextMessage(socket, new TextMessage(text)),
+                        socket::close);
+        doAnswer(
+                        invocation -> {
+                            TextMessage message = invocation.getArgument(0);
+                            if (message == null || !channel.accept(message.getPayload()))
+                                throw new AssertionError("Invalid transport response");
+                            return null;
+                        })
+                .when(socket)
+                .sendMessage(ArgumentMatchers.any(TextMessage.class));
+        handler.afterConnectionEstablished(socket);
+        try (var client = new ProtocolClient(channel)) {
+            assertEquals(Frame.PROTOCOL_VERSION, client.negotiatedVersion());
+            client.send(new Frame.Subscribe("all"));
+            assertTrue(client.receive(1, TimeUnit.SECONDS) instanceof Frame.Subscribed);
+            client.send(new Frame.Request("/signup"));
+            assertTrue(client.receive(1, TimeUnit.SECONDS) instanceof Frame.Error);
+            verifyNoInteractions(gateway);
+        }
     }
 
     private static @NonNull ServerHttpRequest request(@NonNull String uri) {
@@ -107,7 +210,7 @@ class VetoWebSocketSecurityTest {
         var token = tokens.createLoginSession(TestUsers.ALICE, "alice");
         var sessions = mock(SessionRepository.class);
         var gateway = mock(VetoGateway.class);
-        var handler = new VetoWebSocketHandler(new ObjectMapper(), gateway, sessions, tokens);
+        var handler = new VetoWebSocketHandler(gateway, sessions, tokens);
         var oldSocket = socket("old-alice", TestUsers.ALICE, token);
         handler.afterConnectionEstablished(oldSocket);
         clearInvocations(oldSocket);
@@ -119,9 +222,9 @@ class VetoWebSocketSecurityTest {
         var session = new SessionEntity(TestUsers.OWNER, "new-account-session");
         when(sessions.findById(session.getId())).thenReturn(Optional.of(session));
         handler.sendFrame(
-                DeltaFrame.builder()
+                EventFrame.builder()
                         .sessionId(UUID.fromString(session.getId()))
-                        .kind(DeltaFrame.Kind.ASSISTANT_MESSAGE)
+                        .kind(EventFrame.Kind.ASSISTANT_MESSAGE)
                         .text("private-new-account-data")
                         .build());
         verify(oldSocket, never()).sendMessage(ArgumentMatchers.any(TextMessage.class));

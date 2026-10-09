@@ -7,7 +7,7 @@ import top.focess.command.CommandSender;
 import top.focess.veto.VetoVersion;
 import top.focess.veto.command.VetoCommand;
 import top.focess.veto.command.VetoCommandSender;
-import top.focess.veto.contract.IpcFrame;
+import top.focess.veto.contract.Frame;
 import top.focess.veto.contract.Version;
 
 /**
@@ -15,7 +15,7 @@ import top.focess.veto.contract.Version;
  *
  * <p>Prints the backend ({@code veto-core}) version - a build-time constant - alongside the
  * connecting terminal's ({@code veto-terminal}) version, which the terminal reported during the IPC
- * {@link IpcFrame.Hello} handshake. Available to everyone; version information is not sensitive.
+ * {@link Frame.Hello} handshake. Available to everyone; version information is not sensitive.
  */
 public class VersionCommand extends VetoCommand {
 

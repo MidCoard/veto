@@ -11,9 +11,9 @@ import org.slf4j.LoggerFactory;
 
 /**
  * Correlates sequenced requests with their responses — the single source of sequence numbers and
- * the single registry of pending seq handlers for an {@code IpcClient}.
+ * the single registry of pending seq handlers for an {@code ProtocolClient}.
  *
- * <p>Extracted from the prior {@code ZmqClient}, where seq allocation, delivery routing, and
+ * <p>Extracted from the prior {@code ProtocolClient}, where seq allocation, delivery routing, and
  * await/cleanup were scattered across {@code send}, {@code route}, and {@code receive}.
  * Centralizing them makes the correlation logic unit-testable without a socket and eliminates the
  * seq-1 overlap between the handshake and the first request: the handshake now draws its seq from
@@ -26,14 +26,14 @@ import org.slf4j.LoggerFactory;
  *   <li>{@link #next} allocates a monotonic seq.
  *   <li>{@link #register(long)} creates a single-slot queue for the expected response (called
  *       before the request is sent, so a fast response is never missed).
- *   <li>The IO loop calls {@link #deliver(IpcFrame.SeqResponse)} for each incoming sequenced
- *       response, routing it to the matching queue.
+ *   <li>The IO loop calls {@link #deliver(Frame.SeqResponse)} for each incoming sequenced response,
+ *       routing it to the matching queue.
  *   <li>The requester calls {@link #await(long, long, TimeUnit)} to block for the response; the
  *       handler is removed in {@code finally} so it never leaks.
  * </ol>
  *
- * <p>A response with {@code seq == 0} is never correlated (e.g. a streaming {@link IpcFrame.Error}
- * emitted in reply to a {@link IpcFrame.Request}, which has no seq); {@link #deliver} ignores it.
+ * <p>A response with {@code seq == 0} is never correlated (e.g. a streaming {@link Frame.Error}
+ * emitted in reply to a {@link Frame.Request}, which has no seq); {@link #deliver} ignores it.
  *
  * <h2>Thread safety</h2>
  *
@@ -46,7 +46,7 @@ public final class SeqCorrelator {
 
     private final @NonNull AtomicLong nextSeq = new AtomicLong(1);
     private final @NonNull
-            ConcurrentHashMap<@NonNull Long, @NonNull BlockingQueue<IpcFrame.@NonNull SeqResponse>>
+            ConcurrentHashMap<@NonNull Long, @NonNull BlockingQueue<Frame.@NonNull SeqResponse>>
             handlers = new ConcurrentHashMap<>();
 
     /** Allocates the next monotonic sequence number, starting at {@code 1}. */
@@ -70,10 +70,10 @@ public final class SeqCorrelator {
      *
      * @param response the incoming sequenced response
      */
-    public void deliver(IpcFrame.@NonNull SeqResponse response) {
+    public void deliver(Frame.@NonNull SeqResponse response) {
         long seq = response.seq();
         if (seq == 0) return;
-        BlockingQueue<IpcFrame.SeqResponse> queue = handlers.get(seq);
+        BlockingQueue<Frame.SeqResponse> queue = handlers.get(seq);
         if (queue != null) {
             if (!queue.offer(response)) {
                 log.warn("Handler queue full for seq={} — dropping {}", seq, response);
@@ -92,9 +92,9 @@ public final class SeqCorrelator {
      * @return the response, or {@code null} on timeout or if no handler was registered
      * @throws InterruptedException if the calling thread is interrupted while waiting
      */
-    public IpcFrame.SeqResponse await(long seq, long timeout, @NonNull TimeUnit unit)
+    public Frame.SeqResponse await(long seq, long timeout, @NonNull TimeUnit unit)
             throws InterruptedException {
-        BlockingQueue<IpcFrame.SeqResponse> queue = handlers.get(seq);
+        BlockingQueue<Frame.SeqResponse> queue = handlers.get(seq);
         if (queue == null) return null;
         try {
             return queue.poll(timeout, unit);

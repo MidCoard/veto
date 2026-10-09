@@ -2,8 +2,8 @@ package top.focess.veto.terminal;
 
 import com.github.ajalt.mordant.terminal.Terminal;
 import org.jspecify.annotations.NonNull;
-import top.focess.veto.client.core.StyleToken;
-import top.focess.veto.client.core.Theme;
+import top.focess.veto.terminal.client.StyleToken;
+import top.focess.veto.terminal.client.Theme;
 
 /**
  * {@link Theme} mapping {@link StyleToken}s to Mordant ANSI strings via {@link MordantTerminal}.

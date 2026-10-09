@@ -7,7 +7,7 @@ import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
-import top.focess.veto.model.DAGPayload;
+import top.focess.veto.contract.DAGPayload;
 
 /**
  * bus Communication & Routing Bus - top-level service. Orchestrates WebSocket transport, DAG
@@ -88,8 +88,9 @@ public class RoutingBusService {
     }
 
     /** Connect to the cloud backend. */
-    public @NonNull CompletableFuture<Boolean> connect(@NonNull String backendUrl) {
-        return webSocketBus.connect(backendUrl);
+    public @NonNull CompletableFuture<Boolean> connect(
+            @NonNull String backendUrl, @NonNull String token) {
+        return webSocketBus.connect(backendUrl, token);
     }
 
     /** Disconnect from the cloud backend. */

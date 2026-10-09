@@ -13,8 +13,8 @@ import org.zeromq.SocketType;
 import org.zeromq.ZContext;
 import org.zeromq.ZMQ;
 import org.zeromq.ZMsg;
-import top.focess.veto.contract.IpcCodec;
-import top.focess.veto.contract.IpcFrame;
+import top.focess.veto.contract.Frame;
+import top.focess.veto.contract.FrameCodec;
 import top.focess.veto.contract.Version;
 
 /**
@@ -64,13 +64,13 @@ class LiveTestRunner {
         newDealer.connect(ADDR);
         Thread.sleep(500);
         send(
-                new IpcFrame.Hello(
-                        IpcFrame.PROTOCOL_VERSION,
+                new Frame.Hello(
+                        Frame.PROTOCOL_VERSION,
                         1,
                         Version.UNKNOWN,
                         requireValue(System.getProperty("user.dir"), "user.dir is required")));
-        IpcFrame welcome = recv();
-        assert welcome instanceof IpcFrame.Welcome && ((IpcFrame.Welcome) welcome).seq() == 1;
+        Frame welcome = recv();
+        assert welcome instanceof Frame.Welcome && ((Frame.Welcome) welcome).seq() == 1;
     }
 
     private void disconnect() {
@@ -82,11 +82,11 @@ class LiveTestRunner {
         ctx = null;
     }
 
-    private void send(@NonNull IpcFrame f) throws Exception {
-        requireDealer().send(IpcCodec.encode(f));
+    private void send(@NonNull Frame f) throws Exception {
+        requireDealer().send(FrameCodec.encode(f));
     }
 
-    private IpcFrame recv() {
+    private Frame recv() {
         ZMsg msg = ZMsg.recvMsg(requireDealer());
         if (msg == null || msg.isEmpty()) return null;
         byte @NonNull [] data =
@@ -96,7 +96,7 @@ class LiveTestRunner {
                         "message frame data is required");
         String json = new String(data, StandardCharsets.UTF_8);
         msg.destroy();
-        return IpcCodec.decode(json);
+        return FrameCodec.decode(json);
     }
 
     private ZMQ.@NonNull Socket requireDealer() {
@@ -107,18 +107,17 @@ class LiveTestRunner {
         return current;
     }
 
-    private IpcFrame exchange(@NonNull String cmd) throws Exception {
-        send(new IpcFrame.Request(cmd));
+    private Frame exchange(@NonNull String cmd) throws Exception {
+        send(new Frame.Request(cmd));
         int prompts = 0;
         while (true) {
-            IpcFrame f = recv();
+            Frame f = recv();
             if (f == null) continue;
-            if (f instanceof IpcFrame.Done
-                    || f instanceof IpcFrame.Error
-                    || f instanceof IpcFrame.Terminate) return f;
-            if (f instanceof IpcFrame.Prompt) {
+            if (f instanceof Frame.Done || f instanceof Frame.Error || f instanceof Frame.Terminate)
+                return f;
+            if (f instanceof Frame.Prompt) {
                 String reply = prompts == 0 ? "liveuser" : "livepass";
-                send(new IpcFrame.Input(reply));
+                send(new Frame.Input(reply));
                 prompts++;
             }
         }
@@ -138,56 +137,56 @@ class LiveTestRunner {
         connect();
         try {
             // 1. /help
-            IpcFrame r = exchange("/help");
+            Frame r = exchange("/help");
             System.out.println("[HELP]  -> " + r);
-            assert r instanceof IpcFrame.Done : "/help failed: " + r;
+            assert r instanceof Frame.Done : "/help failed: " + r;
 
             // 2. /status before login
             r = exchange("/status");
             System.out.println("[STATUS (no login)] -> " + r);
-            assert r instanceof IpcFrame.Error : "/status should Error before login: " + r;
+            assert r instanceof Frame.Error : "/status should Error before login: " + r;
 
             // 3. /signup
             r = exchange("/signup");
             System.out.println("[SIGNUP] -> " + r);
-            assert r instanceof IpcFrame.Done : "/signup failed: " + r;
+            assert r instanceof Frame.Done : "/signup failed: " + r;
 
             // 4. /login
             r = exchange("/login");
             System.out.println("[LOGIN] -> " + r);
-            assert r instanceof IpcFrame.Done : "/login failed: " + r;
+            assert r instanceof Frame.Done : "/login failed: " + r;
 
             // 5. /logout
             r = exchange("/logout");
             System.out.println("[LOGOUT] -> " + r);
-            assert r instanceof IpcFrame.Done : "/logout failed: " + r;
+            assert r instanceof Frame.Done : "/logout failed: " + r;
 
             // 6. Tab completion
-            send(new IpcFrame.Complete("/log", 1));
-            IpcFrame comp = recv();
+            send(new Frame.Complete("/log", 1));
+            Frame comp = recv();
             System.out.println("[COMPLETE /log] -> " + comp);
-            assert comp instanceof IpcFrame.CompleteResult;
+            assert comp instanceof Frame.CompleteResult;
 
             // 7. Hint
-            send(new IpcFrame.Hint("/login ", 2));
-            IpcFrame hint = recv();
+            send(new Frame.Hint("/login ", 2));
+            Frame hint = recv();
             System.out.println("[HINT /login ] -> " + hint);
-            assert hint instanceof IpcFrame.HintResult;
+            assert hint instanceof Frame.HintResult;
 
             // 8. Heartbeat
-            send(new IpcFrame.Heartbeat());
+            send(new Frame.Heartbeat(0));
             System.out.println("[HEARTBEAT] -> sent");
 
             // 9. Unknown command
             r = exchange("/nonexistent_cmd_12345");
             System.out.println("[UNKNOWN] -> " + r);
-            assert r instanceof IpcFrame.Error;
+            assert r instanceof Frame.Error;
 
             // 10. /exit — last: a command-Terminate is session-terminal, so the server closes
             // the session after sending it; nothing after this reaches the session.
             r = exchange("/exit");
             System.out.println("[EXIT] -> " + r);
-            assert r instanceof IpcFrame.Terminate : "/exit failed: " + r;
+            assert r instanceof Frame.Terminate : "/exit failed: " + r;
 
             System.out.println("\n=== ALL COMMANDS PASSED ===");
         } finally {

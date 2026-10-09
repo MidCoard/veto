@@ -16,33 +16,29 @@ repositories {
 }
 
 val jacksonVersion: String by rootProject.extra
-val jeromqVersion: String by rootProject.extra
 val slf4jVersion: String by rootProject.extra
+val jeromqVersion: String by rootProject.extra
 val logbackVersion: String by rootProject.extra
 
 dependencies {
+    // ZeroMQ is the Java protocol transport; browser bindings have their own package.
+    api("org.zeromq:jeromq:$jeromqVersion")
+
     // Public protocol signatures expose JSpecify type-use annotations to consumers.
     api("org.jspecify:jspecify:1.0.0")
     api("com.fasterxml.jackson.core:jackson-databind:$jacksonVersion")
-    api("org.zeromq:jeromq:$jeromqVersion")
+    implementation("com.fasterxml.jackson.datatype:jackson-datatype-jsr310:$jacksonVersion")
 
     // SLF4J facade only 鈥?the protocol module must not mandate a logging implementation. Each
     // application module (terminal, core) brings its own backend (Logback).
     api("org.slf4j:slf4j-api:$slf4jVersion")
 
-    // Logback + JUL鈫扴LF4J bridge: compileOnly for the merged-in client.core classes (Logging
-    // bootstraps Logback). CompileOnly so no consumer is forced into a backend 鈥?both the terminal
-    // and core declare their own Logback.
-    compileOnly("ch.qos.logback:logback-classic:$logbackVersion")
-    compileOnly("org.slf4j:jul-to-slf4j:$slf4jVersion")
-
     testImplementation("org.junit.jupiter:junit-jupiter:5.10.2")
     // Gradle 9 requires the JUnit Platform Launcher on the test runtime classpath; it is no longer
     // auto-resolved. Pin to the platform version matching junit-jupiter 5.10.2.
     testRuntimeOnly("org.junit.platform:junit-platform-launcher:1.10.2")
-    // Logback + JUL鈫扴LF4J at test runtime so this module's own tests have a backend.
     testRuntimeOnly("ch.qos.logback:logback-classic:$logbackVersion")
-    testRuntimeOnly("org.slf4j:jul-to-slf4j:$slf4jVersion")
+
 }
 
 spotless {
@@ -61,4 +57,12 @@ tasks.withType<JavaCompile> {
 
 tasks.withType<Test> {
     useJUnitPlatform()
+}
+
+// Browser bindings use Java wire metadata; tests reject stale generated output.
+tasks.register<JavaExec>("generateFrontendBindings") {
+    dependsOn(tasks.named("testClasses"))
+    classpath = sourceSets["test"].runtimeClasspath
+    mainClass.set("top.focess.veto.contract.FrontendBindingsTest")
+    args(layout.projectDirectory.dir("frontend").asFile.absolutePath)
 }

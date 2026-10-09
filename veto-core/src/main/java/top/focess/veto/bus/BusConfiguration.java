@@ -32,7 +32,7 @@ public class BusConfiguration {
     /** WebSocket transport settings: port, path, heartbeat, reconnection, and allowed origins. */
     public static class WebSocketConfig {
         private int port = 9090;
-        private @NonNull String path = "/veto/bus";
+        private @NonNull String path = "/ws/veto/bus";
         private int heartbeatIntervalMs = 30000;
         private int reconnectDelayMs = 5000;
         private int maxReconnectAttempts = 10;

@@ -59,7 +59,7 @@ subprojects {
             val stubs = buildList {
                 if (checkerStubs.isDirectory && checkerStubs.listFiles()?.isNotEmpty() == true)
                     add(checkerStubs.absolutePath)
-                if (name == "compileTestJava" && project.name != "veto-terminal" && testStubs.isDirectory)
+                if (name == "compileTestJava" && testStubs.isDirectory)
                     add(testStubs.absolutePath)
             }
             if (stubs.isNotEmpty()) {

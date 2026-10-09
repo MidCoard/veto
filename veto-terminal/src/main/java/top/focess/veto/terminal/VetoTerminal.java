@@ -1,5 +1,6 @@
 package top.focess.veto.terminal;
 
+import com.fasterxml.jackson.databind.node.BooleanNode;
 import com.github.ajalt.mordant.terminal.Terminal;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -11,22 +12,24 @@ import org.jline.terminal.TerminalBuilder;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import top.focess.veto.client.core.ClientSession;
-import top.focess.veto.client.core.ClientView;
-import top.focess.veto.client.core.Logging;
-import top.focess.veto.client.core.StyleToken;
-import top.focess.veto.client.core.StyledText;
-import top.focess.veto.contract.ClientOptions;
-import top.focess.veto.contract.IpcClient;
-import top.focess.veto.contract.IpcFrame;
+import top.focess.veto.contract.EventFrame;
+import top.focess.veto.contract.Frame;
+import top.focess.veto.contract.ProtocolClient;
 import top.focess.veto.contract.Version;
+import top.focess.veto.terminal.client.ClientOptions;
+import top.focess.veto.terminal.client.ClientSession;
+import top.focess.veto.terminal.client.ClientView;
+import top.focess.veto.terminal.client.Logging;
+import top.focess.veto.terminal.client.StyleToken;
+import top.focess.veto.terminal.client.StyledText;
+import top.focess.veto.transport.zmq.ZmqChannel;
 
 /**
  * Main interactive REPL terminal controller for Veto Core.
  *
  * <p>Reads user input via JLine {@link LineReader} and coordinates with the backend via {@link
- * IpcClient}. The interaction protocol (session state, request pipeline, frame dispatch) lives in a
- * shared {@link ClientSession}; this class owns only the REPL presentation — the prompt, the
+ * ProtocolClient}. The interaction protocol (session state, request pipeline, frame dispatch) lives
+ * in a shared {@link ClientSession}; this class owns only the REPL presentation — the prompt, the
  * inline-above-prompt rendering, and the one retained interrupt for the mid-line prompt swap.
  *
  * <h3>Threading</h3>
@@ -34,24 +37,24 @@ import top.focess.veto.contract.Version;
  * <ul>
  *   <li><b>Main thread</b> — blocks in {@link LineReader#readLine}; on each return it asks the
  *       session for the current state to render the prompt, then submits the line.
- *   <li><b>Consumer thread ({@code veto-incoming})</b> — drains {@link IpcClient#receive} into
+ *   <li><b>Consumer thread ({@code veto-incoming})</b> — drains {@link ProtocolClient#receive} into
  *       {@link ClientSession#onFrame}, which drives rendering back through {@link TerminalView} and
  *       returns the next frame to dispatch (sent here).
  * </ul>
  *
  * <h3>The one retained interrupt</h3>
  *
- * <p>When a {@link IpcFrame.Prompt} arrives, the consumer thread (via {@link
- * TerminalView#onPrompt}) sets {@link #promptSwapPending} and <b>then</b> interrupts the main
- * thread to break its blocking {@code readLine}. The main thread's {@code UserInterruptException}
- * catch distinguishes the two wake causes by reading the flag <b>after</b> {@code readLine} throws:
- * flag set ⇒ a Prompt-swap re-render; flag unset ⇒ a genuine Ctrl+C (the {@code 0x03} byte, never a
- * {@code Thread.interrupt}) ⇒ cancel. Reading the flag after the throw — not clearing a "stale"
- * interrupt at the loop top — is what keeps the distinction sound: the consumer's flag-set and
- * interrupt are not atomic, so a loop-top clear could drain a not-yet-delivered interrupt and then
- * misread the swap's late interrupt as Ctrl+C (exiting the terminal on a stray Prompt), or fall
- * through to {@code readLine} with a stale prompt and a null mask (a password echoed in plaintext).
- * See the catch in {@link #repl} for the full rationale.
+ * <p>When a {@link Frame.Prompt} arrives, the consumer thread (via {@link TerminalView#onPrompt})
+ * sets {@link #promptSwapPending} and <b>then</b> interrupts the main thread to break its blocking
+ * {@code readLine}. The main thread's {@code UserInterruptException} catch distinguishes the two
+ * wake causes by reading the flag <b>after</b> {@code readLine} throws: flag set ⇒ a Prompt-swap
+ * re-render; flag unset ⇒ a genuine Ctrl+C (the {@code 0x03} byte, never a {@code
+ * Thread.interrupt}) ⇒ cancel. Reading the flag after the throw — not clearing a "stale" interrupt
+ * at the loop top — is what keeps the distinction sound: the consumer's flag-set and interrupt are
+ * not atomic, so a loop-top clear could drain a not-yet-delivered interrupt and then misread the
+ * swap's late interrupt as Ctrl+C (exiting the terminal on a stray Prompt), or fall through to
+ * {@code readLine} with a stale prompt and a null mask (a password echoed in plaintext). See the
+ * catch in {@link #repl} for the full rationale.
  */
 @SuppressWarnings(
         "NotNullFieldNotInitialized") // start(LineReader) initializes the REPL lifecycle fields.
@@ -75,7 +78,7 @@ public class VetoTerminal {
     private final @NonNull Terminal t;
 
     /** IPC connection to the backend (transport-agnostic; ZMQ locally). */
-    private final @NonNull IpcClient client;
+    private final @NonNull ProtocolClient client;
 
     /** JLine reader driving the interactive REPL; set in {@link #start(LineReader)}. */
     private @NonNull LineReader reader;
@@ -126,12 +129,12 @@ public class VetoTerminal {
      * Constructs a new VetoTerminal instance.
      *
      * @param t the Mordant Terminal instance used for styled outputs
-     * @param client the IpcClient used for IPC communications with the backend
+     * @param client the ProtocolClient used for IPC communications with the backend
      */
     // start(LineReader) is the lifecycle initializer: all remaining fields are assigned before any
     // private REPL or ClientView path is reachable. Checker cannot model this two-phase API.
     @SuppressWarnings({"initialization.fields.uninitialized", "NotNullFieldNotInitialized"})
-    public VetoTerminal(@NonNull Terminal t, @NonNull IpcClient client) {
+    public VetoTerminal(@NonNull Terminal t, @NonNull ProtocolClient client) {
         this.t = t;
         this.client = client;
     }
@@ -154,7 +157,7 @@ public class VetoTerminal {
         printBanner();
         running = true;
 
-        // Heartbeats are sent by the IpcClient itself (its ipc-hb thread).
+        // Heartbeats are sent by the ProtocolClient itself (its ipc-hb thread).
 
         // --- hint widgets ---
         // Binds custom parameter autocomplete / tail-tip widgets to JLine reader.
@@ -188,11 +191,11 @@ public class VetoTerminal {
                 () -> {
                     while (running) {
                         try {
-                            IpcFrame.ServerFrame frame = client.receive();
+                            Frame.ServerFrame frame = client.receive();
                             if (frame == null) {
                                 continue;
                             }
-                            IpcFrame.ClientFrame reply = session.onFrame(frame);
+                            Frame.ClientFrame reply = session.onFrame(frame);
                             if (reply != null) {
                                 client.send(reply);
                             }
@@ -218,8 +221,8 @@ public class VetoTerminal {
         while (running) {
             ClientSession.PromptView view = session.promptView();
             ClientSession.State state = view.state();
-            IpcFrame.Prompt activePrompt = view.activePrompt();
-            IpcFrame.VetoPayload activeVeto =
+            Frame.Prompt activePrompt = view.activePrompt();
+            Frame.VetoPayload activeVeto =
                     (state == ClientSession.State.PROMPTED && activePrompt != null)
                             ? activePrompt.veto()
                             : null;
@@ -291,7 +294,7 @@ public class VetoTerminal {
                 // Flag false ⇒ not a swap ⇒ genuine Ctrl+C → cancel the in-flight request/prompt,
                 // or exit if idle (cancel returns null as the shutdown signal per IDLE ×
                 // cancel).
-                IpcFrame.Cancel cancel = session.cancel();
+                Frame.Cancel cancel = session.cancel();
                 if (cancel == null) {
                     break; // idle → exit the REPL
                 }
@@ -335,7 +338,7 @@ public class VetoTerminal {
             // queued command echoes when it actually runs, not when it is merely typed — and the
             // call site need not distinguish Input from Request: both just get sent, and only the
             // null case (enqueued / discarded) sends nothing.
-            IpcFrame.ClientFrame reply = session.submit(line);
+            Frame.ClientFrame reply = session.submit(line);
             if (reply != null) {
                 client.send(reply);
             }
@@ -368,7 +371,7 @@ public class VetoTerminal {
      *
      * @param veto the pending veto payload
      */
-    private void renderVetoPicker(IpcFrame.@NonNull VetoPayload veto) {
+    private void renderVetoPicker(Frame.@NonNull VetoPayload veto) {
         renderer.println("");
         renderer.println(
                 theme.style(StyleToken.BORDER, "  ╭─ HITL ")
@@ -394,7 +397,7 @@ public class VetoTerminal {
      * @param reply the user's reply (index or name)
      * @return the resolved option name, or {@code null} if invalid
      */
-    private String resolveVetoChoice(IpcFrame.@NonNull VetoPayload veto, @NonNull String reply) {
+    private String resolveVetoChoice(Frame.@NonNull VetoPayload veto, @NonNull String reply) {
         List<String> options = veto.options();
         if (options.isEmpty()) {
             return null;
@@ -456,9 +459,9 @@ public class VetoTerminal {
      * is about to operate on, falling back to a generic {@code tool(k=v, k2=v2)} for unknown tools.
      * Empty args reduce to just the tool name.
      */
-    private static @NonNull String summarizeToolCall(IpcFrame.@NonNull ToolCall call) {
-        String tool = call.toolName();
-        var args = call.args();
+    private static @NonNull String summarizeToolCall(@NonNull EventFrame call) {
+        String tool = call.text();
+        var args = call.attrs().get("args");
         if (args == null || args.isEmpty()) {
             return tool;
         }
@@ -474,14 +477,19 @@ public class VetoTerminal {
             "input"
         };
         for (String key : preferred) {
-            Object v = args.get(key);
+            var v = args.get(key);
             if (v != null) {
-                return tool + "(" + key + "=" + abbreviate(v.toString(), 80) + ")";
+                return tool
+                        + "("
+                        + key
+                        + "="
+                        + abbreviate(v.isTextual() ? v.asText() : v.toString(), 80)
+                        + ")";
             }
         }
         StringBuilder sb = new StringBuilder(tool).append("(");
         boolean first = true;
-        for (var e : args.entrySet()) {
+        for (var e : args.properties()) {
             if (!first) {
                 sb.append(", ");
             }
@@ -548,7 +556,7 @@ public class VetoTerminal {
         }
 
         @Override
-        public void onToolCall(IpcFrame.@NonNull ToolCall call) {
+        public void onToolCall(@NonNull EventFrame call) {
             // Claude-Code-style indicator: a single muted line announcing the tool + its key arg
             // (the "what is the agent about to do"). Compact so a long sequence of tool calls does
             // not bury the reasoning. The matching result lands in onToolResult right after.
@@ -557,12 +565,15 @@ public class VetoTerminal {
         }
 
         @Override
-        public void onToolResult(IpcFrame.@NonNull ToolResult result) {
+        public void onToolResult(@NonNull EventFrame result) {
             // Framed observation the model saw. Default: truncate to the first 20 lines + show
             // success/failure marker so a long tool output does not flood the REPL. The user
             // can set VETO_DEBUG=1 to render the full body for debugging.
-            String body = result.body();
-            String marker = result.success() ? "✓" : "✗";
+            String body = result.text();
+            String marker =
+                    result.attrs().getOrDefault("success", BooleanNode.FALSE).asBoolean()
+                            ? "✓"
+                            : "✗";
             String header = "  ◇ result " + marker;
             if (!verboseToolTrace) {
                 body = truncateForPreview(body, 20);
@@ -582,7 +593,7 @@ public class VetoTerminal {
         }
 
         @Override
-        public void onPrompt(IpcFrame.@NonNull Prompt prompt) {
+        public void onPrompt(Frame.@NonNull Prompt prompt) {
             // The session already set state=PROMPTED. Signal the main thread to re-render with the
             // prompted prompt: set the flag FIRST, then interrupt readLine. The ordering matters —
             // "interrupt fired" must imply "flag was set" so the catch can distinguish this
@@ -647,7 +658,7 @@ public class VetoTerminal {
      * JLine {@link Completer} that fetches tab-completion candidates from the backend.
      *
      * <p>Completion is triggered only when the buffer starts with {@code /} (slash-commands).
-     * Candidates are retrieved synchronously via {@link IpcClient#complete} with a 3-second
+     * Candidates are retrieved synchronously via {@link ProtocolClient#complete} with a 3-second
      * timeout; if the backend does not respond in time, no candidates are offered.
      */
     private class VetoCompleter implements Completer {
@@ -660,9 +671,9 @@ public class VetoTerminal {
             String fullLine = line.line();
             // Completion is only requested for slash commands.
             if (!fullLine.startsWith("/")) return;
-            IpcFrame.CompleteResult compResult = client.complete(fullLine, 2, TimeUnit.SECONDS);
+            Frame.CompleteResult compResult = client.complete(fullLine, 2, TimeUnit.SECONDS);
             if (compResult != null) {
-                for (IpcFrame.Completion comp : compResult.candidates()) {
+                for (Frame.Completion comp : compResult.candidates()) {
                     String name = comp.value();
                     String rawDescription = comp.description();
                     String desc =
@@ -723,8 +734,11 @@ public class VetoTerminal {
                             .build();
             Terminal mt = MordantTerminal.create();
             System.out.println("Connecting to backend at " + options.address() + " ...");
-            IpcClient transport =
-                    new IpcClient(options.address(), VetoVersion.VERSION, workspaceCwd);
+            ProtocolClient transport =
+                    new ProtocolClient(
+                            ZmqChannel.Client.connect(options.address()),
+                            VetoVersion.VERSION,
+                            workspaceCwd);
             Version serverVersion = transport.serverProductVersion();
             System.out.println(
                     "Connected to veto-core "
