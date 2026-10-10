@@ -28,7 +28,15 @@ class ProtocolClientWorkerTest {
 
     private void exerciseWorker(boolean busy) throws Exception {
         var transport = new RecordingTransport();
-        var client = new ProtocolClient(() -> { transport.recordOwner(); return transport; }, Version.UNKNOWN, "", 20);
+        var client =
+                new ProtocolClient(
+                        () -> {
+                            transport.recordOwner();
+                            return transport;
+                        },
+                        Version.UNKNOWN,
+                        "",
+                        20);
         transport.client.set(client);
         transport.keepSending.set(busy);
         try (client) {

@@ -46,8 +46,7 @@ final class LoginTokenAuthenticationFilter extends OncePerRequestFilter {
         try {
             String token = request.getHeader("X-Veto-Session-Token");
             String path = request.getServletPath();
-            if ((token == null || token.isBlank())
-                    && ("/ws/veto/bus".equals(path) || path.startsWith("/ws/veto/bus/"))) {
+            if ((token == null || token.isBlank()) && "/ws/veto/bus".equals(path)) {
                 // Browser WebSocket APIs cannot set the custom token header.
                 token = request.getParameter("token");
             }

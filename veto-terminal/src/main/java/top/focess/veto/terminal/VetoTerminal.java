@@ -37,9 +37,9 @@ import top.focess.veto.transport.zmq.ZmqChannel;
  * <ul>
  *   <li><b>Main thread</b> — blocks in {@link LineReader#readLine}; on each return it asks the
  *       session for the current state to render the prompt, then submits the line.
- *   <li><b>Virtual consumer ({@code veto-incoming})</b> — drains {@link ProtocolClient#receive} into
- *       {@link ClientSession#onFrame}, which drives rendering back through {@link TerminalView} and
- *       returns the next frame to dispatch (sent here).
+ *   <li><b>Virtual consumer ({@code veto-incoming})</b> — drains {@link ProtocolClient#receive}
+ *       into {@link ClientSession#onFrame}, which drives rendering back through {@link
+ *       TerminalView} and returns the next frame to dispatch (sent here).
  * </ul>
  *
  * <h3>The one retained interrupt</h3>
@@ -190,32 +190,40 @@ public class VetoTerminal {
     }
 
     private @NonNull Thread createConsumerThread() {
-        return Thread.ofVirtual().name("veto-incoming").unstarted(
-                () -> {
-                    try {
-                    while (running) {
-                            Frame.ServerFrame frame = client.receive();
-                            if (frame == null) {
-                                if (client.isClosed()) {
-                                    if (running) session.onFrame(new Frame.Terminate("Backend connection closed."));
-                                    break;
+        return Thread.ofVirtual()
+                .name("veto-incoming")
+                .unstarted(
+                        () -> {
+                            try {
+                                while (running) {
+                                    Frame.ServerFrame frame = client.receive();
+                                    if (frame == null) {
+                                        if (client.isClosed()) {
+                                            if (running)
+                                                session.onFrame(
+                                                        new Frame.Terminate(
+                                                                "Backend connection closed."));
+                                            break;
+                                        }
+                                        continue;
+                                    }
+                                    Frame.ClientFrame reply = session.onFrame(frame);
+                                    if (reply != null) {
+                                        client.send(reply);
+                                    }
                                 }
-                                continue;
+                            } catch (InterruptedException interrupted) {
+                                Thread.currentThread().interrupt();
+                            } catch (RuntimeException failure) {
+                                if (running) {
+                                    log.warn(
+                                            "Terminal receive failed ({})",
+                                            failure.getClass().getSimpleName());
+                                    session.onFrame(
+                                            new Frame.Terminate("Backend connection failed."));
+                                }
                             }
-                            Frame.ClientFrame reply = session.onFrame(frame);
-                            if (reply != null) {
-                                client.send(reply);
-                            }
-                        }
-                    } catch (InterruptedException interrupted) {
-                        Thread.currentThread().interrupt();
-                    } catch (RuntimeException failure) {
-                        if (running) {
-                            log.warn("Terminal receive failed ({})", failure.getClass().getSimpleName());
-                            session.onFrame(new Frame.Terminate("Backend connection failed."));
-                        }
-                    }
-                });
+                        });
     }
 
     // ── repl ──────────────────────────────────────────────────────────────

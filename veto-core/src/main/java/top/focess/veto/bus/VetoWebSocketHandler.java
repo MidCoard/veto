@@ -78,14 +78,18 @@ public class VetoWebSocketHandler extends TextWebSocketHandler {
                 if (hello.version() != Frame.PROTOCOL_VERSION)
                     send(connection, new Frame.Error("Unsupported protocol version", hello.seq()));
                 else
-                    send(connection, new Frame.Welcome(
-                            Frame.PROTOCOL_VERSION, hello.seq(), VetoVersion.VERSION));
+                    send(
+                            connection,
+                            new Frame.Welcome(
+                                    Frame.PROTOCOL_VERSION, hello.seq(), VetoVersion.VERSION));
             }
             case Frame.Bye ignored -> close(connection, CloseStatus.NORMAL);
             case Frame.Heartbeat heartbeat ->
                     send(connection, new Frame.HeartbeatAck(heartbeat.seq(), Instant.now()));
             case Frame.DagPayload dag -> {
-                send(connection, new Frame.Received(dag.data().taskType(), sequence, Instant.now()));
+                send(
+                        connection,
+                        new Frame.Received(dag.data().taskType(), sequence, Instant.now()));
                 broadcast(connection, new Frame.DagPayload(dag.data(), socket.getId()));
             }
             case Frame.Process process -> handleVetoProcess(connection, process, sequence);
@@ -99,9 +103,12 @@ public class VetoWebSocketHandler extends TextWebSocketHandler {
                 connection.topic = null;
                 send(connection, new Frame.Unsubscribed(Instant.now()));
             }
-            default -> send(connection, new Frame.Error(
-                    "Unsupported frame on this connection",
-                    frame instanceof Frame.SeqRequest request ? request.seq() : 0));
+            default ->
+                    send(
+                            connection,
+                            new Frame.Error(
+                                    "Unsupported frame on this connection",
+                                    frame instanceof Frame.SeqRequest request ? request.seq() : 0));
         }
     }
 
@@ -119,24 +126,35 @@ public class VetoWebSocketHandler extends TextWebSocketHandler {
         String componentSource = process.componentSource();
         if (componentSource == null) componentSource = "WS-Client";
         var result = vetoGateway.processOutbound(payload, dagPayloadId, requestId, componentSource);
-        send(connection, new Frame.VetoResult(
-                sequence, result.decision().name(), result.processedPayload(), result.reason(),
-                result.redactionCount(), result.isAllowed(), Instant.now()));
+        send(
+                connection,
+                new Frame.VetoResult(
+                        sequence,
+                        result.decision().name(),
+                        result.processedPayload(),
+                        result.reason(),
+                        result.redactionCount(),
+                        result.isAllowed(),
+                        Instant.now()));
     }
 
     @Override
     public void afterConnectionClosed(
             @NonNull WebSocketSession socket, @NonNull CloseStatus status) {
         connections.remove(socket.getId());
-        log.debug("WS Bus: Client '{}' disconnected (code={}, reason='{}')",
-                socket.getId(), status.getCode(), safe(status.getReason()));
+        log.debug(
+                "WS Bus: Client '{}' disconnected (code={}, reason='{}')",
+                socket.getId(),
+                status.getCode(),
+                safe(status.getReason()));
     }
 
     @Override
-    public void handleTransportError(
-            @NonNull WebSocketSession socket, @NonNull Throwable failure) {
-        log.warn("WS Bus: Transport error for '{}' ({})",
-                socket.getId(), failure.getClass().getSimpleName());
+    public void handleTransportError(@NonNull WebSocketSession socket, @NonNull Throwable failure) {
+        log.warn(
+                "WS Bus: Transport error for '{}' ({})",
+                socket.getId(),
+                failure.getClass().getSimpleName());
         var connection = connections.get(socket.getId());
         if (connection != null) close(connection, CloseStatus.SERVER_ERROR);
     }
@@ -144,7 +162,8 @@ public class VetoWebSocketHandler extends TextWebSocketHandler {
     private void broadcast(@NonNull Connection sender, Frame.@NonNull DagPayload frame) {
         for (var recipient : connections.values()) {
             String topic = recipient.topic;
-            if (recipient != sender && sender.user.equals(recipient.user)
+            if (recipient != sender
+                    && sender.user.equals(recipient.user)
                     && (topic == null || "all".equals(topic) || "dag.payload".equals(topic))) {
                 send(recipient, frame);
             }
@@ -155,8 +174,11 @@ public class VetoWebSocketHandler extends TextWebSocketHandler {
     public void sendFrame(@NonNull EventFrame frame) {
         UUID sessionId = frame.sessionId();
         if (sessionId == null) return;
-        UUID user = sessionRepository.findById(sessionId.toString())
-                .map(session -> session.getUserId()).orElse(null);
+        UUID user =
+                sessionRepository
+                        .findById(sessionId.toString())
+                        .map(session -> session.getUserId())
+                        .orElse(null);
         if (user == null) return;
         for (var connection : connections.values()) {
             if (user.equals(connection.user)) send(connection, frame);
@@ -174,8 +196,10 @@ public class VetoWebSocketHandler extends TextWebSocketHandler {
         try {
             socket.sendMessage(new TextMessage(FrameCodec.encodeString(frame)));
         } catch (IOException | RuntimeException failure) {
-            log.warn("WS Bus: Failed to send to '{}' ({})",
-                    socket.getId(), failure.getClass().getSimpleName());
+            log.warn(
+                    "WS Bus: Failed to send to '{}' ({})",
+                    socket.getId(),
+                    failure.getClass().getSimpleName());
             close(connection, CloseStatus.SERVER_ERROR);
         }
     }
@@ -191,8 +215,10 @@ public class VetoWebSocketHandler extends TextWebSocketHandler {
         try {
             connection.socket.close(status);
         } catch (IOException | RuntimeException failure) {
-            log.debug("WS Bus: Could not close '{}' ({})",
-                    connection.socket.getId(), failure.getClass().getSimpleName());
+            log.debug(
+                    "WS Bus: Could not close '{}' ({})",
+                    connection.socket.getId(),
+                    failure.getClass().getSimpleName());
         }
     }
 
@@ -205,13 +231,17 @@ public class VetoWebSocketHandler extends TextWebSocketHandler {
     }
 
     private UUID authenticatedUser(@NonNull WebSocketSession socket) {
-        Object value = socket.getAttributes()
-                .get(VetoWebSocketAuthInterceptor.AUTHENTICATED_USER_ATTRIBUTE);
-        Object token = socket.getAttributes().get(VetoWebSocketAuthInterceptor.LOGIN_TOKEN_ATTRIBUTE);
+        Object value =
+                socket.getAttributes()
+                        .get(VetoWebSocketAuthInterceptor.AUTHENTICATED_USER_ATTRIBUTE);
+        Object token =
+                socket.getAttributes().get(VetoWebSocketAuthInterceptor.LOGIN_TOKEN_ATTRIBUTE);
         if (!(value instanceof UUID user) || !(token instanceof String text)) return null;
-        return loginSessions.validateToken(text)
+        return loginSessions
+                .validateToken(text)
                 .filter(authenticated -> user.equals(authenticated.userId()))
-                .map(LoginSession::userId).orElse(null);
+                .map(LoginSession::userId)
+                .orElse(null);
     }
 
     private static final class Connection {

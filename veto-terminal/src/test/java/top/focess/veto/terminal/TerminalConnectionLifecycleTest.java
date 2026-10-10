@@ -27,20 +27,25 @@ class TerminalConnectionLifecycleTest {
             client.close();
             var terminal = new VetoTerminal(MordantTerminal.create(), client);
             var terminations = new AtomicInteger();
-            var view = new ClientView() {
-                @Override
-                public void onDelta(@NonNull String content) {}
-                @Override
-                public void onProgress(@NonNull StyledText content) {}
-                @Override
-                public void onPrompt(Frame.@NonNull Prompt prompt) {}
-                @Override
-                public void onError(@NonNull StyledText content) {}
-                @Override
-                public void onTerminate(@NonNull StyledText content) {
-                    terminations.incrementAndGet();
-                }
-            };
+            var view =
+                    new ClientView() {
+                        @Override
+                        public void onDelta(@NonNull String content) {}
+
+                        @Override
+                        public void onProgress(@NonNull StyledText content) {}
+
+                        @Override
+                        public void onPrompt(Frame.@NonNull Prompt prompt) {}
+
+                        @Override
+                        public void onError(@NonNull StyledText content) {}
+
+                        @Override
+                        public void onTerminate(@NonNull StyledText content) {
+                            terminations.incrementAndGet();
+                        }
+                    };
             var session = VetoTerminal.class.getDeclaredField("session");
             session.setAccessible(true);
             session.set(terminal, new ClientSession(view));
@@ -62,12 +67,18 @@ class TerminalConnectionLifecycleTest {
     }
 
     private static final class Peer implements ClientTransport {
-        private final @NonNull LinkedBlockingQueue<Frame.@NonNull ServerFrame> incoming = new LinkedBlockingQueue<>();
+        private final @NonNull LinkedBlockingQueue<Frame.@NonNull ServerFrame> incoming =
+                new LinkedBlockingQueue<>();
+
         @Override
         public void send(Frame.@NonNull ClientFrame frame) {
-            if (frame instanceof Frame.Hello hello && !incoming.offer(new Frame.Welcome(Frame.PROTOCOL_VERSION, hello.seq(), Version.UNKNOWN)))
+            if (frame instanceof Frame.Hello hello
+                    && !incoming.offer(
+                            new Frame.Welcome(
+                                    Frame.PROTOCOL_VERSION, hello.seq(), Version.UNKNOWN)))
                 throw new AssertionError("Cannot queue handshake");
         }
+
         @Override
         public Frame.ServerFrame recv(long timeoutMillis) {
             try {
@@ -77,6 +88,7 @@ class TerminalConnectionLifecycleTest {
                 throw new IllegalStateException(interrupted);
             }
         }
+
         @Override
         public void close() {}
     }

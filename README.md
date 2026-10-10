@@ -448,6 +448,9 @@ is generated output and must not be committed.
   over `ZmqChannel.Client`. Each connection uses one virtual
   IO worker from transport creation through handshake and cleanup, with bounded queues and private request futures.
   Closing wakes readers and pending exchanges immediately and discards unsent application frames.
+  On the backend, `IpcServer` owns the router on one virtual IO worker. Each terminal mailbox owns
+  its request lifecycle; command workers only post results. Cancellation releases that request only
+  after its body exits, so a later command cannot overlap stale output or account changes.
   Client transports receive server frames directly; server transports alone carry peer identities.
   The browser entry point is `veto-ui/src/state/SessionContext.tsx`, which connects `VetoBus`
   to `/ws/veto/bus` on the backend HTTP port. `WebSocketConfig` registers the authenticated native WebSocket

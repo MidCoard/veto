@@ -101,12 +101,12 @@ public sealed interface Frame permits Frame.ClientFrame, Frame.ServerFrame {
     }
 
     /**
-     * Protocol handshake sent by the terminal on connect. The backend responds with a {@link
-     * Welcome} echoing the same {@code seq}.
+     * Optional protocol negotiation, required by the terminal on connect. The backend responds with
+     * a {@link Welcome} echoing the same {@code seq}.
      *
-     * <p>Authentication is <b>not</b> a frame concern: locally the loopback socket is trusted (the
-     * OS-local-user is the boundary), and remotely the connection is tunneled over WSS/gRPC whose
-     * TLS/JWT handshake authenticates — the application frame stays pure.
+     * <p>Authentication belongs to the application. Browser WebSockets require a valid login token
+     * at the HTTP upgrade and on each frame; terminal account commands authenticate the local
+     * connection. A successful Hello never grants account access.
      *
      * @param version the exact protocol version the client uses
      * @param seq monotonic sequence number for correlating with the {@link Welcome} response
@@ -115,8 +115,8 @@ public sealed interface Frame permits Frame.ClientFrame, Frame.ServerFrame {
      *     its own in {@link Welcome}.
      * @param cwd the connecting terminal's current working directory, mapped to the session's
      *     workspace at {@code /session create} time; never {@code null} - the terminal always
-     *     reports its JVM working dir. A remote UI does not send Hello and supplies workspace roots
-     *     explicitly via REST, so this field is terminal-only.
+     *     reports its JVM working dir. The browser supplies workspace roots through REST and does
+     *     not use this field.
      */
     record Hello(
             @JsonProperty(value = "version", required = true) @JsonSetter(nulls = Nulls.FAIL)

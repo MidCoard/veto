@@ -198,6 +198,101 @@ class IpcPeerIsolationTest {
         }
     }
 
+    @Test
+    @Timeout(15)
+    void shutdownNotifiesPeersAndReleasesTheEndpointOnItsVirtualIoOwner() throws Exception {
+        int port;
+        try (var reservation = new ServerSocket(0)) {
+            port = reservation.getLocalPort();
+        }
+        String address = "tcp://127.0.0.1:" + port;
+        var registry = mock(CommandRegistry.class);
+        var server = new IpcServer(registry, mock(AgentService.class), address);
+        server.start();
+        try (var context = new ZContext()) {
+            var terminal = connect(context, address, "shutdown-peer");
+            var workerField = IpcServer.class.getDeclaredField("ioThread");
+            workerField.setAccessible(true);
+            if (!(workerField.get(server) instanceof Thread worker))
+                throw new AssertionError("Missing IO owner");
+            assertTrue(worker.isVirtual());
+            server.stop();
+            assertInstanceOf(Frame.Terminate.class, receive(terminal));
+            assertFalse(worker.isAlive(), "shutdown must leave no IO worker or bound socket");
+            var replacement = new IpcServer(registry, mock(AgentService.class), address);
+            replacement.start();
+            replacement.stop();
+        } finally {
+            server.stop();
+        }
+    }
+
+    @Test
+    @Timeout(15)
+    void cancellationWaitsForActualExitWhileControlFramesRemainResponsive() throws Exception {
+        int port;
+        try (var reservation = new ServerSocket(0)) {
+            port = reservation.getLocalPort();
+        }
+        String address = "tcp://127.0.0.1:" + port;
+        var entered = new CountDownLatch(1);
+        var interrupted = new CountDownLatch(1);
+        var release = new CountDownLatch(1);
+        var nextEntered = new CountDownLatch(1);
+        var registry = mock(CommandRegistry.class);
+        when(registry.dispatch(any(), anyString()))
+                .thenAnswer(
+                        invocation -> {
+                            String raw = invocation.getArgument(1);
+                            if ("hold".equals(raw)) {
+                                entered.countDown();
+                                boolean done = false;
+                                while (!done) {
+                                    try {
+                                        done = release.await(5, TimeUnit.SECONDS);
+                                        if (!done)
+                                            throw new AssertionError(
+                                                    "test did not release command");
+                                    } catch (InterruptedException ignored) {
+                                        interrupted.countDown();
+                                    }
+                                }
+                            } else nextEntered.countDown();
+                            return new Frame.Done(Map.of(), raw);
+                        });
+        when(registry.complete(any(), anyString())).thenReturn(List.of());
+        var server = new IpcServer(registry, mock(AgentService.class), address);
+        server.start();
+        try (var context = new ZContext()) {
+            var terminal = connect(context, address, "cancellation-peer");
+            assertTrue(terminal.send(FrameCodec.encode(new Frame.Request("hold"))));
+            assertTrue(entered.await(2, TimeUnit.SECONDS));
+            assertTrue(terminal.send(FrameCodec.encode(new Frame.Cancel())));
+            assertTrue(interrupted.await(2, TimeUnit.SECONDS));
+            assertTrue(terminal.send(FrameCodec.encode(new Frame.Request("next"))));
+            assertTrue(terminal.send(FrameCodec.encode(new Frame.Complete("barrier", 8))));
+            assertInstanceOf(Frame.CompleteResult.class, receive(terminal));
+            assertEquals(
+                    1,
+                    nextEntered.getCount(),
+                    "replacement body must wait for cancelled body exit");
+            assertTrue(terminal.send(FrameCodec.encode(new Frame.Cancel())));
+            assertTrue(terminal.send(FrameCodec.encode(new Frame.Heartbeat(9))));
+            assertInstanceOf(Frame.HeartbeatAck.class, receive(terminal));
+            release.countDown();
+            var cancelled = assertInstanceOf(Frame.Done.class, receive(terminal));
+            assertEquals(true, cancelled.meta().get("cancelled"));
+            var completed = assertInstanceOf(Frame.Done.class, receive(terminal));
+            assertEquals("next", completed.content());
+            assertTrue(nextEntered.await(1, TimeUnit.SECONDS));
+            assertTrue(terminal.send(FrameCodec.encode(new Frame.Heartbeat(10))));
+            assertInstanceOf(Frame.HeartbeatAck.class, receive(terminal));
+        } finally {
+            release.countDown();
+            server.stop();
+        }
+    }
+
     private static @NonNull Frame receive(ZMQ.@NonNull Socket dealer) {
         byte[] payload = dealer.recv();
         if (payload == null) throw new AssertionError("server did not respond");

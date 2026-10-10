@@ -35,7 +35,8 @@ class ProtocolClientFailureCleanupTest {
                     }
                 };
         var failure =
-                assertThrows(IllegalStateException.class, () -> new ProtocolClient(() -> transport));
+                assertThrows(
+                        IllegalStateException.class, () -> new ProtocolClient(() -> transport));
         assertSame(handshakeFailure, failure);
         assertArrayEquals(new Throwable[] {cleanupFailure}, failure.getSuppressed());
         assertEquals(0, closes.getCount());

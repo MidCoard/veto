@@ -257,10 +257,7 @@ class WebSecurityTest {
                                 .header("Origin", "https://untrusted.example")
                                 .header("Access-Control-Request-Method", "GET"))
                 .andExpect(status().isForbidden());
-        mvc.perform(
-                        get("/ws/veto/bus/123/session/websocket")
-                                .servletPath("/ws/veto/bus/123/session/websocket")
-                                .param("token", token))
+        mvc.perform(get("/ws/veto/bus").servletPath("/ws/veto/bus").param("token", token))
                 .andExpect(status().isOk());
         mvc.perform(get("/api/probe/user").param("token", token))
                 .andExpect(status().isUnauthorized());
@@ -372,7 +369,7 @@ class WebSecurityTest {
     static class ProbeController {
         private @NonNull CompletableFuture<@NonNull String> result = new CompletableFuture<>();
 
-        @GetMapping({"/api/probe/user", "/ws/veto/bus/123/session/websocket"})
+        @GetMapping({"/api/probe/user", "/ws/veto/bus"})
         public @NonNull String user() {
             var userId = CurrentUser.id();
             if (userId == null) throw new AssertionError("Missing authenticated UUID");

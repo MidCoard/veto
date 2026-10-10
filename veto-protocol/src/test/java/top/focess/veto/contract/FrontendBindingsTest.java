@@ -1,11 +1,10 @@
 package top.focess.veto.contract;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.lang.reflect.AnnotatedParameterizedType;
@@ -134,8 +133,7 @@ public class FrontendBindingsTest {
             new Frame.Done(Map.of("turnNumber", 1), null)
         };
         var fixtures = NODES.arrayNode();
-        for (var frame : frames)
-            fixtures.add(JSON.readTree(FrameCodec.encodeString(frame)));
+        for (var frame : frames) fixtures.add(JSON.readTree(FrameCodec.encodeString(frame)));
         return JSON.writeValueAsString(fixtures) + "\n";
     }
 }

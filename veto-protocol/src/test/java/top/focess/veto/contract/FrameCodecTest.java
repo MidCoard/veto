@@ -52,7 +52,9 @@ class FrameCodecTest {
         var heartbeat = new Frame.Heartbeat(9);
         assertEquals("{\"type\":\"heartbeat\",\"seq\":9}", FrameCodec.encodeString(heartbeat));
         Frame original = new Frame.Done(Map.of("username", "alice"), "完成");
-        assertArrayEquals(FrameCodec.encodeString(original).getBytes(StandardCharsets.UTF_8), FrameCodec.encode(original));
+        assertArrayEquals(
+                FrameCodec.encodeString(original).getBytes(StandardCharsets.UTF_8),
+                FrameCodec.encode(original));
         assertEquals(original, FrameCodec.decode(FrameCodec.encode(original)));
     }
 

@@ -17,7 +17,8 @@ import top.focess.veto.contract.EventFrame;
  * VetoWebSocketHandler → connected clients}. The broker fans out per-session to its direct
  * subscribers (tests, other transports); this bridge is the production subscriber that reaches the
  * wire. Delivery is synchronous. Failed sends are isolated, while concurrent socket writes use
- * Spring's bounded session decorator; neither boundary makes an individual socket write asynchronous.
+ * Spring's bounded session decorator; neither boundary makes an individual socket write
+ * asynchronous.
  */
 @Component
 public class DeltaBusBridge {

@@ -17,9 +17,7 @@ import top.focess.veto.contract.DAGPayload;
 import top.focess.veto.controller.dto.*;
 import top.focess.veto.i18n.Msg;
 
-/**
- * User-owned, in-memory DAG task registry. Creating a record does not execute or submit work.
- */
+/** User-owned, in-memory DAG task registry. Creating a record does not execute or submit work. */
 @RestController
 @RequestMapping("/api/tasks")
 public class TaskController {

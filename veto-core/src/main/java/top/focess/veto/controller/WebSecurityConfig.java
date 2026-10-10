@@ -70,8 +70,7 @@ public class WebSecurityConfig {
                                                 "/api/mcp/servers/**",
                                                 "/api/v1/training/**")
                                         .hasRole("ADMIN")
-                                        .requestMatchers(
-                                                "/api/**", "/ws/veto/bus", "/ws/veto/bus/**")
+                                        .requestMatchers("/api/**", "/ws/veto/bus")
                                         .authenticated()
                                         .anyRequest()
                                         .denyAll())

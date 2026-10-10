@@ -263,7 +263,7 @@ class VetoApplicationTests {
                                             URI.create(
                                                     "ws://localhost:"
                                                             + port
-                                                            + "/ws/veto/bus/123/securitytest/websocket?token="
+                                                            + "/ws/veto/bus?token="
                                                             + token),
                                             new WebSocket.Listener() {})
                                     .get(10, TimeUnit.SECONDS));

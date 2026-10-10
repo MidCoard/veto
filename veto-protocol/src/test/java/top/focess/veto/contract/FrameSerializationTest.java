@@ -1,20 +1,20 @@
 package top.focess.veto.contract;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-
 import static org.junit.jupiter.api.Assertions.*;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import org.junit.jupiter.api.Test;
 import org.jspecify.annotations.NonNull;
+import org.junit.jupiter.api.Test;
 
 class FrameSerializationTest {
     private static final @NonNull ObjectMapper JSON = new ObjectMapper();
+
     @Test
     void allVariantsUseOneDiscriminatorAndRoundTrip() throws Exception {
         var now = Instant.parse("2026-10-10T00:00:00Z");

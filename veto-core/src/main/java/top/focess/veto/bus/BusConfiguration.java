@@ -39,5 +39,4 @@ public class BusConfiguration {
             this.allowedOriginPatterns = List.copyOf(allowedOriginPatterns);
         }
     }
-
 }

@@ -97,6 +97,43 @@ class ProtocolClientLifecycleTest {
         }
     }
 
+    @Test
+    void closeFailsPendingExchangesBeforeBlockedSendReturnsAndDiscardsUnsentFrames()
+            throws Exception {
+        var peer = new Peer();
+        var client = new ProtocolClient(() -> peer);
+        try {
+            var hint = new CompletableFuture<Frame.@Nullable HintResult>();
+            Thread.ofVirtual()
+                    .start(() -> hint.complete(client.hint("pending", 30, TimeUnit.SECONDS)));
+            assertTrue(peer.sent.poll(1, TimeUnit.SECONDS) instanceof Frame.Hint);
+            peer.blockSend = true;
+            client.send(new Frame.Request("in-flight"));
+            assertTrue(peer.sending.await(1, TimeUnit.SECONDS));
+            for (int i = 0; i < 100; i++) client.send(new Frame.Request("unsent"));
+            var closing = new CompletableFuture<Void>();
+            Thread.ofVirtual()
+                    .start(
+                            () -> {
+                                client.close();
+                                closing.complete(null);
+                            });
+            assertNull(
+                    hint.get(1, TimeUnit.SECONDS),
+                    "pending exchange must wake before socket send finishes");
+            assertTrue(client.isClosed());
+            peer.release.countDown();
+            closing.get(2, TimeUnit.SECONDS);
+            assertTrue(peer.closed.await(1, TimeUnit.SECONDS));
+            assertEquals(new Frame.Request("in-flight"), peer.sent.poll());
+            assertTrue(peer.sent.poll() instanceof Frame.Bye);
+            assertTrue(peer.sent.isEmpty(), "close must not drain unsent application frames");
+        } finally {
+            peer.release.countDown();
+            client.close();
+        }
+    }
+
     private static final class Peer implements ClientTransport {
         private final @NonNull BlockingQueue<Frame.@NonNull ServerFrame> incoming =
                 new LinkedBlockingQueue<>();
@@ -107,6 +144,8 @@ class ProtocolClientLifecycleTest {
         private final @NonNull CountDownLatch release = new CountDownLatch(1);
         private boolean welcomed;
         private boolean block;
+        private volatile boolean blockSend;
+        private final @NonNull CountDownLatch sending = new CountDownLatch(1);
 
         @Override
         public void send(Frame.@NonNull ClientFrame frame) {
@@ -114,7 +153,18 @@ class ProtocolClientLifecycleTest {
                 if (!incoming.offer(
                         new Frame.Welcome(Frame.PROTOCOL_VERSION, hello.seq(), Version.UNKNOWN)))
                     throw new AssertionError("Cannot queue welcome");
-            } else if (!sent.offer(frame)) throw new AssertionError("Cannot record send");
+            } else {
+                if (frame instanceof Frame.Request && blockSend) {
+                    sending.countDown();
+                    try {
+                        release.await();
+                    } catch (InterruptedException interrupted) {
+                        Thread.currentThread().interrupt();
+                        throw new IllegalStateException(interrupted);
+                    }
+                }
+                if (!sent.offer(frame)) throw new AssertionError("Cannot record send");
+            }
         }
 
         @Override

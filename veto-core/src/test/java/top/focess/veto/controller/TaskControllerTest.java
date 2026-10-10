@@ -23,14 +23,19 @@ class TaskControllerTest {
         var authorization = mock(RequestAuthorization.class);
         when(authorization.requireUserId()).thenReturn(TestUsers.ALICE);
         var controller = new TaskController(authorization);
-        var request = new CreateTaskRequest("compile", "task", null, null, Map.of("file", "main.java"));
-        var created = assertInstanceOf(TaskCreatedResponse.class, controller.createTask(request).getBody());
+        var request =
+                new CreateTaskRequest("compile", "task", null, null, Map.of("file", "main.java"));
+        var created =
+                assertInstanceOf(
+                        TaskCreatedResponse.class, controller.createTask(request).getBody());
         assertEquals("PENDING", created.dagStatus());
-        var duplicate = assertThrows(ResponseStatusException.class, () -> controller.createTask(request));
+        var duplicate =
+                assertThrows(ResponseStatusException.class, () -> controller.createTask(request));
         assertEquals(HttpStatus.CONFLICT, duplicate.getStatusCode());
         var owned = assertInstanceOf(TaskListResponse.class, controller.listTasks().getBody());
         assertEquals(1, owned.total());
-        var detail = assertInstanceOf(TaskDetailResponse.class, controller.getTask("task").getBody());
+        var detail =
+                assertInstanceOf(TaskDetailResponse.class, controller.getTask("task").getBody());
         assertEquals("main.java", detail.parameters().get("file"));
 
         when(authorization.requireUserId()).thenReturn(TestUsers.BOB);
@@ -40,9 +45,12 @@ class TaskControllerTest {
         assertEquals(HttpStatus.NOT_FOUND, controller.cancelTask("task").getStatusCode());
 
         when(authorization.requireUserId()).thenReturn(TestUsers.ALICE);
-        var cancelled = assertInstanceOf(TaskCancelledResponse.class, controller.cancelTask("task").getBody());
+        var cancelled =
+                assertInstanceOf(
+                        TaskCancelledResponse.class, controller.cancelTask("task").getBody());
         assertEquals("CANCELLED", cancelled.newStatus());
-        var updated = assertInstanceOf(TaskDetailResponse.class, controller.getTask("task").getBody());
+        var updated =
+                assertInstanceOf(TaskDetailResponse.class, controller.getTask("task").getBody());
         assertEquals("CANCELLED", updated.dagStatus());
     }
 }
