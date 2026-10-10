@@ -21,7 +21,7 @@ val jeromqVersion: String by rootProject.extra
 val logbackVersion: String by rootProject.extra
 
 dependencies {
-    // ZeroMQ is the Java protocol transport; browser bindings have their own package.
+    // ZeroMQ is the Java protocol transport; TypeScript wire handling belongs to veto-ui.
     api("org.zeromq:jeromq:$jeromqVersion")
 
     // Public protocol signatures expose JSpecify type-use annotations to consumers.
@@ -57,12 +57,4 @@ tasks.withType<JavaCompile> {
 
 tasks.withType<Test> {
     useJUnitPlatform()
-}
-
-// Browser bindings use Java wire metadata; tests reject stale generated output.
-tasks.register<JavaExec>("generateFrontendBindings") {
-    dependsOn(tasks.named("testClasses"))
-    classpath = sourceSets["test"].runtimeClasspath
-    mainClass.set("top.focess.veto.contract.FrontendBindingsTest")
-    args(layout.projectDirectory.dir("frontend").asFile.absolutePath)
 }

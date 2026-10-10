@@ -459,10 +459,9 @@ is generated output and must not be committed.
   `DeltaBroker -> DeltaBusBridge -> VetoWebSocketHandler -> VetoBus`.
   There is no outbound Java cloud bus or remote task executor. `/api/tasks` is a user-owned
   in-memory task registry; creating a task records it locally without executing it.
-  Browser clients consume
-  the dependency-free `@veto/protocol` package in `veto-protocol/frontend`. Its schema and fixtures
-  are generated from Java contracts with `:veto-protocol:generateFrontendBindings` and checked by
-  tests. `veto-terminal` must not depend on `veto-core`.
+  Browser message types, JSON validation, schema and wire fixtures belong to
+  `veto-ui/src/protocol` and are bundled with the UI. Update them alongside Java wire-contract
+  changes; frontend tests cover validation and wire fixtures. `veto-terminal` must not depend on `veto-core`.
 - Development/beta migrations replace obsolete implementations completely; do not retain
   compatibility aliases or fallback implementations.
 

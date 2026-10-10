@@ -1,8 +1,0 @@
-{
-  "name": "@veto/protocol",
-  "version": "1.0.100",
-  "private": true,
-  "type": "module",
-  "exports": { ".": "./index.ts", "./fixtures": "./fixtures.json" },
-  "types": "index.ts"
-}
