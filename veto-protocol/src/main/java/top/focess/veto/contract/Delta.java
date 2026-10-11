@@ -33,6 +33,7 @@ public record Delta(
 
     @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, property = "type")
     @JsonSubTypes({
+        @JsonSubTypes.Type(value = TerminalState.class, name = "terminal_state"),
         @JsonSubTypes.Type(value = Progress.class, name = "progress"),
         @JsonSubTypes.Type(value = Notice.class, name = "notice"),
         @JsonSubTypes.Type(value = Thought.class, name = "thought"),
@@ -45,7 +46,8 @@ public record Delta(
         @JsonSubTypes.Type(value = BreakerTripped.class, name = "breaker_tripped"),
     })
     public sealed interface Data
-            permits Progress,
+            permits TerminalState,
+                    Progress,
                     Notice,
                     Thought,
                     Message,
@@ -55,6 +57,15 @@ public record Delta(
                     SessionInvalidated,
                     PluginEvent,
                     BreakerTripped {}
+
+    /**
+     * Full terminal display snapshot; active session/agent identity is the enclosing Delta scope.
+     */
+    public record TerminalState(
+            String username,
+            @JsonProperty(value = "turnNumber", required = true) @JsonSetter(nulls = Nulls.FAIL)
+                    int turnNumber)
+            implements Data {}
 
     /** A rendering hint; percent is 0–100, or -1 when completion is indeterminate. */
     public record Progress(

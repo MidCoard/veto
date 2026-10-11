@@ -12,10 +12,10 @@ import top.focess.veto.contract.Frame;
  * re-enter the session (e.g. to read a snapshot) without deadlock. {@code default} methods let a
  * view implement only the events it renders.
  *
- * <p>Note on {@link Frame.Done}: per the matrix a {@code Done} frame applies session meta (and
- * transitions state) but never displays content — command output streams via {@link #onDelta}. So
- * there is no {@code onDone(content)} event; a completed command is signalled by the {@link
- * #onRunning}/{@link #onIdle} transition and {@link #onMetaChanged}.
+ * <p>Note on {@link Frame.Done}: per the matrix a {@code Done} frame transitions command state but
+ * never displays content — command output streams via {@link #onDelta}. So there is no {@code
+ * onDone(content)} event; a completed command is signalled by the {@link #onRunning}/{@link
+ * #onIdle} transition and {@link #onMetaChanged}.
  */
 public interface ClientView {
 

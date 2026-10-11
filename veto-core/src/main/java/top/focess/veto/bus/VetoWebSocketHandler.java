@@ -6,7 +6,6 @@ import java.io.IOException;
 import java.time.Instant;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicLong;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -40,7 +39,6 @@ public class VetoWebSocketHandler extends TextWebSocketHandler {
     private final @NonNull LoginSessionManager loginSessions;
     private final @NonNull ConcurrentHashMap<@NonNull String, @NonNull Connection> connections =
             new ConcurrentHashMap<>();
-    private final @NonNull AtomicLong messageCounter = new AtomicLong();
 
     public VetoWebSocketHandler(
             @NonNull SessionRepository sessionRepository,
@@ -69,7 +67,6 @@ public class VetoWebSocketHandler extends TextWebSocketHandler {
             @NonNull WebSocketSession socket, @NonNull TextMessage message) {
         var connection = connections.get(socket.getId());
         if (connection == null || !isAuthenticated(connection)) return;
-        long sequence = messageCounter.incrementAndGet();
         var decoded = FrameCodec.decode(message.getPayload());
         if (!(decoded instanceof Frame.ClientFrame frame)) {
             send(connection, new Frame.Error("Invalid client frame", 0));
@@ -95,12 +92,6 @@ public class VetoWebSocketHandler extends TextWebSocketHandler {
         switch (frame) {
             case Frame.Bye ignored -> close(connection, CloseStatus.NORMAL);
             case Frame.Heartbeat ignored -> send(connection, new Frame.HeartbeatAck(Instant.now()));
-            case Frame.DagPayload dag -> {
-                send(
-                        connection,
-                        new Frame.Received(dag.data().taskType(), sequence, Instant.now()));
-                broadcast(connection, new Frame.DagPayload(dag.data(), socket.getId()));
-            }
             case Frame.VetoResult result -> resolveVeto(connection, result);
             default ->
                     send(
@@ -151,14 +142,6 @@ public class VetoWebSocketHandler extends TextWebSocketHandler {
                 failure.getClass().getSimpleName());
         var connection = connections.get(socket.getId());
         if (connection != null) close(connection, CloseStatus.SERVER_ERROR);
-    }
-
-    private void broadcast(@NonNull Connection sender, Frame.@NonNull DagPayload frame) {
-        for (var recipient : connections.values()) {
-            if (recipient != sender && sender.user.equals(recipient.user) && recipient.ready) {
-                send(recipient, frame);
-            }
-        }
     }
 
     /** Sends session events only to authenticated connections belonging to the session owner. */
@@ -218,10 +201,6 @@ public class VetoWebSocketHandler extends TextWebSocketHandler {
 
     public int getActiveSessionCount() {
         return (int) connections.values().stream().filter(c -> c.socket.isOpen()).count();
-    }
-
-    public long getTotalMessages() {
-        return messageCounter.get();
     }
 
     private UUID authenticatedUser(@NonNull WebSocketSession socket) {

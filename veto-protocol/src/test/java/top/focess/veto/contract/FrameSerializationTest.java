@@ -31,7 +31,8 @@ class FrameSerializationTest {
             new Frame.Hint("/login ", 3),
             new Frame.CompleteResult(List.of(new Frame.Completion("/login", null, null)), 2),
             new Frame.HintResult(new Frame.HintInfo("<user>", null), 3),
-            new Frame.Done(Map.of("username", "alice"), null),
+            new Frame.Done(null),
+            new Delta(null, new Delta.TerminalState("alice", 3)),
             new Frame.Error(
                     new Scope.AgentScope(
                             UUID.fromString("00000000-0000-0000-0000-000000000010"),
@@ -55,6 +56,7 @@ class FrameSerializationTest {
                     List.of("DECLINE"),
                     Map.of(),
                     null,
+                    null,
                     42),
             new Frame.VetoResult(
                     new Scope.AgentScope(
@@ -66,7 +68,6 @@ class FrameSerializationTest {
                     2),
             new Frame.Terminate("bye"),
             new Frame.HeartbeatAck(now),
-            new Frame.Received("compile", 4, now),
             new Delta(
                     new Scope.AgentScope(
                             UUID.fromString("00000000-0000-0000-0000-000000000010"),
@@ -83,9 +84,20 @@ class FrameSerializationTest {
             assertEquals(frame, FrameCodec.decode(json));
             assertEquals(frame, FrameCodec.decode(FrameCodec.encode(frame)));
         }
-        var dag = DAGPayload.builder().id("task").taskType("compile").build();
-        var forwarded = FrameCodec.decode(FrameCodec.encode(new Frame.DagPayload(dag, "sender")));
-        assertInstanceOf(Frame.DagPayload.class, forwarded);
+    }
+
+    @Test
+    void commandInputAndCompletionHaveExplicitContracts() throws Exception {
+        var prompt = JSON.readTree(FrameCodec.encodeString(new Frame.Prompt("Password", true)));
+        assertFalse(prompt.has("scope"));
+        var done =
+                JSON.readTree(FrameCodec.encodeString(new Frame.Done(null, null, 3, true, null)));
+        assertFalse(done.has("meta"));
+        assertEquals(3, done.path("turnNumber").asInt());
+        assertTrue(done.path("cancelled").asBoolean());
+        assertTrue(
+                List.of(Frame.ServerFrame.class.getPermittedSubclasses())
+                        .contains(Frame.Veto.class));
     }
 
     @Test
@@ -116,7 +128,18 @@ class FrameSerializationTest {
 
     @Test
     void serializationFailureUsesStandardIoException() {
-        var frame = new Frame.Done(Map.of("unsupported", new Object()), null);
+        var frame =
+                new Frame.Veto(
+                        new Scope.AgentScope(
+                                UUID.randomUUID(), UUID.randomUUID().toString(), "agent"),
+                        "call",
+                        "tool",
+                        "GENERIC",
+                        List.of("DECLINE"),
+                        Map.of("unsupported", new Object()),
+                        null,
+                        null,
+                        1);
         assertThrows(UncheckedIOException.class, () -> FrameCodec.encode(frame));
         assertThrows(UncheckedIOException.class, () -> FrameCodec.encodeString(frame));
     }

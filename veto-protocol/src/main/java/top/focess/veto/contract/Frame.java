@@ -52,29 +52,19 @@ import top.focess.veto.api.plugin.Scope;
     @JsonSubTypes.Type(value = Frame.Veto.class, name = "veto"),
     @JsonSubTypes.Type(value = Frame.VetoResult.class, name = "veto_result"),
     @JsonSubTypes.Type(value = Frame.Terminate.class, name = "terminate"),
-    @JsonSubTypes.Type(value = Frame.HeartbeatAck.class, name = "heartbeat_ack"),
-    @JsonSubTypes.Type(value = Frame.Received.class, name = "dag.received"),
-    @JsonSubTypes.Type(value = Frame.DagPayload.class, name = "dag.payload")
+    @JsonSubTypes.Type(value = Frame.HeartbeatAck.class, name = "heartbeat_ack")
 })
 public sealed interface Frame
         permits Frame.ClientFrame,
                 Frame.ServerFrame,
                 Frame.SeqRequest,
                 Frame.SeqResponse,
-                Frame.ScopedFrame {
+                Frame.ScopedFrame,
+                Frame.Interaction {
 
     /** Frames sent by a client: both client requests and replies to server requests. */
     sealed interface ClientFrame extends Frame
-            permits Hello,
-                    Request,
-                    Complete,
-                    Hint,
-                    Input,
-                    Cancel,
-                    Bye,
-                    Heartbeat,
-                    VetoResult,
-                    DagPayload {}
+            permits Hello, Request, Complete, Hint, Input, Cancel, Bye, Heartbeat, VetoResult {}
 
     /** Frames sent by the backend: both server requests and replies to client requests. */
     sealed interface ServerFrame extends Frame
@@ -82,14 +72,13 @@ public sealed interface Frame
                     CompleteResult,
                     HintResult,
                     TerminalResponse,
-                    Interaction,
+                    Prompt,
+                    Veto,
                     Delta,
-                    HeartbeatAck,
-                    Received,
-                    DagPayload {}
+                    HeartbeatAck {}
 
     /** Current protocol version. Increment when frame types or semantics change incompatibly. */
-    int PROTOCOL_VERSION = 6;
+    int PROTOCOL_VERSION = 7;
 
     /** A request initiated by either peer. */
     sealed interface SeqRequest extends Frame permits Hello, Complete, Hint, Veto {
@@ -188,8 +177,7 @@ public sealed interface Frame
     record Heartbeat() implements ClientFrame {}
 
     /** Application output whose scope is absent only for connection-local output. */
-    sealed interface ScopedFrame extends Frame
-            permits Delta, Done, Error, Veto, VetoResult, Prompt {
+    sealed interface ScopedFrame extends Frame permits Delta, Done, Error, Veto, VetoResult {
         Scope scope();
 
         @JsonIgnore
@@ -298,46 +286,17 @@ public sealed interface Frame
             @JsonProperty(value = "seq", required = true) @JsonSetter(nulls = Nulls.FAIL) long seq)
             implements ServerFrame, SeqResponse {}
 
-    /**
-     * Terminal frame — response complete.
-     *
-     * <p>Done ends a sequence of delta frames. Session/agent/request identity identifies an agent
-     * completion; null identity denotes a terminal command completion. It does not carry a sequence
-     * number.
-     *
-     * @param meta session metadata (username, turn number, flags, etc.)
-     * @param content optional content string
-     */
+    /** Completes a command or agent turn. Scope identifies its owner, not terminal login state. */
     record Done(
             Scope scope,
             String requestId,
-            @JsonProperty(value = "meta", required = true) @JsonSetter(nulls = Nulls.FAIL)
-                    @NonNull Map<String, Object> meta,
+            Integer turnNumber,
+            @JsonProperty(value = "cancelled", required = true) @JsonSetter(nulls = Nulls.FAIL)
+                    boolean cancelled,
             String content)
             implements TerminalResponse, ScopedFrame {
-        /** Connection-scoped command completion, emitted by the terminal command actor. */
-        public Done(@NonNull Map<String, Object> meta, String content) {
-            this(null, null, meta, content);
-        }
-
-        /** Typed, null-safe accessor for {@link FrameMeta#USERNAME}. */
-        public String username() {
-            return FrameMeta.username(meta);
-        }
-
-        /** Typed accessor for {@link FrameMeta#TURN_NUMBER}; {@code -1} when absent. */
-        public int turnNumber() {
-            return FrameMeta.turnNumber(meta, -1);
-        }
-
-        /** Typed accessor for {@link FrameMeta#CANCELLED}. */
-        public boolean cancelled() {
-            return FrameMeta.cancelled(meta);
-        }
-
-        /** Typed accessor for {@link FrameMeta#CLEAR_SESSION}. */
-        public boolean clearSession() {
-            return FrameMeta.clearSession(meta);
+        public Done(String content) {
+            this(null, null, null, false, content);
         }
     }
 
@@ -375,20 +334,15 @@ public sealed interface Frame
     }
 
     /** A user interaction rendered by the terminal: text input or an approval picker. */
-    sealed interface Interaction extends ServerFrame permits Prompt, Veto {}
+    sealed interface Interaction extends Frame permits Prompt, Veto {}
 
     /** Terminal-only text input; the client answers with Input. */
     record Prompt(
-            Scope scope,
             @JsonProperty(value = "content", required = true) @JsonSetter(nulls = Nulls.FAIL)
                     @NonNull String content,
             @JsonProperty(value = "mask", required = true) @JsonSetter(nulls = Nulls.FAIL)
                     boolean mask)
-            implements Interaction, ScopedFrame {
-        public Prompt(@NonNull String content, boolean mask) {
-            this(null, content, mask);
-        }
-    }
+            implements ServerFrame, Interaction {}
 
     /** Approval request shared by browser and terminal; both clients use the actual agent scope. */
     record Veto(
@@ -405,8 +359,9 @@ public sealed interface Frame
             @JsonProperty(value = "args", required = true) @JsonSetter(nulls = Nulls.FAIL)
                     @NonNull Map<String, Object> args,
             String danger,
+            String relevance,
             @JsonProperty(value = "seq", required = true) @JsonSetter(nulls = Nulls.FAIL) long seq)
-            implements SeqRequest, Interaction, ScopedFrame {}
+            implements ServerFrame, SeqRequest, Interaction, ScopedFrame {}
 
     /**
      * Reply to a Veto request. Echoes its sequence; execution or refusal is reported through
@@ -434,20 +389,4 @@ public sealed interface Frame
             @JsonProperty(value = "timestamp", required = true) @JsonSetter(nulls = Nulls.FAIL)
                     @NonNull Instant timestamp)
             implements ServerFrame {}
-
-    /** Confirms receipt of a DAG payload. */
-    record Received(
-            @JsonProperty(value = "taskType", required = true) @JsonSetter(nulls = Nulls.FAIL)
-                    @NonNull String taskType,
-            @JsonProperty(value = "seq", required = true) @JsonSetter(nulls = Nulls.FAIL) long seq,
-            @JsonProperty(value = "timestamp", required = true) @JsonSetter(nulls = Nulls.FAIL)
-                    @NonNull Instant timestamp)
-            implements ServerFrame {}
-
-    /** Shared structured DAG data, sent by a client or forwarded by the server. */
-    record DagPayload(
-            @JsonProperty(value = "data", required = true) @JsonSetter(nulls = Nulls.FAIL)
-                    @NonNull DAGPayload data,
-            String source)
-            implements ClientFrame, ServerFrame {}
 }

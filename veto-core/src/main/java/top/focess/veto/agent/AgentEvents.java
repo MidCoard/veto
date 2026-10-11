@@ -96,8 +96,7 @@ final class AgentEvents {
 
     void completed(String requestId, int turnNumber, boolean success, @NonNull String message) {
         if (success) {
-            publishFrame(
-                    new Frame.Done(scope, requestId, Map.of("turnNumber", turnNumber), message));
+            publishFrame(new Frame.Done(scope, requestId, turnNumber, false, message));
         } else {
             publishFrame(new Frame.Error(scope, requestId, turnNumber, message, 0));
         }
@@ -190,8 +189,10 @@ final class AgentEvents {
                         offered,
                         call.args(),
                         p.danger(),
+                        p.relevance(),
                         seq));
         var danger = p.danger();
+        var relevance = p.relevance();
         publishFrame(
                 new Frame.Veto(
                         scope,
@@ -201,6 +202,7 @@ final class AgentEvents {
                         offered.stream().map(Enum::name).toList(),
                         call.args(),
                         danger == null ? null : danger.name(),
+                        relevance == null ? null : relevance.name(),
                         seq));
     }
 }

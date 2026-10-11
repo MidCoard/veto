@@ -4,7 +4,6 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
@@ -74,7 +73,7 @@ class InMemoryTransportTest {
         } else if (frame instanceof Frame.Request) {
             transport.deliver(Delta.message("hello "));
             transport.deliver(Delta.message("world"));
-            transport.deliver(new Frame.Done(Map.of(), null));
+            transport.deliver(new Frame.Done(null));
         }
         // Heartbeat / Bye / Cancel / Input: ignored by the responder.
     }

@@ -50,20 +50,18 @@ class IpcPeerIsolationTest {
                             if ("login".equals(raw)) sender.setUser(alice);
                             else if ("prompt".equals(raw))
                                 assertNull(sender.input("Confirm action", false));
-                            return new Frame.Done(Map.of("loggedIn", sender.isLoggedIn()), null);
+                            return new Frame.Done(Boolean.toString(sender.isLoggedIn()));
                         });
         var server = new IpcServer(registry, mock(AgentService.class), address);
         server.start();
         try (var context = new ZContext()) {
             var terminal = connect(context, address, "pending-input");
-            assertEquals(true, request(terminal, "login").meta().get("loggedIn"));
+            assertEquals("true", request(terminal, "login").content());
             assertTrue(terminal.send("{\"type\":\"request\",\"raw\":\"prompt\"}"));
             assertInstanceOf(Frame.Prompt.class, receive(terminal));
             server.revokeUser(TestUsers.ALICE);
-            assertEquals(
-                    false,
-                    assertInstanceOf(Frame.Done.class, receive(terminal)).meta().get("loggedIn"));
-            assertEquals(true, request(terminal, "login").meta().get("loggedIn"));
+            assertEquals("false", assertInstanceOf(Frame.Done.class, receive(terminal)).content());
+            assertEquals("true", request(terminal, "login").content());
         } finally {
             server.stop();
         }
@@ -98,7 +96,7 @@ class IpcPeerIsolationTest {
                             } else {
                                 assertEquals(sender.userId(), CurrentUser.id());
                             }
-                            return new Frame.Done(Map.of("loggedIn", sender.isLoggedIn()), null);
+                            return new Frame.Done(Boolean.toString(sender.isLoggedIn()));
                         });
         when(registry.complete(any(), anyString())).thenReturn(List.of());
         var server = new IpcServer(registry, mock(AgentService.class), address);
@@ -128,9 +126,9 @@ class IpcPeerIsolationTest {
             release.countDown();
             assertInstanceOf(Frame.Done.class, receive(first));
             var queued = assertInstanceOf(Frame.Done.class, receive(first));
-            assertEquals(false, queued.meta().get("loggedIn"));
-            assertEquals(false, request(second, "probe").meta().get("loggedIn"));
-            assertEquals(true, request(other, "probe").meta().get("loggedIn"));
+            assertEquals("false", queued.content());
+            assertEquals("false", request(second, "probe").content());
+            assertEquals("true", request(other, "probe").content());
         } finally {
             release.countDown();
             server.stop();
@@ -260,7 +258,7 @@ class IpcPeerIsolationTest {
                                     }
                                 }
                             } else nextEntered.countDown();
-                            return new Frame.Done(Map.of(), raw);
+                            return new Frame.Done(raw);
                         });
         when(registry.complete(any(), anyString())).thenReturn(List.of());
         var server = new IpcServer(registry, mock(AgentService.class), address);
@@ -283,7 +281,7 @@ class IpcPeerIsolationTest {
             assertInstanceOf(Frame.HeartbeatAck.class, receive(terminal));
             release.countDown();
             var cancelled = assertInstanceOf(Frame.Done.class, receive(terminal));
-            assertEquals(true, cancelled.meta().get("cancelled"));
+            assertTrue(cancelled.cancelled());
             var completed = assertInstanceOf(Frame.Done.class, receive(terminal));
             assertEquals("next", completed.content());
             assertTrue(nextEntered.await(1, TimeUnit.SECONDS));

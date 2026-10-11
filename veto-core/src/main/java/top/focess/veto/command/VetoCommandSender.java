@@ -216,6 +216,12 @@ public final class VetoCommandSender extends AbstractCommandSender {
                         new Delta.Message(message, null)));
     }
 
+    /** Replaces the terminal's display state independently of command completion. */
+    public void terminalState(Scope scope, int turnNumber) {
+        ipcServer.send(
+                terminalId, new Delta(scope, new Delta.TerminalState(username(), turnNumber)));
+    }
+
     /** Forwards the canonical broker event without translating or rebuilding its payload. */
     public void sendEvent(Frame.@NonNull ScopedFrame frame) {
         // The command actor owns terminal completion and its pending approval input.
@@ -334,6 +340,7 @@ public final class VetoCommandSender extends AbstractCommandSender {
         var scope = new Scope.AgentScope(userId, sessionId.toString(), vp.agentId());
         pendingVeto = new PendingVeto(scope, vp.callId(), vp.seq());
         var danger = vp.danger();
+        var relevance = vp.relevance();
         ipcServer.send(
                 terminalId,
                 new Frame.Veto(
@@ -344,6 +351,7 @@ public final class VetoCommandSender extends AbstractCommandSender {
                         vp.options().stream().map(Enum::name).toList(),
                         vp.args(),
                         danger == null ? null : danger.name(),
+                        relevance == null ? null : relevance.name(),
                         vp.seq()));
     }
 

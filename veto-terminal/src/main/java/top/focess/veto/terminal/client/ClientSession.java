@@ -4,14 +4,12 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import top.focess.veto.contract.Delta;
 import top.focess.veto.contract.Frame;
-import top.focess.veto.contract.FrameMeta;
 import top.focess.veto.contract.ProtocolClient;
 
 /**
@@ -29,8 +27,8 @@ import top.focess.veto.contract.ProtocolClient;
  * </ul>
  *
  * <p>Deltas render in every state, including connection-local messages without a session or agent.
- * Interaction requests require an active command. At IDLE, Done applies metadata and Error displays
- * its message without starting a command. Terminate tears down from any state.
+ * Interaction requests require an active command. At IDLE, Done stays idle and Error displays its
+ * message without starting a command. Terminate tears down from any state.
  *
  * <h3>Thread model</h3>
  *
@@ -201,7 +199,7 @@ public final class ClientSession {
      * Processes an inbound server frame per the state × frame matrix: updates state, applies
      * metadata, dispatches the next queued request or goes idle, and emits render events.
      *
-     * <p>{@link Frame.Done} applies meta (and transitions) but never displays content — command
+     * <p>{@link Frame.Done} transitions the command state but never displays content — command
      * output streams via {@link Delta}; {@code Done} is the terminal marker only. {@link
      * Frame.Error} displays and transitions. Deltas also render at {@code IDLE} without changing
      * command state.
@@ -217,6 +215,11 @@ public final class ClientSession {
                 // ── streaming ───────────────────────────────────────────────────
                 case Delta event -> {
                     switch (event.data()) {
+                        case Delta.TerminalState status -> {
+                            var scope = event.scope();
+                            var snap = applyState(status, scope == null ? null : scope.session());
+                            if (snap != null) events.add(() -> view.onMetaChanged(snap));
+                        }
                         case Delta.Progress progress ->
                                 events.add(
                                         () ->
@@ -251,12 +254,7 @@ public final class ClientSession {
 
                 // ── terminal ────────────────────────────────────────────────────
                 case Frame.Done done -> {
-                    SessionMeta snap = applyMeta(done.meta());
-                    if (snap != null) {
-                        events.add(() -> view.onMetaChanged(snap));
-                    }
-                    // A late/duplicate completion (cancel racing normal completion) applies meta
-                    // and stays IDLE; only an active request needs dispatch or prompt cleanup.
+                    // Only command completion advances the input queue; display state is separate.
                     if (state != State.IDLE) {
                         if (state == State.PROMPTED) {
                             activePrompt = null; // clear the prompt the terminal frame resolved
@@ -324,45 +322,15 @@ public final class ClientSession {
         return null;
     }
 
-    /**
-     * Applies session metadata from a {@link Frame.Done} meta map using the typed {@link FrameMeta}
-     * accessors (no hand-casts).
-     *
-     * @return a {@link SessionMeta} snapshot if anything changed (so the view can refresh), or
-     *     {@code null} if unchanged
-     */
-    private SessionMeta applyMeta(@NonNull Map<@NonNull String, Object> meta) {
-        boolean changed = false;
-        if (meta.containsKey(FrameMeta.USERNAME)) {
-            String u = FrameMeta.username(meta);
-            if (!Objects.equals(u, username)) {
-                username = u;
-                changed = true;
-            }
-        }
-        if (meta.containsKey(FrameMeta.TURN_NUMBER)) {
-            int t = FrameMeta.turnNumber(meta, turnCount);
-            if (t != turnCount) {
-                turnCount = t;
-                changed = true;
-            }
-        }
-        if (meta.containsKey(FrameMeta.SESSION)) {
-            String s = FrameMeta.session(meta);
-            if (!Objects.equals(s, sessionId)) {
-                sessionId = s;
-                changed = true;
-            }
-        }
-        if (FrameMeta.clearSession(meta)) {
-            if (username != null || turnCount != 0 || sessionId != null) {
-                username = null;
-                turnCount = 0;
-                sessionId = null;
-                changed = true;
-            }
-        }
-        return changed ? new SessionMeta(username, turnCount, sessionId) : null;
+    /** Replaces terminal display state; a null username/session explicitly clears it. */
+    private SessionMeta applyState(Delta.@NonNull TerminalState status, String session) {
+        if (Objects.equals(username, status.username())
+                && turnCount == status.turnNumber()
+                && Objects.equals(sessionId, session)) return null;
+        username = status.username();
+        turnCount = status.turnNumber();
+        sessionId = session;
+        return new SessionMeta(username, turnCount, sessionId);
     }
 
     /**

@@ -4,7 +4,6 @@ import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import java.time.Instant;
 import java.util.ArrayDeque;
-import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
@@ -27,7 +26,6 @@ import top.focess.veto.agent.AgentService;
 import top.focess.veto.command.CommandRegistry;
 import top.focess.veto.command.VetoCommandSender;
 import top.focess.veto.contract.Frame;
-import top.focess.veto.contract.FrameMeta;
 import top.focess.veto.contract.ServerTransport;
 import top.focess.veto.transport.zmq.ZmqChannel;
 import top.focess.veto.vault.ExecutionSecurity;
@@ -254,8 +252,7 @@ public class IpcServer {
                             send(
                                     identity,
                                     active.cancelled()
-                                            ? new Frame.Done(
-                                                    Map.of(FrameMeta.CANCELLED, true), null)
+                                            ? new Frame.Done(null, null, null, true, null)
                                             : finished.response());
                             startNext();
                         }

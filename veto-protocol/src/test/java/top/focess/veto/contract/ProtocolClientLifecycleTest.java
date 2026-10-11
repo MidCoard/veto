@@ -44,6 +44,7 @@ class ProtocolClientLifecycleTest {
                             List.of("DECLINE"),
                             Map.of(),
                             null,
+                            null,
                             hint.seq());
             assertTrue(peer.incoming.offer(request));
             assertEquals(request, client.receive(1, TimeUnit.SECONDS));

@@ -6,7 +6,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
@@ -115,7 +114,7 @@ class FrameCodecTest {
     void textAndByteTransportsUseTheSameWireContract() {
         var heartbeat = new Frame.Heartbeat();
         assertEquals("{\"type\":\"heartbeat\"}", FrameCodec.encodeString(heartbeat));
-        Frame original = new Frame.Done(Map.of("username", "alice"), "完成");
+        Frame original = new Frame.Done("完成");
         assertArrayEquals(
                 FrameCodec.encodeString(original).getBytes(StandardCharsets.UTF_8),
                 FrameCodec.encode(original));
@@ -123,34 +122,11 @@ class FrameCodecTest {
     }
 
     @Test
-    void dagRoundTripPreservesLifecycleAndImmutableData() throws Exception {
-        var original =
-                DAGPayload.builder()
-                        .id("task-1")
-                        .taskType("compile")
-                        .parameter("source", "测试.java")
-                        .dependency("task-0")
-                        .sourceComponent("terminal")
-                        .targetComponent("backend")
-                        .build()
-                        .withStatus(DAGPayload.DAGPayloadStatus.RUNNING);
-        var frame = new Frame.DagPayload(original, "terminal");
-        if (!(FrameCodec.decode(FrameCodec.encode(frame)) instanceof Frame.DagPayload decoded))
-            throw new AssertionError("Missing DAG frame");
-        var parsed = decoded.data();
-        assertEquals(original.id(), parsed.id());
-        assertEquals(original.taskType(), parsed.taskType());
-        assertEquals(original.parameters(), parsed.parameters());
-        assertEquals(original.dependencies(), parsed.dependencies());
-        assertEquals(original.status(), parsed.status());
-        assertEquals(original.createdAt(), parsed.createdAt());
-        assertEquals(original.updatedAt(), parsed.updatedAt());
-        assertEquals(original.sourceComponent(), parsed.sourceComponent());
-        assertEquals(original.targetComponent(), parsed.targetComponent());
-        assertThrows(
-                UnsupportedOperationException.class, () -> parsed.parameters().put("new", "value"));
-        assertThrows(UnsupportedOperationException.class, () -> parsed.dependencies().add("new"));
+    void groupSpecificFramesAreNotCoreProtocolMessages() {
         assertNull(FrameCodec.decode("{\"type\":\"dag.payload\",\"data\":{}}"));
+        assertNull(
+                FrameCodec.decode(
+                        "{\"type\":\"dag.received\",\"taskType\":\"compile\",\"seq\":1,\"timestamp\":\"2026-10-12T00:00:00Z\"}"));
     }
 
     @ParameterizedTest

@@ -1,7 +1,6 @@
 package top.focess.veto.command;
 
 import java.time.Duration;
-import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -13,9 +12,9 @@ import top.focess.veto.agent.Agent;
 import top.focess.veto.agent.AgentService;
 import top.focess.veto.api.agent.AgentResult;
 import top.focess.veto.api.llm.LlmBinding;
+import top.focess.veto.api.plugin.Scope;
 import top.focess.veto.bus.DeltaBroker;
 import top.focess.veto.contract.Frame;
-import top.focess.veto.contract.FrameMeta;
 import top.focess.veto.session.LlmConfig;
 import top.focess.veto.session.SessionService;
 import top.focess.veto.vault.KeysteadVault;
@@ -68,8 +67,8 @@ public class PromptHandler {
 
     /**
      * Returns a point-in-time snapshot of the live agent sessions (delegated to {@link
-     * AgentService}). Keyed by session id. Exposed for read-only inspection ({@code /status}, done
-     * meta). Callers must not mutate the returned map.
+     * AgentService}). Keyed by session id. Exposed for read-only inspection ({@code /status},
+     * terminal display). Callers must not mutate the returned map.
      */
     public @NonNull Map<String, Agent> sessions() {
         return Map.copyOf(agentService.agentsView());
@@ -80,7 +79,7 @@ public class PromptHandler {
         return sessionService.activeAgent(terminalId).orElse(null);
     }
 
-    /** The active session id for the terminal (if any), for done-meta / status. */
+    /** The active session id for the terminal (if any), for terminal display / status. */
     public String activeSession(@NonNull String terminalId) {
         return sessionService.activeSession(terminalId).orElse(null);
     }
@@ -155,19 +154,17 @@ public class PromptHandler {
                             veto -> sender.sendVetoPrompt(owner, UUID.fromString(sessionId), veto),
                             user);
 
-            Map<String, Object> doneMeta = new HashMap<>();
-            String displayName = sender.username();
-            if (displayName != null) doneMeta.put(FrameMeta.USERNAME, displayName);
-            doneMeta.put(FrameMeta.TURN_NUMBER, turnsOf(result));
+            var scope = new Scope.SessionScope(owner, sessionId);
+            sender.terminalState(scope, turnsOf(result));
 
             if (result.success()) {
-                // The message text was already streamed as event frames; Done carries meta only.
-                return new Frame.Done(doneMeta, null);
+                // Content was already streamed; this completes the terminal request.
+                return new Frame.Done(scope, null, turnsOf(result), false, null);
             }
             // Failure (breaker trip / error): the reason was not streamed, so surface it in Error.
             String resultMessage = result.message();
             String reason = resultMessage.isBlank() ? "Agent failed." : resultMessage;
-            return Frame.Error.ofError(reason);
+            return new Frame.Error(scope, null, turnsOf(result), reason, 0);
         } catch (TimeoutException e) {
             log.warn("Agent episode timed out for session {}", sessionId);
             return Frame.Error.ofError("Agent timed out.");

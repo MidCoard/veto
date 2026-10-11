@@ -3,6 +3,7 @@ package top.focess.veto.agent.intercept;
 import java.util.List;
 import java.util.Map;
 import org.jspecify.annotations.NonNull;
+import top.focess.veto.agent.screening.Relevance;
 import top.focess.veto.api.agent.screening.Danger;
 
 /**
@@ -31,6 +32,7 @@ public record VetoPrompt(
         @NonNull List<VetoOption> options,
         @NonNull Map<String, Object> args,
         Danger danger,
+        Relevance relevance,
         long seq) {
     /** Compact constructor: defensive copies + null-safe args. */
     public VetoPrompt {

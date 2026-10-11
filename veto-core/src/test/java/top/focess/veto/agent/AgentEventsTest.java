@@ -12,13 +12,43 @@ import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
+import top.focess.veto.agent.intercept.ApprovalDecision;
+import top.focess.veto.agent.intercept.VetoOption;
+import top.focess.veto.agent.intercept.VetoScenario;
+import top.focess.veto.agent.screening.Relevance;
 import top.focess.veto.api.agent.ToolCallEvent;
+import top.focess.veto.api.agent.screening.Danger;
 import top.focess.veto.api.llm.ToolCall;
 import top.focess.veto.api.plugin.Scope;
 import top.focess.veto.contract.Delta;
 import top.focess.veto.contract.Frame;
 
 class AgentEventsTest {
+    @Test
+    void liveApprovalIncludesBothScreeningDimensions() {
+        var frames = new ArrayList<Frame.ScopedFrame>();
+        var events =
+                new AgentEvents(
+                        "agent",
+                        new ObjectMapper(),
+                        frames::add,
+                        UUID.randomUUID(),
+                        UUID.randomUUID());
+        events.emitVetoRequired(
+                new ToolCall("tool", Map.of(), "call"),
+                new ApprovalDecision.Prompt(
+                        VetoScenario.GENERIC,
+                        List.of(VetoOption.EXEC_DECLINE),
+                        Danger.DANGEROUS,
+                        Relevance.LOW),
+                List.of(VetoOption.EXEC_DECLINE),
+                42);
+        var frame = assertInstanceOf(Frame.Veto.class, frames.getFirst());
+        assertEquals("DANGEROUS", frame.danger());
+        assertEquals("LOW", frame.relevance());
+        assertEquals(42, frame.seq());
+    }
+
     @Test
     void completionPublishesExactlyOneScopedOutcome() {
         var frames = new ArrayList<Frame.ScopedFrame>();
@@ -53,7 +83,8 @@ class AgentEventsTest {
                                         session.toString(),
                                         "agent"),
                                 "successful-request",
-                                Map.of("turnNumber", 8),
+                                8,
+                                false,
                                 "ok")),
                 frames);
     }

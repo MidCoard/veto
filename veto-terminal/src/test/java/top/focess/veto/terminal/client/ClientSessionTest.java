@@ -15,7 +15,6 @@ import org.junit.jupiter.api.Test;
 import top.focess.veto.api.plugin.Scope;
 import top.focess.veto.contract.Delta;
 import top.focess.veto.contract.Frame;
-import top.focess.veto.contract.FrameMeta;
 import top.focess.veto.contract.ProtocolClient;
 
 /**
@@ -181,9 +180,7 @@ class ClientSessionTest {
         ClientSession s = new ClientSession(v);
         s.submit("first"); // RUNNING
         s.onFrame(new Frame.Prompt("pw", false)); // PROMPTED
-        s.onFrame(
-                new Frame.Done(
-                        Map.of(), null)); // terminal raced the reply → RUNNING (idle dispatch)
+        s.onFrame(new Frame.Done(null)); // terminal raced the reply → RUNNING (idle dispatch)
         assertEquals(ClientSession.State.IDLE, s.state());
         assertNull(s.promptView().activePrompt());
 
@@ -215,6 +212,7 @@ class ClientSessionTest {
                         "EXEC_NETWORK",
                         List.of("ACCEPT_COMMAND", "EXEC_DECLINE"),
                         Map.of("command", "echo hi"),
+                        null,
                         null,
                         42);
         s.onFrame(payload);
@@ -330,7 +328,8 @@ class ClientSessionTest {
         RecordingView v = new RecordingView();
         ClientSession s = new ClientSession(v);
 
-        Frame f = s.onFrame(new Frame.Done(Map.of(FrameMeta.USERNAME, "alice"), null));
+        s.onFrame(new Delta(null, new Delta.TerminalState("alice", 0)));
+        Frame f = s.onFrame(new Frame.Done(null));
 
         assertNull(f);
         assertEquals(ClientSession.State.IDLE, s.state());
@@ -414,8 +413,8 @@ class ClientSessionTest {
         s.submit("second"); // enqueued
 
         v.events.clear();
-        Frame f =
-                requireFrame(s.onFrame(new Frame.Done(Map.of(FrameMeta.USERNAME, "alice"), null)));
+        s.onFrame(new Delta(null, new Delta.TerminalState("alice", 0)));
+        Frame f = requireFrame(s.onFrame(new Frame.Done(null)));
 
         Frame.Request request = assertInstanceOf(Objects.requireNonNull(Frame.Request.class), f);
         assertEquals("second", request.raw());
@@ -457,7 +456,7 @@ class ClientSessionTest {
         assertEquals(List.of("second"), s.pendingQueue());
 
         v.events.clear();
-        s.onFrame(new Frame.Done(Map.of(), null)); // terminal → dispatch "second"
+        s.onFrame(new Frame.Done(null)); // terminal → dispatch "second"
         assertTrue(v.events.contains("dispatched:second"));
     }
 
@@ -468,7 +467,7 @@ class ClientSessionTest {
         s.submit("first"); // dispatched
 
         v.events.clear();
-        Frame f = s.onFrame(new Frame.Done(Map.of(), null));
+        Frame f = s.onFrame(new Frame.Done(null));
 
         assertNull(f);
         assertEquals(ClientSession.State.IDLE, s.state());
@@ -534,8 +533,8 @@ class ClientSessionTest {
         requirePrompt(s.promptView().activePrompt());
 
         v.events.clear();
-        Frame f =
-                requireFrame(s.onFrame(new Frame.Done(Map.of(FrameMeta.USERNAME, "alice"), null)));
+        s.onFrame(new Delta(null, new Delta.TerminalState("alice", 0)));
+        Frame f = requireFrame(s.onFrame(new Frame.Done(null)));
 
         Frame.Request request = assertInstanceOf(Objects.requireNonNull(Frame.Request.class), f);
         assertEquals("second", request.raw());
@@ -553,7 +552,7 @@ class ClientSessionTest {
         s.onFrame(new Frame.Prompt("pw", false)); // PROMPTED
         requirePrompt(s.promptView().activePrompt());
 
-        Frame f = s.onFrame(new Frame.Done(Map.of(), null));
+        Frame f = s.onFrame(new Frame.Done(null));
 
         assertNull(f);
         assertEquals(ClientSession.State.IDLE, s.state());
@@ -598,21 +597,17 @@ class ClientSessionTest {
     // ═══ meta application ═════════════════════════════════════════════════
 
     @Test
-    void applyMetaUpdatesSnapshot() {
+    void terminalStateUpdatesDisplayWithoutCompletingTheCommand() {
         RecordingView v = new RecordingView();
         ClientSession s = new ClientSession(v);
         s.submit("first");
 
         s.onFrame(
-                new Frame.Done(
-                        Map.of(
-                                FrameMeta.USERNAME,
-                                "alice",
-                                FrameMeta.TURN_NUMBER,
-                                5,
-                                FrameMeta.SESSION,
-                                "sess1"),
-                        null));
+                new Delta(
+                        new Scope.SessionScope(UUID.randomUUID(), "sess1"),
+                        new Delta.TerminalState("alice", 5)));
+        assertEquals(ClientSession.State.RUNNING, s.state());
+        s.onFrame(new Frame.Done(null));
 
         ClientSession.SessionMeta m = s.snapshot();
         assertEquals("alice", m.username());
@@ -627,17 +622,14 @@ class ClientSessionTest {
         ClientSession s = new ClientSession(v);
         s.submit("first");
         s.onFrame(
-                new Frame.Done(
-                        Map.of(
-                                FrameMeta.USERNAME,
-                                "alice",
-                                FrameMeta.TURN_NUMBER,
-                                5,
-                                FrameMeta.SESSION,
-                                "s1"),
-                        null));
+                new Delta(
+                        new Scope.SessionScope(UUID.randomUUID(), "s1"),
+                        new Delta.TerminalState("alice", 5)));
+        assertEquals(ClientSession.State.RUNNING, s.state());
+        s.onFrame(new Frame.Done(null));
 
-        s.onFrame(new Frame.Done(Map.of(FrameMeta.CLEAR_SESSION, true), null));
+        s.onFrame(new Delta(null, new Delta.TerminalState(null, 0)));
+        s.onFrame(new Frame.Done(null));
 
         ClientSession.SessionMeta m = s.snapshot();
         assertNull(m.username());
@@ -650,10 +642,12 @@ class ClientSessionTest {
         RecordingView v = new RecordingView();
         ClientSession s = new ClientSession(v);
         s.submit("first");
-        s.onFrame(new Frame.Done(Map.of(FrameMeta.USERNAME, "alice"), null));
+        s.onFrame(new Delta(null, new Delta.TerminalState("alice", 0)));
+        s.onFrame(new Frame.Done(null));
         v.events.clear();
 
-        s.onFrame(new Frame.Done(Map.of(FrameMeta.USERNAME, "alice"), null)); // same username
+        s.onFrame(new Delta(null, new Delta.TerminalState("alice", 0)));
+        s.onFrame(new Frame.Done(null)); // same username
 
         assertFalse(v.events.stream().anyMatch(e -> e.startsWith("meta:")));
     }
@@ -702,7 +696,8 @@ class ClientSessionTest {
         s.submit("third"); // enqueued → queue = [second, third]
         // The Done sets the username AND dispatches the next queued request ("second") — both in
         // one transition. statusView must reflect both effects from the same moment.
-        s.onFrame(new Frame.Done(Map.of(FrameMeta.USERNAME, "alice"), null));
+        s.onFrame(new Delta(null, new Delta.TerminalState("alice", 0)));
+        s.onFrame(new Frame.Done(null));
 
         ClientSession.StatusView view = s.statusView();
         assertEquals("alice", view.username()); // username just set by the Done

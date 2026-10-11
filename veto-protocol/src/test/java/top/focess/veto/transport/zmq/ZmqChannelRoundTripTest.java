@@ -101,7 +101,7 @@ class ZmqChannelRoundTripTest {
                         Instant.now(),
                         new Delta.ToolCall(null, usage, JsonNodeFactory.instance.objectNode(), 0));
         activeRouter.send(dealerId, event);
-        activeRouter.send(dealerId, new Frame.Done(Map.of(), null));
+        activeRouter.send(dealerId, new Frame.Done(null));
 
         // 4. DEALER receives both, in order.
         Frame f1 = activeDealer.recv(2_000);
@@ -137,7 +137,15 @@ class ZmqChannelRoundTripTest {
         var scope = new Scope.AgentScope(UUID.randomUUID(), UUID.randomUUID().toString(), "agent");
         var request =
                 new Frame.Veto(
-                        scope, "call", "tool", "GENERIC", List.of("DECLINE"), Map.of(), null, 2);
+                        scope,
+                        "call",
+                        "tool",
+                        "GENERIC",
+                        List.of("DECLINE"),
+                        Map.of(),
+                        null,
+                        null,
+                        2);
         router().send(message.identity(), request);
         assertEquals(request, dealer().recv(2_000));
         var reply = new Frame.VetoResult(scope, "call", "DECLINE", 2);
@@ -152,7 +160,7 @@ class ZmqChannelRoundTripTest {
 
     @Test
     void rejectsFramesSentInTheWrongDirection() {
-        assertTrue(dealer().socket.send(FrameCodec.encode(new Frame.Done(Map.of(), null))));
+        assertTrue(dealer().socket.send(FrameCodec.encode(new Frame.Done(null))));
         assertNull(router().recv(2_000));
         dealer().send(new Frame.Heartbeat());
         var message = router().recv(2_000);

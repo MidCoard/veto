@@ -1,16 +1,14 @@
 package top.focess.veto.command;
 
 import java.util.Arrays;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import top.focess.command.*;
+import top.focess.veto.api.plugin.Scope;
 import top.focess.veto.contract.Frame;
 import top.focess.veto.contract.Frame.HintInfo;
-import top.focess.veto.contract.FrameMeta;
 import top.focess.veto.terminal.IpcServer;
 
 /**
@@ -74,9 +72,9 @@ public class CommandRegistry {
     /**
      * Dispatches the raw input string as either a slash-command or a plain-text LLM prompt.
      *
-     * <p>If the trimmed input is empty, returns a {@link Frame.Done} with empty metadata. If it
-     * starts with {@code /}, it is dispatched as a slash-command via {@link CommandManager};
-     * otherwise it is forwarded to the {@link PromptHandler} as an LLM prompt.
+     * <p>If the trimmed input is empty, returns a {@link Frame.Done} without content. If it starts
+     * with {@code /}, it is dispatched as a slash-command via {@link CommandManager}; otherwise it
+     * is forwarded to the {@link PromptHandler} as an LLM prompt.
      *
      * @param sender the command sender for the active terminal session
      * @param raw the raw input string; may be {@code null} or empty
@@ -85,12 +83,12 @@ public class CommandRegistry {
      */
     public Frame.@NonNull TerminalResponse dispatch(@NonNull VetoCommandSender sender, String raw) {
         if (raw == null || raw.isEmpty()) {
-            return new Frame.Done(Map.of(), null);
+            return new Frame.Done(null);
         }
 
         String trimmed = raw.trim();
         if (trimmed.isEmpty()) {
-            return new Frame.Done(Map.of(), null);
+            return new Frame.Done(null);
         }
 
         if (!trimmed.startsWith("/")) {
@@ -129,15 +127,16 @@ public class CommandRegistry {
                     return new Frame.Terminate(((TerminateException) exc).getReason());
                 }
                 if (exc instanceof LogoutException) {
-                    return new Frame.Done(buildDoneMeta(sender, true), null);
+                    publishTerminalState(sender);
+                    return new Frame.Done(null);
                 }
                 String msg = result.getMessage().orElse("Command failed.");
                 return Frame.Error.ofError(msg);
             }
 
             // Success case
-            Map<String, Object> doneMeta = buildDoneMeta(sender, false);
-            return new Frame.Done(doneMeta, null);
+            publishTerminalState(sender);
+            return new Frame.Done(null);
         } catch (Exception e) {
             // Exception messages and causes can echo command arguments, including secrets.
             log.error(
@@ -151,25 +150,18 @@ public class CommandRegistry {
         }
     }
 
-    private @NonNull Map<String, Object> buildDoneMeta(
-            @NonNull VetoCommandSender sender, boolean wasLogout) {
-        Map<String, Object> meta = new HashMap<>();
-        if (wasLogout) {
-            meta.put(FrameMeta.CLEAR_SESSION, true);
-        } else if (sender.isLoggedIn()) {
-            String username = sender.username();
-            if (username != null) {
-                meta.put(FrameMeta.USERNAME, username);
-            }
-            meta.put(FrameMeta.SESSION, sender.terminalId());
-            if (promptHandler != null) {
-                var agent = promptHandler.activeAgent(sender.terminalId());
-                if (agent != null) {
-                    meta.put(FrameMeta.TURN_NUMBER, agent.history().size());
-                }
-            }
-        }
-        return meta;
+    private void publishTerminalState(@NonNull VetoCommandSender sender) {
+        var owner = sender.userId();
+        var session =
+                promptHandler == null ? null : promptHandler.activeSession(sender.terminalId());
+        var agent = promptHandler == null ? null : promptHandler.activeAgent(sender.terminalId());
+        Scope scope =
+                owner == null
+                        ? null
+                        : session == null
+                                ? new Scope.UserScope(owner)
+                                : new Scope.SessionScope(owner, session);
+        sender.terminalState(scope, agent == null ? 0 : agent.history().size());
     }
 
     // ── hint ─────────────────────────────────────────────────────────────

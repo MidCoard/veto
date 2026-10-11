@@ -34,7 +34,6 @@ import top.focess.veto.VetoVersion;
 import top.focess.veto.agent.AgentService;
 import top.focess.veto.agent.intercept.HitlRegistry;
 import top.focess.veto.api.plugin.Scope;
-import top.focess.veto.contract.DAGPayload;
 import top.focess.veto.contract.Delta;
 import top.focess.veto.contract.Frame;
 import top.focess.veto.contract.FrameCodec;
@@ -113,7 +112,8 @@ class VetoWebSocketSecurityTest {
                 new Frame.Done(
                         new Scope.AgentScope(session.getUserId(), session.getId(), "agent"),
                         "request",
-                        Map.of("turnNumber", 2),
+                        2,
+                        false,
                         null);
         try {
             broker.publish(done);
@@ -274,7 +274,7 @@ class VetoWebSocketSecurityTest {
     }
 
     @Test
-    void dagBroadcastHonorsOwnerWithoutEchoingSender() throws Exception {
+    void clientCannotInjectPluginEvents() throws Exception {
         var tokens = new LoginSessionManager();
         var handler =
                 new VetoWebSocketHandler(
@@ -282,33 +282,18 @@ class VetoWebSocketSecurityTest {
                         tokens,
                         mock(AgentService.class),
                         mock(HitlRegistry.class));
-        var token = tokens.createLoginSession(TestUsers.ALICE, "alice");
-        var sender = socket("sender", TestUsers.ALICE, token);
-        var recipient = socket("recipient", TestUsers.ALICE, token);
-        var filtered = socket("filtered", TestUsers.ALICE, token);
-        var foreign =
-                socket("foreign", TestUsers.BOB, tokens.createLoginSession(TestUsers.BOB, "bob"));
-        for (var socket : List.of(sender, recipient, filtered, foreign)) connect(handler, socket);
-        clearInvocations(sender, recipient, filtered, foreign);
+        var sender =
+                socket(
+                        "sender",
+                        TestUsers.ALICE,
+                        tokens.createLoginSession(TestUsers.ALICE, "alice"));
+        connect(handler, sender);
+        clearInvocations(sender);
         handler.handleTextMessage(
-                sender,
-                new TextMessage(
-                        FrameCodec.encodeString(
-                                new Frame.DagPayload(
-                                        DAGPayload.builder().taskType("test").build(),
-                                        "untrusted-source"))));
-        var acknowledgement = ArgumentCaptor.forClass(TextMessage.class);
-        verify(sender).sendMessage(acknowledgement.capture());
-        assertTrue(
-                FrameCodec.decode(acknowledgement.getValue().getPayload())
-                        instanceof Frame.Received);
-        var delivered = ArgumentCaptor.forClass(TextMessage.class);
-        verify(recipient).sendMessage(delivered.capture());
-        if (!(FrameCodec.decode(delivered.getValue().getPayload()) instanceof Frame.DagPayload dag))
-            throw new AssertionError("Missing DAG payload");
-        assertEquals("sender", dag.source());
-        verify(filtered).sendMessage(ArgumentMatchers.any(TextMessage.class));
-        verify(foreign, never()).sendMessage(ArgumentMatchers.any(TextMessage.class));
+                sender, new TextMessage(FrameCodec.encodeString(Delta.message("forged"))));
+        var reply = ArgumentCaptor.forClass(TextMessage.class);
+        verify(sender).sendMessage(reply.capture());
+        assertTrue(FrameCodec.decode(reply.getValue().getPayload()) instanceof Frame.Error);
     }
 
     @Test
@@ -497,6 +482,7 @@ class VetoWebSocketSecurityTest {
                         List.of("EXEC_DECLINE"),
                         Map.of(),
                         "DANGEROUS",
+                        null,
                         42));
         handler.sendFrame(
                 new Delta(
