@@ -35,7 +35,7 @@ import top.focess.veto.agent.VetoAgent;
 import top.focess.veto.api.llm.ProviderType;
 import top.focess.veto.bus.DeltaBroker;
 import top.focess.veto.command.SessionCommandService;
-import top.focess.veto.contract.EventFrame;
+import top.focess.veto.contract.Delta;
 import top.focess.veto.session.LlmConfig;
 import top.focess.veto.session.SessionService;
 import top.focess.veto.session.SessionService.SessionConfig;
@@ -181,14 +181,17 @@ class SessionCommandMvcTest {
                 .andExpect(status().isAccepted());
         verify(agents).submitNow(eq(SESSION_ID), eq(prompt), any(), eq(TestUsers.OWNER));
         verify(agents, never()).agentsView();
-        var frame = ArgumentCaptor.forClass(EventFrame.class);
+        var frame = ArgumentCaptor.forClass(Delta.class);
         verify(broker).publish(frame.capture());
-        assertEquals(EventFrame.Kind.NOTICE, frame.getValue().kind());
+        assertInstanceOf(Delta.Notice.class, frame.getValue().data());
         assertEquals(UUID.fromString(SESSION_ID), frame.getValue().sessionId());
-        assertFalse(frame.getValue().text().isBlank());
-        assertFalse(frame.getValue().text().contains(prompt.strip()));
-        assertFalse(frame.getValue().text().contains("synthetic-private-argument"));
-        assertFalse(frame.getValue().attrs().containsKey("agentId"));
+        assertFalse(((Delta.Notice) frame.getValue().data()).text().isBlank());
+        assertFalse(((Delta.Notice) frame.getValue().data()).text().contains(prompt.strip()));
+        assertFalse(
+                ((Delta.Notice) frame.getValue().data())
+                        .text()
+                        .contains("synthetic-private-argument"));
+        assertNull(frame.getValue().agentId());
         assertNull(CurrentUser.id());
     }
 

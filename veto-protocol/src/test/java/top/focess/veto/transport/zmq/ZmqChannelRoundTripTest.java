@@ -3,6 +3,9 @@ package top.focess.veto.transport.zmq;
 import static org.junit.jupiter.api.Assertions.*;
 import static top.focess.veto.transport.zmq.ZmqTestSupport.assertInstanceOf;
 
+import com.fasterxml.jackson.databind.node.JsonNodeFactory;
+import java.time.Instant;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.jspecify.annotations.NonNull;
@@ -11,7 +14,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.zeromq.ZContext;
 import org.zeromq.ZMQException;
-import top.focess.veto.contract.EventFrame;
+import top.focess.veto.api.plugin.Scope;
+import top.focess.veto.contract.Delta;
 import top.focess.veto.contract.Frame;
 import top.focess.veto.contract.FrameCodec;
 import top.focess.veto.contract.ServerTransport;
@@ -89,25 +93,25 @@ class ZmqChannelRoundTripTest {
 
         // 3. ROUTER sends Delta then Done to that identity.
         var event =
-                EventFrame.builder()
-                        .sessionId(UUID.randomUUID())
-                        .sequence(17)
-                        .kind(EventFrame.Kind.TOOL_CALL)
-                        .text(usage)
-                        .attr("args", "value")
-                        .build();
+                new Delta(
+                        new Scope.SessionScope(
+                                UUID.fromString("00000000-0000-0000-0000-000000000010"),
+                                (UUID.randomUUID()).toString()),
+                        17,
+                        Instant.now(),
+                        new Delta.ToolCall(null, usage, JsonNodeFactory.instance.objectNode(), 0));
         activeRouter.send(dealerId, event);
         activeRouter.send(dealerId, new Frame.Done(Map.of(), null));
 
         // 4. DEALER receives both, in order.
-        Frame.ServerFrame f1 = activeDealer.recv(2_000);
+        Frame f1 = activeDealer.recv(2_000);
         if (f1 == null) {
             throw new AssertionError("DEALER should receive Delta");
         }
-        assertInstanceOf(EventFrame.class, f1);
+        assertInstanceOf(Delta.class, f1);
         assertEquals(event, f1);
 
-        Frame.ServerFrame f2 = activeDealer.recv(2_000);
+        Frame f2 = activeDealer.recv(2_000);
         if (f2 == null) {
             throw new AssertionError("DEALER should receive Done");
         }
@@ -122,19 +126,43 @@ class ZmqChannelRoundTripTest {
     }
 
     @Test
-    void rejectsExtraMultipartPartsAndWrongDirection() {
+    void rejectsExtraMultipartPartsAndCarriesRequestsInBothDirections() {
         assertTrue(dealer().socket.sendMore("extra"));
-        assertTrue(dealer().socket.send(FrameCodec.encode(new Frame.Heartbeat(1))));
+        assertTrue(dealer().socket.send(FrameCodec.encode(new Frame.Heartbeat())));
         assertNull(router().recv(2_000));
-        assertTrue(dealer().socket.send(FrameCodec.encode(new Frame.Error("wrong direction", 0))));
-        assertNull(router().recv(2_000));
-        dealer().send(new Frame.Heartbeat(2));
+        dealer().send(new Frame.Hint("command", 2));
         var message = router().recv(2_000);
-        if (message == null) throw new AssertionError("Missing valid heartbeat");
-        assertEquals(new Frame.Heartbeat(2), message.frame());
+        if (message == null) throw new AssertionError("Missing client request");
+        assertEquals(new Frame.Hint("command", 2), message.frame());
+        var scope = new Scope.AgentScope(UUID.randomUUID(), UUID.randomUUID().toString(), "agent");
+        var request =
+                new Frame.Veto(
+                        scope, "call", "tool", "GENERIC", List.of("DECLINE"), Map.of(), null, 2);
+        router().send(message.identity(), request);
+        assertEquals(request, dealer().recv(2_000));
+        var reply = new Frame.VetoResult(scope, "call", "DECLINE", 2);
+        dealer().send(reply);
+        var response = router().recv(2_000);
+        if (response == null) throw new AssertionError("Missing client response");
+        assertEquals(reply, response.frame());
+        var hint = new Frame.HintResult(new Frame.HintInfo("argument", null), 2);
+        router().send(message.identity(), hint);
+        assertEquals(hint, dealer().recv(2_000));
+    }
+
+    @Test
+    void rejectsFramesSentInTheWrongDirection() {
+        assertTrue(dealer().socket.send(FrameCodec.encode(new Frame.Done(Map.of(), null))));
+        assertNull(router().recv(2_000));
+        dealer().send(new Frame.Heartbeat());
+        var message = router().recv(2_000);
+        if (message == null) throw new AssertionError("Missing heartbeat");
         assertTrue(router().socket.sendMore(message.identity()));
         assertTrue(router().socket.send(FrameCodec.encode(new Frame.Request("wrong direction"))));
         assertNull(dealer().recv(2_000));
+        var ack = new Frame.HeartbeatAck(Instant.now());
+        router().send(message.identity(), ack);
+        assertEquals(ack, dealer().recv(2_000));
     }
 
     @Test

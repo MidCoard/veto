@@ -1,5 +1,9 @@
 package top.focess.veto.api.plugin;
 
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.annotation.JsonSubTypes;
+import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import java.util.Objects;
 import java.util.UUID;
 import org.jspecify.annotations.NonNull;
@@ -11,6 +15,13 @@ import org.jspecify.annotations.NonNull;
  * are display and authentication values, never scope identity. Storage grants, workflow callbacks,
  * frontend actions and lifecycle events therefore agree on account incarnation.
  */
+@JsonTypeInfo(use = JsonTypeInfo.Id.NAME, property = "type")
+@JsonSubTypes({
+    @JsonSubTypes.Type(value = Scope.GlobalScope.class, name = "global"),
+    @JsonSubTypes.Type(value = Scope.UserScope.class, name = "user"),
+    @JsonSubTypes.Type(value = Scope.SessionScope.class, name = "session"),
+    @JsonSubTypes.Type(value = Scope.AgentScope.class, name = "agent")
+})
 public abstract sealed class Scope
         permits Scope.GlobalScope, Scope.UserScope, Scope.SessionScope, Scope.AgentScope {
     private Scope() {}
@@ -20,6 +31,7 @@ public abstract sealed class Scope
      *
      * @return canonical account UUID, or {@code null} for a global operation
      */
+    @JsonProperty("userId")
     public UUID userId() {
         return null;
     }
@@ -29,6 +41,7 @@ public abstract sealed class Scope
      *
      * @return session identity, or {@code null} for global and user operations
      */
+    @JsonProperty("session")
     public String session() {
         return null;
     }
@@ -38,6 +51,7 @@ public abstract sealed class Scope
      *
      * @return agent identity, or {@code null} unless this is an agent operation
      */
+    @JsonProperty("agent")
     public String agent() {
         return null;
     }
@@ -72,7 +86,8 @@ public abstract sealed class Scope
          * @param userId canonical account UUID attributed by the host
          * @throws NullPointerException when userId is null
          */
-        public UserScope(@NonNull UUID userId) {
+        @JsonCreator
+        public UserScope(@JsonProperty(value = "userId", required = true) @NonNull UUID userId) {
             this.userId = Objects.requireNonNull(userId, "userId");
         }
 
@@ -94,7 +109,10 @@ public abstract sealed class Scope
          * @param session session identity attributed by the host
          * @throws NullPointerException when userId or session is null
          */
-        public SessionScope(@NonNull UUID userId, @NonNull String session) {
+        @JsonCreator
+        public SessionScope(
+                @JsonProperty(value = "userId", required = true) @NonNull UUID userId,
+                @JsonProperty(value = "session", required = true) @NonNull String session) {
             this.userId = Objects.requireNonNull(userId, "userId");
             this.session = Objects.requireNonNull(session, "session");
         }
@@ -133,7 +151,11 @@ public abstract sealed class Scope
          * @param agent agent identity attributed by the host
          * @throws NullPointerException when userId, session, or agent is null
          */
-        public AgentScope(@NonNull UUID userId, @NonNull String session, @NonNull String agent) {
+        @JsonCreator
+        public AgentScope(
+                @JsonProperty(value = "userId", required = true) @NonNull UUID userId,
+                @JsonProperty(value = "session", required = true) @NonNull String session,
+                @JsonProperty(value = "agent", required = true) @NonNull String agent) {
             this.userId = Objects.requireNonNull(userId, "userId");
             this.session = Objects.requireNonNull(session, "session");
             this.agent = Objects.requireNonNull(agent, "agent");

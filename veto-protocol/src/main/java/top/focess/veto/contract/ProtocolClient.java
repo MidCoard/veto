@@ -16,6 +16,10 @@ import org.slf4j.LoggerFactory;
 /**
  * A polling protocol connection. One virtual worker creates, handshakes, uses and closes its
  * transport. Callers exchange typed frames through bounded queues, never through the socket.
+ *
+ * <p>The supplied factory opens a transport on the IO worker and may throw an unchecked setup
+ * failure. It must clean up any resources allocated before failing. A successfully returned
+ * transport belongs to this client and is closed by the same worker.
  */
 public final class ProtocolClient implements AutoCloseable {
     private static final @NonNull Logger log =
@@ -26,10 +30,22 @@ public final class ProtocolClient implements AutoCloseable {
     private final @NonNull Thread ioThread;
     private final @NonNull Version serverProductVersion;
 
+    /**
+     * Connects using the default version, working directory and heartbeat interval.
+     *
+     * @throws RuntimeException if transport creation, handshake or startup waiting fails
+     * @throws Error if transport creation or handshake raises an error
+     */
     public ProtocolClient(@NonNull Supplier<@NonNull ClientTransport> factory) {
         this(factory, Version.UNKNOWN, System.getProperty("user.dir"), 30_000);
     }
 
+    /**
+     * Connects using the default heartbeat interval.
+     *
+     * @throws RuntimeException if transport creation, handshake or startup waiting fails
+     * @throws Error if transport creation or handshake raises an error
+     */
     public ProtocolClient(
             @NonNull Supplier<@NonNull ClientTransport> factory,
             @NonNull Version version,
@@ -37,6 +53,14 @@ public final class ProtocolClient implements AutoCloseable {
         this(factory, version, cwd, 30_000);
     }
 
+    /**
+     * Creates the transport and waits for its handshake before returning.
+     *
+     * @param factory opens a transport on the IO worker; setup failures propagate to this caller
+     * @throws RuntimeException if transport creation, handshake or startup waiting fails
+     * @throws IllegalArgumentException if the heartbeat interval is not positive
+     * @throws Error if transport creation or handshake raises an error
+     */
     public ProtocolClient(
             @NonNull Supplier<@NonNull ClientTransport> factory,
             @NonNull Version version,
@@ -81,6 +105,7 @@ public final class ProtocolClient implements AutoCloseable {
             long heartbeatNanos,
             @NonNull ConnectionState state,
             @NonNull CompletableFuture<@NonNull Version> ready) {
+        // This opens the transport and may throw before the try body is entered.
         try (var transport = factory.get()) {
             try {
                 var productVersion = handshake(transport, version, cwd, state);
@@ -89,10 +114,10 @@ public final class ProtocolClient implements AutoCloseable {
                 communicate(transport, state, heartbeatNanos);
                 transport.send(new Frame.Bye());
             } finally {
-                // Publish closure before the owner starts potentially blocking socket cleanup.
                 state.close();
             }
-        } catch (RuntimeException | Error failure) {
+        } catch (Throwable failure) {
+            // factory.get() can fail before the inner finally; that lifecycle must also end CLOSED.
             state.close();
             if (!ready.completeExceptionally(failure))
                 log.warn("Protocol connection failed ({})", failure.getClass().getSimpleName());
@@ -112,11 +137,7 @@ public final class ProtocolClient implements AutoCloseable {
             if (remaining <= 0) throw new IllegalStateException("Protocol handshake timed out");
             var frame =
                     transport.recv(
-                            Math.max(
-                                    1,
-                                    Math.min(
-                                            POLL_MILLIS,
-                                            TimeUnit.NANOSECONDS.toMillis(remaining))));
+                            Math.clamp(TimeUnit.NANOSECONDS.toMillis(remaining), 1, POLL_MILLIS));
             if (frame == null) continue;
             if (frame instanceof Frame.Welcome welcome) {
                 if (welcome.version() != Frame.PROTOCOL_VERSION)
@@ -144,7 +165,7 @@ public final class ProtocolClient implements AutoCloseable {
             if (state.isClosed()) return;
             long elapsed = System.nanoTime() - lastHeartbeat;
             if (elapsed >= heartbeatNanos) {
-                transport.send(new Frame.Heartbeat(0));
+                transport.send(new Frame.Heartbeat());
                 lastHeartbeat = System.nanoTime();
                 elapsed = 0;
             }
@@ -254,10 +275,8 @@ public final class ProtocolClient implements AutoCloseable {
             return outgoing.pollFirst();
         }
 
-        private Frame.SeqResponse exchange(
-                @NonNull LongFunction<Frame.@NonNull SeqRequest> request,
-                long timeout,
-                @NonNull TimeUnit unit) {
+        private <R extends Frame.SeqRequest & Frame.ClientFrame> Frame.SeqResponse exchange(
+                @NonNull LongFunction<@NonNull R> request, long timeout, @NonNull TimeUnit unit) {
             var response = new CompletableFuture<Frame.@NonNull SeqResponse>();
             long seq;
             synchronized (this) {
@@ -298,7 +317,8 @@ public final class ProtocolClient implements AutoCloseable {
                     return;
                 }
             }
-            if (frame instanceof Frame.SeqResponse sequenced) response.complete(sequenced);
+            Frame.SeqResponse sequenced = (Frame.SeqResponse) frame;
+            response.complete(sequenced);
         }
 
         private synchronized Frame.ServerFrame receive(long remaining) throws InterruptedException {

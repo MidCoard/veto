@@ -95,10 +95,13 @@ final class BoundPluginHost implements PluginHost {
 
     public void publish(
             @NonNull String session, @NonNull String topic, JsonValue.@NonNull ObjectValue facts) {
-        authorize(session);
+        var userId = authorize(session);
         if (plugin.state() != PluginState.ACTIVE || !topic.matches("[a-z][a-z0-9._-]{0,79}"))
             throw new SecurityException("Plugin publication is unavailable");
-        delegate.publish(session, plugin.identity().id() + ":" + topic, facts);
+        delegate.publish(
+                new Scope.SessionScope(userId, session),
+                plugin.identity().id() + ":" + topic,
+                facts);
     }
 
     @Override

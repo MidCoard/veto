@@ -133,6 +133,10 @@ public final class ToolExecutionBoundary {
                 relevance);
     }
 
+    long approvalSequence(@NonNull String callId) {
+        return hitl.sequence(agentId, callId);
+    }
+
     @NonNull InterceptResolution await(@NonNull String callId) {
         var screened = pending.get(callId);
         try {

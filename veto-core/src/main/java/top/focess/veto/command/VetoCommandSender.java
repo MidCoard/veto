@@ -1,5 +1,6 @@
 package top.focess.veto.command;
 
+import java.time.Instant;
 import java.util.UUID;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
@@ -12,7 +13,8 @@ import top.focess.command.AbstractCommandSender;
 import top.focess.command.CommandPermission;
 import top.focess.command.CommandSender;
 import top.focess.veto.agent.intercept.VetoPrompt;
-import top.focess.veto.contract.EventFrame;
+import top.focess.veto.api.plugin.Scope;
+import top.focess.veto.contract.Delta;
 import top.focess.veto.contract.Frame;
 import top.focess.veto.contract.Version;
 import top.focess.veto.terminal.IpcServer;
@@ -23,8 +25,8 @@ import top.focess.veto.vault.UserEntity;
  *
  * <h3>Output</h3>
  *
- * {@link #output(String)} pushes {@code EventFrame} entries onto the shared outbox queue. The IO
- * thread in {@link IpcServer} drains the queue and sends frames on the ZMQ ROUTER socket.
+ * {@link #output(String)} pushes {@code Delta} entries onto the shared outbox queue. The IO thread
+ * in {@link IpcServer} drains the queue and sends frames on the ZMQ ROUTER socket.
  *
  * <h3>Input</h3>
  *
@@ -195,7 +197,7 @@ public final class VetoCommandSender extends AbstractCommandSender {
     // ── output (CommandSender contract) ───────────────────────────────────
 
     /**
-     * Sends a streaming content chunk to the terminal as a {@link EventFrame} frame.
+     * Sends a streaming content chunk to the terminal as a {@link Delta} frame.
      *
      * <p>Null or empty messages are silently ignored. The frame is enqueued to the outbox of the
      * owning {@link IpcServer} and delivered by the IO thread.
@@ -207,16 +209,18 @@ public final class VetoCommandSender extends AbstractCommandSender {
         if (message == null || message.isEmpty()) return;
         ipcServer.send(
                 terminalId,
-                EventFrame.builder()
-                        .sequence(outputSequence.incrementAndGet())
-                        .kind(EventFrame.Kind.COMMAND_MESSAGE)
-                        .text(message)
-                        .build());
+                new Delta(
+                        null,
+                        outputSequence.incrementAndGet(),
+                        Instant.now(),
+                        new Delta.Message(message, null)));
     }
 
     /** Forwards the canonical broker event without translating or rebuilding its payload. */
-    public void sendEvent(@NonNull EventFrame frame) {
-        ipcServer.send(terminalId, frame);
+    public void sendEvent(Frame.@NonNull ScopedFrame frame) {
+        // The command actor owns terminal completion and its pending approval input.
+        if (!(frame instanceof Delta delta)) return;
+        ipcServer.send(terminalId, delta);
     }
 
     // ── input (CommandSender contract overrides & overloads) ──────────────────────────────
@@ -324,24 +328,34 @@ public final class VetoCommandSender extends AbstractCommandSender {
 
     // ── HITL veto ────────────────────────────────────────────────────────
 
-    /**
-     * Sends a HITL veto prompt to the terminal as a {@link Frame.Prompt} carrying a {@link
-     * Frame.VetoPayload}, and stashes the veto's (agentId, callId) so the inbound {@link
-     * Frame.Input} reply (or a {@link Frame.Cancel}) can resolve it. Called from the agent's veto
-     * emission seam (the veto sink), on the agent virtual thread.
-     */
-    public synchronized void sendVetoPrompt(@NonNull VetoPrompt vp) {
-        pendingVeto = new PendingVeto(vp.agentId(), vp.callId());
-        Frame.VetoPayload payload =
-                new Frame.VetoPayload(
-                        vp.agentId(),
+    /** Publishes an approval and retains its identity for an exact VetoResult or cancellation. */
+    public synchronized void sendVetoPrompt(
+            @NonNull UUID userId, @NonNull UUID sessionId, @NonNull VetoPrompt vp) {
+        var scope = new Scope.AgentScope(userId, sessionId.toString(), vp.agentId());
+        pendingVeto = new PendingVeto(scope, vp.callId(), vp.seq());
+        var danger = vp.danger();
+        ipcServer.send(
+                terminalId,
+                new Frame.Veto(
+                        scope,
                         vp.callId(),
                         vp.tool(),
                         vp.scenario().name(),
                         vp.options().stream().map(Enum::name).toList(),
-                        vp.args());
-        String summary = "HITL: " + vp.tool() + " (" + vp.scenario() + ")";
-        ipcServer.send(terminalId, new Frame.Prompt(summary, false, payload));
+                        vp.args(),
+                        danger == null ? null : danger.name(),
+                        vp.seq()));
+    }
+
+    /** A stale or unrelated decision cannot consume the current approval. */
+    public synchronized boolean claimPendingVeto(Frame.@NonNull VetoResult result) {
+        var pending = pendingVeto;
+        if (pending == null
+                || pending.seq() != result.seq()
+                || !pending.scope().equals(result.scope())
+                || !pending.callId().equals(result.callId())) return false;
+        pendingVeto = null;
+        return true;
     }
 
     /**
@@ -355,5 +369,5 @@ public final class VetoCommandSender extends AbstractCommandSender {
     }
 
     /** The (agentId, callId) stashed for a pending veto - the HitlRegistry key + call id. */
-    public record PendingVeto(@NonNull String agentId, @NonNull String callId) {}
+    public record PendingVeto(Scope.@NonNull AgentScope scope, @NonNull String callId, long seq) {}
 }

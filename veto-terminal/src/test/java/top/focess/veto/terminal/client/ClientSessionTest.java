@@ -2,15 +2,18 @@ package top.focess.veto.terminal.client;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
-import top.focess.veto.contract.EventFrame;
+import top.focess.veto.api.plugin.Scope;
+import top.focess.veto.contract.Delta;
 import top.focess.veto.contract.Frame;
 import top.focess.veto.contract.FrameMeta;
 import top.focess.veto.contract.ProtocolClient;
@@ -35,12 +38,12 @@ class ClientSessionTest {
         }
 
         @Override
-        public void onToolCall(@NonNull EventFrame frame) {
-            events.add("tool-call:" + frame.text());
+        public void onToolCall(Delta.@NonNull ToolCall frame) {
+            events.add("tool-call:" + frame.tool());
         }
 
         @Override
-        public void onToolResult(@NonNull EventFrame frame) {
+        public void onToolResult(Delta.@NonNull ToolResult frame) {
             events.add("tool-result:" + frame.text());
         }
 
@@ -55,8 +58,8 @@ class ClientSessionTest {
         }
 
         @Override
-        public void onPrompt(Frame.@NonNull Prompt prompt) {
-            events.add("prompt:" + prompt.content());
+        public void onPrompt(Frame.@NonNull Interaction prompt) {
+            events.add("prompt:" + (prompt instanceof Frame.Prompt text ? text.content() : "veto"));
         }
 
         @Override
@@ -106,22 +109,16 @@ class ClientSessionTest {
                 requireFrame(session.submit("prompt")));
         assertNull(
                 session.onFrame(
-                        EventFrame.builder()
-                                .kind(EventFrame.Kind.TOOL_CALL)
-                                .text("read_file")
-                                .build()));
+                        new Delta(
+                                null,
+                                new Delta.ToolCall(
+                                        null,
+                                        "read_file",
+                                        JsonNodeFactory.instance.objectNode(),
+                                        0))));
         assertNull(
-                session.onFrame(
-                        EventFrame.builder()
-                                .kind(EventFrame.Kind.TOOL_RESULT)
-                                .text("contents")
-                                .build()));
-        assertNull(
-                session.onFrame(
-                        EventFrame.builder()
-                                .kind(EventFrame.Kind.NOTICE)
-                                .text("Server guidance")
-                                .build()));
+                session.onFrame(new Delta(null, new Delta.ToolResult(null, "contents", true, 0))));
+        assertNull(session.onFrame(new Delta(null, new Delta.Notice("Server guidance"))));
         assertTrue(view.events.contains("tool-call:read_file"));
         assertTrue(view.events.contains("tool-result:contents"));
         assertTrue(view.events.contains("delta:Server guidance"));
@@ -133,7 +130,7 @@ class ClientSessionTest {
         RecordingView v = new RecordingView();
         ClientSession s = new ClientSession(v);
 
-        Frame.ClientFrame f = requireFrame(s.submit("hello"));
+        Frame f = requireFrame(s.submit("hello"));
 
         Frame.Request request = assertInstanceOf(Objects.requireNonNull(Frame.Request.class), f);
         assertEquals("hello", request.raw());
@@ -148,7 +145,7 @@ class ClientSessionTest {
         s.submit("first"); // IDLE → RUNNING, dispatched
 
         v.events.clear();
-        Frame.ClientFrame f = s.submit("second"); // RUNNING → enqueue
+        Frame f = s.submit("second"); // RUNNING → enqueue
 
         assertNull(f);
         assertEquals(ClientSession.State.RUNNING, s.state());
@@ -166,7 +163,7 @@ class ClientSessionTest {
         requirePrompt(s.promptView().activePrompt());
         v.events.clear();
 
-        Frame.ClientFrame f = requireFrame(s.submit("secret"));
+        Frame f = requireFrame(s.submit("secret"));
 
         Frame.Input input = assertInstanceOf(Objects.requireNonNull(Frame.Input.class), f);
         assertEquals("secret", input.raw());
@@ -191,7 +188,7 @@ class ClientSessionTest {
         assertNull(s.promptView().activePrompt());
 
         // The user's "reply" arrives after the prompt is gone — it is a new command, not an Input.
-        Frame.ClientFrame f = requireFrame(s.submit("not-a-password"));
+        Frame f = requireFrame(s.submit("not-a-password"));
 
         Frame.Request request = assertInstanceOf(Objects.requireNonNull(Frame.Request.class), f);
         assertEquals("not-a-password", request.raw());
@@ -201,36 +198,40 @@ class ClientSessionTest {
     // ═══ outbound: cancel ════════════════════════════════════════════
 
     @Test
-    void runningVetoPromptExposesVetoPayloadAndSubmitsOptionName() {
-        // A Prompt carrying a VetoPayload must expose the payload in the prompt view (so the
-        // terminal renders a picker), and the user's picker reply is submitted as an Input
-        // carrying the chosen option name (the server's veto-first routing resolves it).
+    void approvalPickerRepliesWithExactApprovalIdentity() {
+        // Approval choices use their own frame and preserve the exact pending call identity.
         RecordingView v = new RecordingView();
         ClientSession s = new ClientSession(v);
         s.submit("first"); // RUNNING
 
-        Frame.VetoPayload payload =
-                new Frame.VetoPayload(
-                        "agent-1",
+        Frame.Veto payload =
+                new Frame.Veto(
+                        new Scope.AgentScope(
+                                UUID.fromString("00000000-0000-0000-0000-000000000010"),
+                                (UUID.randomUUID()).toString(),
+                                "agent-1"),
                         "call-1",
                         "run_command",
                         "EXEC_NETWORK",
                         List.of("ACCEPT_COMMAND", "EXEC_DECLINE"),
-                        Map.of("command", "echo hi"));
-        s.onFrame(new Frame.Prompt("HITL: run_command", false, payload));
+                        Map.of("command", "echo hi"),
+                        null,
+                        42);
+        s.onFrame(payload);
 
         assertEquals(ClientSession.State.PROMPTED, s.state());
-        Frame.Prompt active = requirePrompt(s.promptView().activePrompt());
-        Frame.VetoPayload activePayload = requireVetoPayload(active.veto());
+        Frame.Veto activePayload = requireVeto(s.promptView().activePrompt());
         assertEquals("call-1", activePayload.callId());
         assertEquals("run_command", activePayload.tool());
         assertEquals(List.of("ACCEPT_COMMAND", "EXEC_DECLINE"), activePayload.options());
         assertTrue(v.events.contains("prompted"));
-        assertTrue(v.events.contains("prompt:HITL: run_command"));
+        assertTrue(v.events.contains("prompt:veto"));
 
-        Frame.ClientFrame f = requireFrame(s.submit("ACCEPT_COMMAND"));
-        Frame.Input input = assertInstanceOf(Objects.requireNonNull(Frame.Input.class), f);
-        assertEquals("ACCEPT_COMMAND", input.raw());
+        Frame f = requireFrame(s.submit("ACCEPT_COMMAND"));
+        Frame.VetoResult input =
+                assertInstanceOf(Objects.requireNonNull(Frame.VetoResult.class), f);
+        assertEquals("ACCEPT_COMMAND", input.option());
+        assertEquals(42, input.seq());
         assertEquals(ClientSession.State.RUNNING, s.state());
         assertNull(s.promptView().activePrompt());
     }
@@ -277,27 +278,36 @@ class ClientSessionTest {
     // ═══ inbound: IDLE ═══════════════════════════════════════════════
 
     @Test
-    void idleRejectsOrphanDeltaWithoutDisplay() {
+    void idleDisplaysUnscopedDeltaWithoutStartingACommand() {
         RecordingView v = new RecordingView();
         ClientSession s = new ClientSession(v);
 
-        Frame.ClientFrame f = s.onFrame(EventFrame.command("chunk"));
+        Frame f = s.onFrame(Delta.message("chunk"));
 
         assertNull(f);
         assertEquals(ClientSession.State.IDLE, s.state());
-        assertFalse(v.events.stream().anyMatch(e -> e.startsWith("delta:")));
+        assertTrue(v.events.contains("delta:chunk"));
     }
 
     @Test
-    void idleRejectsOrphanProgressWithoutDisplay() {
+    void idleDisplaysGenericNoticeWithoutDispatch() {
+        var view = new RecordingView();
+        var session = new ClientSession(view);
+        assertNull(session.onFrame(new Delta(null, new Delta.Notice("Context compacted"))));
+        assertEquals(ClientSession.State.IDLE, session.state());
+        assertEquals(List.of("delta:Context compacted"), view.events);
+    }
+
+    @Test
+    void idleDisplaysProgressWithoutDispatch() {
         RecordingView v = new RecordingView();
         ClientSession s = new ClientSession(v);
 
-        Frame.ClientFrame f = s.onFrame(new Frame.Progress("loading", 50));
+        Frame f = s.onFrame(new Delta(null, new Delta.Progress("loading", 50)));
 
         assertNull(f);
         assertEquals(ClientSession.State.IDLE, s.state());
-        assertFalse(v.events.stream().anyMatch(e -> e.startsWith("progress:")));
+        assertTrue(v.events.stream().anyMatch(e -> e.equals("progress:  ⏳ loading")));
     }
 
     @Test
@@ -305,7 +315,7 @@ class ClientSessionTest {
         RecordingView v = new RecordingView();
         ClientSession s = new ClientSession(v);
 
-        Frame.ClientFrame f = s.onFrame(new Frame.Prompt("pw", false));
+        Frame f = s.onFrame(new Frame.Prompt("pw", false));
 
         assertNull(f);
         assertEquals(ClientSession.State.IDLE, s.state());
@@ -320,7 +330,7 @@ class ClientSessionTest {
         RecordingView v = new RecordingView();
         ClientSession s = new ClientSession(v);
 
-        Frame.ClientFrame f = s.onFrame(new Frame.Done(Map.of(FrameMeta.USERNAME, "alice"), null));
+        Frame f = s.onFrame(new Frame.Done(Map.of(FrameMeta.USERNAME, "alice"), null));
 
         assertNull(f);
         assertEquals(ClientSession.State.IDLE, s.state());
@@ -334,7 +344,7 @@ class ClientSessionTest {
         RecordingView v = new RecordingView();
         ClientSession s = new ClientSession(v);
 
-        Frame.ClientFrame f = s.onFrame(Frame.Error.ofError("late"));
+        Frame f = s.onFrame(Frame.Error.ofError("late"));
 
         assertNull(f);
         assertEquals(ClientSession.State.IDLE, s.state());
@@ -349,7 +359,7 @@ class ClientSessionTest {
         ClientSession s = new ClientSession(v);
         s.submit("first"); // RUNNING
 
-        s.onFrame(EventFrame.command("chunk"));
+        s.onFrame(Delta.message("chunk"));
 
         assertTrue(v.events.contains("delta:chunk"));
     }
@@ -362,11 +372,7 @@ class ClientSessionTest {
         ClientSession s = new ClientSession(v);
         s.submit("first"); // RUNNING
 
-        s.onFrame(
-                EventFrame.builder()
-                        .kind(EventFrame.Kind.ASSISTANT_THOUGHT)
-                        .text("reasoning chunk")
-                        .build());
+        s.onFrame(new Delta(null, new Delta.Thought("reasoning chunk", 0)));
 
         assertTrue(v.events.contains("thought:reasoning chunk"));
         assertFalse(
@@ -380,7 +386,7 @@ class ClientSessionTest {
         ClientSession s = new ClientSession(v);
         s.submit("first"); // RUNNING
 
-        s.onFrame(new Frame.Progress("loading", 50));
+        s.onFrame(new Delta(null, new Delta.Progress("loading", 50)));
 
         assertTrue(v.events.stream().anyMatch(e -> e.equals("progress:  ⏳ loading")));
     }
@@ -408,7 +414,7 @@ class ClientSessionTest {
         s.submit("second"); // enqueued
 
         v.events.clear();
-        Frame.ClientFrame f =
+        Frame f =
                 requireFrame(s.onFrame(new Frame.Done(Map.of(FrameMeta.USERNAME, "alice"), null)));
 
         Frame.Request request = assertInstanceOf(Objects.requireNonNull(Frame.Request.class), f);
@@ -462,7 +468,7 @@ class ClientSessionTest {
         s.submit("first"); // dispatched
 
         v.events.clear();
-        Frame.ClientFrame f = s.onFrame(new Frame.Done(Map.of(), null));
+        Frame f = s.onFrame(new Frame.Done(Map.of(), null));
 
         assertNull(f);
         assertEquals(ClientSession.State.IDLE, s.state());
@@ -479,7 +485,7 @@ class ClientSessionTest {
         s.submit("second"); // queued
 
         v.events.clear();
-        Frame.ClientFrame f = requireFrame(s.onFrame(Frame.Error.ofError("boom")));
+        Frame f = requireFrame(s.onFrame(Frame.Error.ofError("boom")));
 
         Frame.Request request = assertInstanceOf(Objects.requireNonNull(Frame.Request.class), f);
         assertEquals("second", request.raw());
@@ -495,7 +501,7 @@ class ClientSessionTest {
         s.submit("first");
         s.onFrame(new Frame.Prompt("pw", false)); // PROMPTED
 
-        s.onFrame(EventFrame.command("chunk"));
+        s.onFrame(Delta.message("chunk"));
 
         assertTrue(v.events.contains("delta:chunk"));
         assertEquals(ClientSession.State.PROMPTED, s.state());
@@ -528,7 +534,7 @@ class ClientSessionTest {
         requirePrompt(s.promptView().activePrompt());
 
         v.events.clear();
-        Frame.ClientFrame f =
+        Frame f =
                 requireFrame(s.onFrame(new Frame.Done(Map.of(FrameMeta.USERNAME, "alice"), null)));
 
         Frame.Request request = assertInstanceOf(Objects.requireNonNull(Frame.Request.class), f);
@@ -547,7 +553,7 @@ class ClientSessionTest {
         s.onFrame(new Frame.Prompt("pw", false)); // PROMPTED
         requirePrompt(s.promptView().activePrompt());
 
-        Frame.ClientFrame f = s.onFrame(new Frame.Done(Map.of(), null));
+        Frame f = s.onFrame(new Frame.Done(Map.of(), null));
 
         assertNull(f);
         assertEquals(ClientSession.State.IDLE, s.state());
@@ -563,7 +569,7 @@ class ClientSessionTest {
         s.onFrame(new Frame.Prompt("pw", false)); // PROMPTED
         requirePrompt(s.promptView().activePrompt());
 
-        Frame.ClientFrame f = requireFrame(s.onFrame(Frame.Error.ofError("boom")));
+        Frame f = requireFrame(s.onFrame(Frame.Error.ofError("boom")));
 
         Frame.Request request = assertInstanceOf(Objects.requireNonNull(Frame.Request.class), f);
         assertEquals("second", request.raw());
@@ -582,7 +588,7 @@ class ClientSessionTest {
         s.onFrame(new Frame.Prompt("pw", false)); // PROMPTED
         requirePrompt(s.promptView().activePrompt());
 
-        Frame.ClientFrame f = s.onFrame(new Frame.Terminate("bye now"));
+        Frame f = s.onFrame(new Frame.Terminate("bye now"));
 
         assertNull(f); // no dispatch on terminate
         assertTrue(v.events.contains("terminate:bye now"));
@@ -739,18 +745,17 @@ class ClientSessionTest {
         }
     }
 
-    private static Frame.@NonNull ClientFrame requireFrame(Frame.ClientFrame frame) {
+    private static @NonNull Frame requireFrame(Frame frame) {
         if (frame == null) {
             throw new AssertionError("Expected a client frame");
         }
         return frame;
     }
 
-    private static Frame.@NonNull Prompt requirePrompt(Frame.Prompt prompt) {
-        if (prompt == null) {
-            throw new AssertionError("Expected an active prompt");
-        }
-        return prompt;
+    private static Frame.@NonNull Prompt requirePrompt(Frame.Interaction prompt) {
+        if (!(prompt instanceof Frame.Prompt text))
+            throw new AssertionError("Expected an active text prompt");
+        return text;
     }
 
     private static Frame.@NonNull Cancel requireCancel(Frame.Cancel cancel) {
@@ -760,10 +765,8 @@ class ClientSessionTest {
         return cancel;
     }
 
-    private static Frame.@NonNull VetoPayload requireVetoPayload(Frame.VetoPayload payload) {
-        if (payload == null) {
-            throw new AssertionError("The veto payload should be exposed in the prompt view");
-        }
-        return payload;
+    private static Frame.@NonNull Veto requireVeto(Frame.Interaction payload) {
+        if (!(payload instanceof Frame.Veto veto)) throw new AssertionError("Expected an approval");
+        return veto;
     }
 }

@@ -9,24 +9,22 @@ import com.fasterxml.jackson.annotation.Nulls;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import org.jspecify.annotations.NonNull;
+import top.focess.veto.api.plugin.Scope;
 
 /**
  * Transport-neutral application protocol shared by terminal, browser and backend. Every JSON frame
  * has one type discriminator, regardless of its socket transport.
  *
- * <h3>Directional safety</h3>
+ * <p>Direction and exchange role are independent: a ServerFrame can be a SeqRequest, and a
+ * ClientFrame can be its SeqResponse. Transport APIs enforce direction; correlation uses role.
  *
- * <ul>
- *   <li>{@link ClientFrame} — frames sent <b>from a client to the backend</b>.
- *   <li>{@link ServerFrame} — frames sent <b>from the backend to a client</b>.
- * </ul>
+ * <h3>Request/response correlation</h3>
  *
- * <h3>Sequence number convention</h3>
- *
- * Only frames that initiate a <b>determined single-response exchange</b> carry a {@code seq}
- * number. The server echoes the same {@code seq} in its response so the client can correlate
- * request/response pairs synchronously.
+ * Either peer may initiate an exchange. Requests carry a sequence allocated by their sender;
+ * responses echo that sequence. Receiving a request never completes a locally pending request.
+ * Endpoints decide which application operations they accept, independently of these wire types.
  *
  * <p>Frames with indeterminate output (e.g. {@link Request} which may produce 0, 1, or many
  * streaming frames) do <b>not</b> carry a {@code seq}. Fire-and-forget frames ({@link Cancel},
@@ -49,49 +47,52 @@ import org.jspecify.annotations.NonNull;
     @JsonSubTypes.Type(value = Frame.HintResult.class, name = "hint_result"),
     @JsonSubTypes.Type(value = Frame.Done.class, name = "done"),
     @JsonSubTypes.Type(value = Frame.Error.class, name = "error"),
-    @JsonSubTypes.Type(value = EventFrame.class, name = "event"),
-    @JsonSubTypes.Type(value = Frame.Progress.class, name = "progress"),
+    @JsonSubTypes.Type(value = Delta.class, name = "delta"),
     @JsonSubTypes.Type(value = Frame.Prompt.class, name = "prompt"),
+    @JsonSubTypes.Type(value = Frame.Veto.class, name = "veto"),
+    @JsonSubTypes.Type(value = Frame.VetoResult.class, name = "veto_result"),
     @JsonSubTypes.Type(value = Frame.Terminate.class, name = "terminate"),
     @JsonSubTypes.Type(value = Frame.HeartbeatAck.class, name = "heartbeat_ack"),
-    @JsonSubTypes.Type(value = Frame.Subscribe.class, name = "subscribe"),
-    @JsonSubTypes.Type(value = Frame.Unsubscribe.class, name = "unsubscribe"),
-    @JsonSubTypes.Type(value = Frame.Process.class, name = "veto.process"),
     @JsonSubTypes.Type(value = Frame.Received.class, name = "dag.received"),
-    @JsonSubTypes.Type(value = Frame.DagPayload.class, name = "dag.payload"),
-    @JsonSubTypes.Type(value = Frame.VetoResult.class, name = "veto.result"),
-    @JsonSubTypes.Type(value = Frame.Subscribed.class, name = "subscribed"),
-    @JsonSubTypes.Type(value = Frame.Unsubscribed.class, name = "unsubscribed")
+    @JsonSubTypes.Type(value = Frame.DagPayload.class, name = "dag.payload")
 })
-public sealed interface Frame permits Frame.ClientFrame, Frame.ServerFrame {
+public sealed interface Frame
+        permits Frame.ClientFrame,
+                Frame.ServerFrame,
+                Frame.SeqRequest,
+                Frame.SeqResponse,
+                Frame.ScopedFrame {
 
-    /** Current protocol version. Increment when frame types or semantics change incompatibly. */
-    int PROTOCOL_VERSION = 2;
-
-    // ══════════════════════════════════════════════════════════════════════
-    // Client → Server
-    // ══════════════════════════════════════════════════════════════════════
-
-    /**
-     * Frames sent from a client to the backend.
-     *
-     * <p>Only frames that expect a <b>determined single response</b> carry a {@code seq}: these
-     * implement {@link SeqRequest}. All others are fire-and-forget or have indeterminate output.
-     */
+    /** Frames sent by a client: both client requests and replies to server requests. */
     sealed interface ClientFrame extends Frame
-            permits SeqRequest,
+            permits Hello,
                     Request,
+                    Complete,
+                    Hint,
                     Input,
                     Cancel,
                     Bye,
                     Heartbeat,
-                    Subscribe,
-                    Unsubscribe,
-                    Process,
+                    VetoResult,
                     DagPayload {}
 
-    /** Marker interface for all seq-based client requests. */
-    sealed interface SeqRequest extends ClientFrame permits Hello, Complete, Hint {
+    /** Frames sent by the backend: both server requests and replies to client requests. */
+    sealed interface ServerFrame extends Frame
+            permits Welcome,
+                    CompleteResult,
+                    HintResult,
+                    TerminalResponse,
+                    Interaction,
+                    Delta,
+                    HeartbeatAck,
+                    Received,
+                    DagPayload {}
+
+    /** Current protocol version. Increment when frame types or semantics change incompatibly. */
+    int PROTOCOL_VERSION = 6;
+
+    /** A request initiated by either peer. */
+    sealed interface SeqRequest extends Frame permits Hello, Complete, Hint, Veto {
         /**
          * Returns the sequence number associated with this request.
          *
@@ -101,8 +102,8 @@ public sealed interface Frame permits Frame.ClientFrame, Frame.ServerFrame {
     }
 
     /**
-     * Optional protocol negotiation, required by the terminal on connect. The backend responds with
-     * a {@link Welcome} echoing the same {@code seq}.
+     * Protocol negotiation, required before application traffic on every connection. The backend
+     * responds with a {@link Welcome} echoing the same {@code seq}.
      *
      * <p>Authentication belongs to the application. Browser WebSockets require a valid login token
      * at the HTTP upgrade and on each frame; terminal account commands authenticate the local
@@ -126,15 +127,14 @@ public sealed interface Frame permits Frame.ClientFrame, Frame.ServerFrame {
                     @NonNull Version productVersion,
             @JsonProperty(value = "cwd", required = true) @JsonSetter(nulls = Nulls.FAIL)
                     @NonNull String cwd)
-            implements SeqRequest {}
+            implements ClientFrame, SeqRequest {}
 
     /**
      * User typed a command or plain-text prompt.
      *
-     * <p>The response is <b>indeterminate</b> — the backend may emit zero or more {@link
-     * EventFrame}, {@link Prompt}, {@link Progress} frames before a terminal {@link Done} or {@link
-     * Error}. Because there is no single determined response, this frame does <b>not</b> carry a
-     * {@code seq}.
+     * <p>The response is <b>indeterminate</b> — the backend may emit zero or more {@link Delta},
+     * {@link Prompt} frames before a terminal {@link Done} or {@link Error}. Because there is no
+     * single determined response, this frame does <b>not</b> carry a {@code seq}.
      */
     record Request(
             @JsonProperty(value = "raw", required = true) @JsonSetter(nulls = Nulls.FAIL)
@@ -143,7 +143,7 @@ public sealed interface Frame permits Frame.ClientFrame, Frame.ServerFrame {
 
     /**
      * Tab-completion query. Backend responds with exactly one {@link CompleteResult} carrying
-     * newline-separated suggestions, echoing the same {@code seq}.
+     * structured completion candidates, echoing the same {@code seq}.
      *
      * @param seq monotonic sequence number for correlating with the response
      */
@@ -151,7 +151,7 @@ public sealed interface Frame permits Frame.ClientFrame, Frame.ServerFrame {
             @JsonProperty(value = "raw", required = true) @JsonSetter(nulls = Nulls.FAIL)
                     @NonNull String raw,
             @JsonProperty(value = "seq", required = true) @JsonSetter(nulls = Nulls.FAIL) long seq)
-            implements SeqRequest {}
+            implements ClientFrame, SeqRequest {}
 
     /**
      * Requests a placeholder hint for the next expected argument. The backend responds with exactly
@@ -164,7 +164,7 @@ public sealed interface Frame permits Frame.ClientFrame, Frame.ServerFrame {
             @JsonProperty(value = "raw", required = true) @JsonSetter(nulls = Nulls.FAIL)
                     @NonNull String raw,
             @JsonProperty(value = "seq", required = true) @JsonSetter(nulls = Nulls.FAIL) long seq)
-            implements SeqRequest {}
+            implements ClientFrame, SeqRequest {}
 
     /** User replied to a backend-issued {@link Prompt}. Fire-and-forget. */
     record Input(
@@ -184,40 +184,33 @@ public sealed interface Frame permits Frame.ClientFrame, Frame.ServerFrame {
     /** Terminal is shutting down cleanly — backend should release resources. Fire-and-forget. */
     record Bye() implements ClientFrame {}
 
-    /** Periodic keep-alive; the server echoes its sequence in HeartbeatAck. */
-    record Heartbeat(
-            @JsonProperty(value = "seq", required = true) @JsonSetter(nulls = Nulls.FAIL) long seq)
-            implements ClientFrame {}
+    /** Periodic keep-alive; only one acknowledgement is outstanding per connection. */
+    record Heartbeat() implements ClientFrame {}
 
-    // ══════════════════════════════════════════════════════════════════════
-    // Server → Client
-    // ══════════════════════════════════════════════════════════════════════
+    /** Application output whose scope is absent only for connection-local output. */
+    sealed interface ScopedFrame extends Frame
+            permits Delta, Done, Error, Veto, VetoResult, Prompt {
+        Scope scope();
 
-    /**
-     * Frames sent from the backend to a client.
-     *
-     * <p>Only frames that are <b>direct responses</b> to a sequenced client frame carry a {@code
-     * seq}: these implement {@link SeqResponse}. Streaming frames ({@link EventFrame}, {@link
-     * Progress}, {@link Prompt}, {@link Done}) do not carry a {@code seq}.
-     */
-    sealed interface ServerFrame extends Frame
-            permits SeqResponse,
-                    TerminalResponse,
-                    EventFrame,
-                    Progress,
-                    Prompt,
-                    HeartbeatAck,
-                    Received,
-                    DagPayload,
-                    VetoResult,
-                    Subscribed,
-                    Unsubscribed {}
+        @JsonIgnore
+        default UUID sessionId() {
+            var scope = scope();
+            var session = scope == null ? null : scope.session();
+            return session == null ? null : UUID.fromString(session);
+        }
 
-    /** Marker interface for all seq-based server response frames. */
-    sealed interface SeqResponse extends ServerFrame
-            permits Welcome, CompleteResult, HintResult, Error {
+        @JsonIgnore
+        default String agentId() {
+            var scope = scope();
+            return scope == null ? null : scope.agent();
+        }
+    }
+
+    /** A response to a request initiated by either peer. */
+    sealed interface SeqResponse extends Frame
+            permits Welcome, CompleteResult, HintResult, Error, VetoResult {
         /**
-         * Returns the sequence number echoed from the initiating sequenced client request.
+         * Returns the sequence number echoed from the initiating sequenced request.
          *
          * @return the sequence number; {@code 0} when not correlated to a sequenced request (e.g.
          *     an {@link Error} replying to a {@link Request})
@@ -242,7 +235,7 @@ public sealed interface Frame permits Frame.ClientFrame, Frame.ServerFrame {
             @JsonProperty(value = "seq", required = true) @JsonSetter(nulls = Nulls.FAIL) long seq,
             @JsonProperty(value = "productVersion", required = true) @JsonSetter(nulls = Nulls.FAIL)
                     @NonNull Version productVersion)
-            implements SeqResponse {}
+            implements ServerFrame, SeqResponse {}
 
     /**
      * An autocomplete candidate returned in a {@link CompleteResult}.
@@ -267,7 +260,7 @@ public sealed interface Frame permits Frame.ClientFrame, Frame.ServerFrame {
             @JsonProperty(value = "candidates", required = true) @JsonSetter(nulls = Nulls.FAIL)
                     @NonNull List<Completion> candidates,
             @JsonProperty(value = "seq", required = true) @JsonSetter(nulls = Nulls.FAIL) long seq)
-            implements SeqResponse {}
+            implements ServerFrame, SeqResponse {}
 
     /**
      * Information about the autocomplete hint for the next expected argument.
@@ -303,22 +296,30 @@ public sealed interface Frame permits Frame.ClientFrame, Frame.ServerFrame {
             @JsonProperty(value = "hint", required = true) @JsonSetter(nulls = Nulls.FAIL)
                     @NonNull HintInfo hint,
             @JsonProperty(value = "seq", required = true) @JsonSetter(nulls = Nulls.FAIL) long seq)
-            implements SeqResponse {}
+            implements ServerFrame, SeqResponse {}
 
     /**
      * Terminal frame — response complete.
      *
-     * <p>Done is at the end of a sequence of event and progress frames. It does not carry a
-     * sequence number.
+     * <p>Done ends a sequence of delta frames. Session/agent/request identity identifies an agent
+     * completion; null identity denotes a terminal command completion. It does not carry a sequence
+     * number.
      *
      * @param meta session metadata (username, turn number, flags, etc.)
      * @param content optional content string
      */
     record Done(
+            Scope scope,
+            String requestId,
             @JsonProperty(value = "meta", required = true) @JsonSetter(nulls = Nulls.FAIL)
                     @NonNull Map<String, Object> meta,
             String content)
-            implements TerminalResponse {
+            implements TerminalResponse, ScopedFrame {
+        /** Connection-scoped command completion, emitted by the terminal command actor. */
+        public Done(@NonNull Map<String, Object> meta, String content) {
+            this(null, null, meta, content);
+        }
+
         /** Typed, null-safe accessor for {@link FrameMeta#USERNAME}. */
         public String username() {
             return FrameMeta.username(meta);
@@ -350,10 +351,17 @@ public sealed interface Frame permits Frame.ClientFrame, Frame.ServerFrame {
      * @param seq echoed from the initiating frame; 0 when not correlated to a sequenced request
      */
     record Error(
+            Scope scope,
+            String requestId,
+            Integer turnNumber,
             @JsonProperty(value = "content", required = true) @JsonSetter(nulls = Nulls.FAIL)
                     @NonNull String content,
             @JsonProperty(value = "seq", required = true) @JsonSetter(nulls = Nulls.FAIL) long seq)
-            implements SeqResponse, TerminalResponse {
+            implements SeqResponse, TerminalResponse, ScopedFrame {
+        public Error(@NonNull String content, long seq) {
+            this(null, null, null, content, seq);
+        }
+
         /**
          * Creates an uncorrelated error ({@code seq = 0}), e.g. a reply to a {@link Request} which
          * carries no sequence number.
@@ -366,76 +374,26 @@ public sealed interface Frame permits Frame.ClientFrame, Frame.ServerFrame {
         }
     }
 
-    /**
-     * Optional progress hint between deltas.
-     *
-     * @param percent completion percentage 0–100, or {@link #INDETERMINATE} when unknown
-     */
-    record Progress(
-            @JsonProperty(value = "content", required = true) @JsonSetter(nulls = Nulls.FAIL)
-                    @NonNull String content,
-            @JsonProperty(value = "percent", required = true) @JsonSetter(nulls = Nulls.FAIL)
-                    int percent)
-            implements ServerFrame {
-        /** Value for {@link #percent} when progress cannot be expressed as a percentage. */
-        public static final int INDETERMINATE = -1;
+    /** A user interaction rendered by the terminal: text input or an approval picker. */
+    sealed interface Interaction extends ServerFrame permits Prompt, Veto {}
 
-        /** True when this progress indicator has no known completion percentage. */
-        public boolean isIndeterminate() {
-            return percent == INDETERMINATE;
-        }
-    }
-
-    /**
-     * Backend requests user input — pauses the stream; terminal writes an {@link Input} frame in
-     * reply.
-     *
-     * <p>Two shapes share one frame type:
-     *
-     * <ul>
-     *   <li><b>Free-text prompt</b> ({@code veto == null}) - the terminal renders {@code content}
-     *       as an input field (optionally masked) and replies with the typed line.
-     *   <li><b>HITL veto</b> ({@code veto != null}) - the terminal renders a picker from {@link
-     *       VetoPayload#options()} and replies with the chosen option name as the {@link
-     *       Input#raw()} string. Parking stays server-side (the agent parks in the HitlRegistry);
-     *       the reply is correlated by the 1:1 request invariant (at most one veto pending per
-     *       session at a time), so the {@code Input} carries only the option name.
-     * </ul>
-     *
-     * @param content the prompt message content to display
-     * @param mask whether to mask the user's input characters (e.g. for password fields); always
-     *     {@code false} for a veto picker
-     * @param veto the optional HITL veto payload; {@code null} for a free-text prompt
-     */
+    /** Terminal-only text input; the client answers with Input. */
     record Prompt(
+            Scope scope,
             @JsonProperty(value = "content", required = true) @JsonSetter(nulls = Nulls.FAIL)
                     @NonNull String content,
             @JsonProperty(value = "mask", required = true) @JsonSetter(nulls = Nulls.FAIL)
-                    boolean mask,
-            VetoPayload veto)
-            implements ServerFrame {
-        /** Free-text prompt constructor (no veto payload) - keeps existing callers unchanged. */
+                    boolean mask)
+            implements Interaction, ScopedFrame {
         public Prompt(@NonNull String content, boolean mask) {
-            this(content, mask, null);
+            this(null, content, mask);
         }
     }
 
-    /**
-     * The HITL veto payload carried by a {@link Prompt} - everything the terminal needs to render a
-     * picker and reply with a chosen option, in transport-pure types (no core dependency). The
-     * reply is an {@link Input} whose {@code raw} is the chosen option name (one of {@link
-     * #options()}).
-     *
-     * @param agentId the agent (persona) id the veto is parked under - the HitlRegistry key
-     * @param callId the tool-call id the veto is parked under
-     * @param tool the tool name being approved/refused
-     * @param scenario the {@code VetoScenario} name (display + grouping)
-     * @param options the offered option names (VetoOption names); the reply must be one of these
-     * @param args the call's arguments (display-only - the user approves the actual call)
-     */
-    record VetoPayload(
-            @JsonProperty(value = "agentId", required = true) @JsonSetter(nulls = Nulls.FAIL)
-                    @NonNull String agentId,
+    /** Approval request shared by browser and terminal; both clients use the actual agent scope. */
+    record Veto(
+            @JsonProperty(value = "scope", required = true) @JsonSetter(nulls = Nulls.FAIL)
+                    Scope.@NonNull AgentScope scope,
             @JsonProperty(value = "callId", required = true) @JsonSetter(nulls = Nulls.FAIL)
                     @NonNull String callId,
             @JsonProperty(value = "tool", required = true) @JsonSetter(nulls = Nulls.FAIL)
@@ -445,7 +403,24 @@ public sealed interface Frame permits Frame.ClientFrame, Frame.ServerFrame {
             @JsonProperty(value = "options", required = true) @JsonSetter(nulls = Nulls.FAIL)
                     @NonNull List<String> options,
             @JsonProperty(value = "args", required = true) @JsonSetter(nulls = Nulls.FAIL)
-                    @NonNull Map<String, Object> args) {}
+                    @NonNull Map<String, Object> args,
+            String danger,
+            @JsonProperty(value = "seq", required = true) @JsonSetter(nulls = Nulls.FAIL) long seq)
+            implements SeqRequest, Interaction, ScopedFrame {}
+
+    /**
+     * Reply to a Veto request. Echoes its sequence; execution or refusal is reported through
+     * tool-result deltas.
+     */
+    record VetoResult(
+            @JsonProperty(value = "scope", required = true) @JsonSetter(nulls = Nulls.FAIL)
+                    Scope.@NonNull AgentScope scope,
+            @JsonProperty(value = "callId", required = true) @JsonSetter(nulls = Nulls.FAIL)
+                    @NonNull String callId,
+            @JsonProperty(value = "option", required = true) @JsonSetter(nulls = Nulls.FAIL)
+                    @NonNull String option,
+            @JsonProperty(value = "seq", required = true) @JsonSetter(nulls = Nulls.FAIL) long seq)
+            implements ClientFrame, SeqResponse, ScopedFrame {}
 
     /**
      * Sent by the server to forcefully terminate the terminal connection session.
@@ -454,27 +429,11 @@ public sealed interface Frame permits Frame.ClientFrame, Frame.ServerFrame {
      */
     record Terminate(String reason) implements TerminalResponse {}
 
-    /** Acknowledges a heartbeat using the same correlation value on every transport. */
+    /** Acknowledges the outstanding heartbeat on this connection. */
     record HeartbeatAck(
-            @JsonProperty(value = "seq", required = true) @JsonSetter(nulls = Nulls.FAIL) long seq,
             @JsonProperty(value = "timestamp", required = true) @JsonSetter(nulls = Nulls.FAIL)
                     @NonNull Instant timestamp)
             implements ServerFrame {}
-
-    /** Selects a WebSocket delivery topic; omitted topic selects all. */
-    record Subscribe(String topic) implements ClientFrame {}
-
-    /** Removes the connection's topic selection. */
-    record Unsubscribe() implements ClientFrame {}
-
-    /** Requests gateway processing; routing defaults are chosen by the application. */
-    record Process(
-            @JsonProperty(value = "payload", required = true) @JsonSetter(nulls = Nulls.FAIL)
-                    @NonNull String payload,
-            String dagPayloadId,
-            String requestId,
-            String componentSource)
-            implements ClientFrame {}
 
     /** Confirms receipt of a DAG payload. */
     record Received(
@@ -491,36 +450,4 @@ public sealed interface Frame permits Frame.ClientFrame, Frame.ServerFrame {
                     @NonNull DAGPayload data,
             String source)
             implements ClientFrame, ServerFrame {}
-
-    /** Gateway processing outcome. */
-    record VetoResult(
-            @JsonProperty(value = "seq", required = true) @JsonSetter(nulls = Nulls.FAIL) long seq,
-            @JsonProperty(value = "decision", required = true) @JsonSetter(nulls = Nulls.FAIL)
-                    @NonNull String decision,
-            @JsonProperty(value = "processedPayload", required = true)
-                    @JsonSetter(nulls = Nulls.FAIL)
-                    @NonNull String processedPayload,
-            @JsonProperty(value = "reason", required = true) @JsonSetter(nulls = Nulls.FAIL)
-                    @NonNull String reason,
-            @JsonProperty(value = "redactionCount", required = true) @JsonSetter(nulls = Nulls.FAIL)
-                    int redactionCount,
-            @JsonProperty(value = "allowed", required = true) @JsonSetter(nulls = Nulls.FAIL)
-                    boolean allowed,
-            @JsonProperty(value = "timestamp", required = true) @JsonSetter(nulls = Nulls.FAIL)
-                    @NonNull Instant timestamp)
-            implements ServerFrame {}
-
-    /** Confirms a delivery topic. */
-    record Subscribed(
-            @JsonProperty(value = "topic", required = true) @JsonSetter(nulls = Nulls.FAIL)
-                    @NonNull String topic,
-            @JsonProperty(value = "timestamp", required = true) @JsonSetter(nulls = Nulls.FAIL)
-                    @NonNull Instant timestamp)
-            implements ServerFrame {}
-
-    /** Confirms removal of the delivery topic. */
-    record Unsubscribed(
-            @JsonProperty(value = "timestamp", required = true) @JsonSetter(nulls = Nulls.FAIL)
-                    @NonNull Instant timestamp)
-            implements ServerFrame {}
 }

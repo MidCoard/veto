@@ -537,7 +537,7 @@ final class ModelSession {
             return;
         }
         restart(summary);
-        output.compacted(summary, turns.size());
+        output.compacted(turns.size());
     }
 
     @NonNull String summarize(@NonNull List<TurnRecord> turns) {

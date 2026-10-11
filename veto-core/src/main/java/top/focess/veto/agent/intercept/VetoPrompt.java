@@ -30,7 +30,8 @@ public record VetoPrompt(
         @NonNull VetoScenario scenario,
         @NonNull List<VetoOption> options,
         @NonNull Map<String, Object> args,
-        Danger danger) {
+        Danger danger,
+        long seq) {
     /** Compact constructor: defensive copies + null-safe args. */
     public VetoPrompt {
         options = List.copyOf(options);

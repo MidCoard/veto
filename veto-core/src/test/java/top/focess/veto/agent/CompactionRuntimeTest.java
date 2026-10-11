@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -27,10 +28,29 @@ import top.focess.veto.api.llm.LlmOptions;
 import top.focess.veto.api.llm.ProviderType;
 import top.focess.veto.api.llm.VetoResponse;
 import top.focess.veto.bus.SessionInvalidations;
+import top.focess.veto.contract.Delta;
+import top.focess.veto.contract.Frame;
 import top.focess.veto.llm.core.*;
 import top.focess.veto.vault.TestUsers;
 
 class CompactionRuntimeTest {
+    @Test
+    void compactionCompletionUsesGenericNoticeWithoutAnAssistantTurn() {
+        var frames = new ArrayList<Frame.ScopedFrame>();
+        var runner =
+                runner(
+                        (request, modelSessionId) -> new VetoResponse(null, null, "{}"),
+                        frames::add);
+        var history = List.copyOf(runner.output.history());
+        runner.output.compacted(3);
+        assertEquals(history, runner.output.history());
+        assertEquals(1, frames.size());
+        var delta = assertInstanceOf(Delta.class, frames.getFirst());
+        var notice = assertInstanceOf(Delta.Notice.class, delta.data());
+        assertFalse(notice.text().isBlank());
+        assertTrue(delta.sessionId() != null);
+    }
+
     @Test
     void renderedInputIncludesSystemAndProviderWrapperWithinTheChunkBound() {
         AtomicInteger calls = new AtomicInteger();
@@ -126,6 +146,11 @@ class CompactionRuntimeTest {
     }
 
     private @NonNull AgentRunner runner(@NonNull UniformLLMCaller caller) {
+        return runner(caller, AgentEventSink.none());
+    }
+
+    private @NonNull AgentRunner runner(
+            @NonNull UniformLLMCaller caller, @NonNull AgentEventSink sink) {
         String id = UUID.randomUUID().toString();
         var gateway = mock(Gateway.class);
         when(gateway.readHistory()).thenReturn(new ReadHistory());
@@ -151,7 +176,7 @@ class CompactionRuntimeTest {
                 new ObjectMapper(),
                 50,
                 new LlmBinding(ProviderType.ANTHROPIC, "test", "test", LlmOptions.defaults(), null),
-                AgentEventSink.none(),
+                sink,
                 TestUsers.OWNER,
                 null,
                 UUID.fromString(id));

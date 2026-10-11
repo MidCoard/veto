@@ -4,21 +4,32 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CopyOnWriteArrayList;
 import org.junit.jupiter.api.Test;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
-import top.focess.veto.contract.EventFrame;
+import top.focess.veto.contract.Delta;
 import top.focess.veto.model.AgentInstanceRepository;
+import top.focess.veto.model.SessionEntity;
+import top.focess.veto.model.SessionRepository;
+import top.focess.veto.vault.TestUsers;
 
 class SessionInvalidationsTest {
     @Test
     void rollbackDoesNotPublishAndCommitDeliversOnlyResourceNames() throws Exception {
         DeltaBroker broker = new DeltaBroker();
-        List<EventFrame> frames = new CopyOnWriteArrayList<>();
-        broker.subscribeAll(frames::add);
+        List<Delta> frames = new CopyOnWriteArrayList<>();
+        broker.subscribeAll(
+                frame -> {
+                    if (frame instanceof Delta delta) frames.add(delta);
+                });
         AgentInstanceRepository agents = mock(AgentInstanceRepository.class);
-        SessionInvalidations service = new SessionInvalidations(broker, agents);
+        var sessions = mock(SessionRepository.class);
+        var entity = mock(SessionEntity.class);
+        when(entity.getUserId()).thenReturn(TestUsers.OWNER);
+        when(sessions.findById(anyString())).thenReturn(Optional.of(entity));
+        SessionInvalidations service = new SessionInvalidations(broker, agents, sessions);
         try {
             TransactionSynchronizationManager.initSynchronization();
             TransactionSynchronizationManager.setActualTransactionActive(true);
@@ -35,11 +46,10 @@ class SessionInvalidationsTest {
             while (frames.isEmpty() && System.nanoTime() < deadline) Thread.sleep(5);
             assertEquals(1, frames.size());
             assertEquals(session, frames.get(0).sessionId());
-            assertEquals(EventFrame.Kind.SESSION_INVALIDATED, frames.get(0).kind());
+            assertInstanceOf(Delta.SessionInvalidated.class, frames.get(0).data());
             assertEquals(
-                    "[\"agents\",\"execution\"]",
-                    String.valueOf(frames.get(0).attrs().get("resources")));
-            assertEquals("", frames.get(0).text());
+                    List.of("agents", "execution"),
+                    ((Delta.SessionInvalidated) frames.get(0).data()).resources());
         } finally {
             TransactionSynchronizationManager.clear();
             service.close();

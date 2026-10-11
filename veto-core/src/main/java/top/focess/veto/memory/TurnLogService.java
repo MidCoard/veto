@@ -9,8 +9,9 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import top.focess.veto.agent.TurnRecord;
+import top.focess.veto.api.plugin.Scope;
 import top.focess.veto.bus.DeltaBroker;
-import top.focess.veto.contract.EventFrame;
+import top.focess.veto.contract.Delta;
 
 /**
  * The raw-turn write-through log. Called from the {@code AgentRunner} after each turn is appended;
@@ -33,16 +34,14 @@ public class TurnLogService {
     private volatile boolean enabled = true;
     private final @NonNull DeltaBroker deltaBroker;
 
-    private void notifyChanged(@NonNull UUID sessionId, int turnNumber) {
+    private void notifyChanged(@NonNull UUID sessionId, @NonNull UUID userId, int turnNumber) {
         Runnable publish =
                 () -> {
                     try {
                         deltaBroker.publish(
-                                EventFrame.builder()
-                                        .sessionId(sessionId)
-                                        .kind(EventFrame.Kind.RECORD_UPDATED)
-                                        .attr("turnNumber", turnNumber)
-                                        .build());
+                                new Delta(
+                                        new Scope.SessionScope(userId, sessionId.toString()),
+                                        new Delta.RecordUpdated(turnNumber)));
                     } catch (RuntimeException error) {
                         log.warn("Could not publish committed record update", error);
                     }
@@ -96,7 +95,7 @@ public class TurnLogService {
                             turn.turnNumber(),
                             mapper.writeValueAsString(turn.payload()),
                             mapper.writeValueAsString(turn.llmUsage()));
-            if (changed > 0) notifyChanged(sessionId, turn.turnNumber());
+            if (changed > 0) notifyChanged(sessionId, userId, turn.turnNumber());
         } catch (Exception e) {
             log.warn("Could not persist record usage for turn {}", turn.turnNumber(), e);
         }
@@ -117,7 +116,7 @@ public class TurnLogService {
         try {
             turnRecordRepository.save(
                     TurnRecordEntity.of(turn, sessionId, userId, agentId, mapper));
-            notifyChanged(sessionId, turn.turnNumber());
+            notifyChanged(sessionId, userId, turn.turnNumber());
         } catch (RuntimeException e) {
             log.warn("TurnLogService: raw-turn log failed (turn {})", turn.turnNumber(), e);
         }
@@ -133,6 +132,6 @@ public class TurnLogService {
             throw new IllegalStateException("Durable turn logging is unavailable");
         }
         turnRecordRepository.save(TurnRecordEntity.of(turn, sessionId, userId, agentId, mapper));
-        notifyChanged(sessionId, turn.turnNumber());
+        notifyChanged(sessionId, userId, turn.turnNumber());
     }
 }

@@ -18,7 +18,13 @@ public final class AgentRunnerFixture {
         AgentOutput output = mock(AgentOutput.class);
         ModelSession models = mock(ModelSession.class);
         when(models.pluginContext()).thenReturn(PluginContextSnapshot.from(Set.of(), false));
-        var events = new AgentEvents(id, new ObjectMapper(), AgentEventSink.none(), session);
+        var events =
+                new AgentEvents(
+                        id,
+                        new ObjectMapper(),
+                        AgentEventSink.none(),
+                        session,
+                        UUID.fromString("00000000-0000-0000-0000-000000000010"));
         ReflectionTestUtils.setField(output, "events", events);
         ReflectionTestUtils.setField(runner, "output", output);
         ReflectionTestUtils.setField(runner, "models", models);

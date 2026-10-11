@@ -5,52 +5,116 @@ import static org.junit.jupiter.api.Assertions.*;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import top.focess.veto.api.plugin.Scope;
 
 class FrameCodecTest {
 
     @Test
-    @SuppressWarnings(
-            "ConstantValue") // Checker applies the nullable default to synthetic values().
-    void everyStreamingKindPreservesItsCompleteValueAcrossBytesAndText() throws Exception {
-        var attrs = JsonNodeFactory.instance.objectNode();
-        attrs.put("中文", "提示");
-        attrs.putArray("items").add(1).add(true).addNull();
-        var kinds = EventFrame.Kind.values();
-        if (kinds == null) {
-            throw new AssertionError("Enum values are unavailable");
+    void errorUsesTheSameScopeValuesAsPluginOperations() throws Exception {
+        var owner = UUID.randomUUID();
+        var session = UUID.randomUUID().toString();
+        var unscoped = Frame.Error.ofError("connection");
+        var unscopedJson = FrameCodec.encodeString(unscoped);
+        assertEquals(unscoped, FrameCodec.decode(unscopedJson));
+        assertTrue(new ObjectMapper().readTree(unscopedJson).path("scope").isNull());
+        Scope[] scopes = {
+            new Scope.GlobalScope(),
+            new Scope.UserScope(owner),
+            new Scope.SessionScope(owner, session),
+            new Scope.AgentScope(owner, session, "agent")
+        };
+        for (var scope : scopes) {
+            var frame = new Frame.Error(scope, null, null, "failed", 0);
+            String json = FrameCodec.encodeString(frame);
+            assertEquals(frame, FrameCodec.decode(json));
+            var tree = new ObjectMapper().readTree(json);
+            assertFalse(tree.has("sessionId"));
+            assertFalse(tree.has("agentId"));
+            assertTrue(tree.has("scope"));
         }
-        for (var kind : kinds) {
+    }
+
+    @ParameterizedTest
+    @ValueSource(
+            strings = {
+                "{\"type\":\"session\",\"userId\":null,\"session\":\"s\"}",
+                "{\"type\":\"agent\",\"userId\":\"00000000-0000-0000-0000-000000000010\",\"agent\":\"a\"}",
+                "{\"type\":\"agent\",\"userId\":\"00000000-0000-0000-0000-000000000010\",\"session\":\"s\",\"agent\":null}"
+            })
+    void scopedErrorRejectsMissingRequiredIdentity(@NonNull String scope) {
+        assertNull(
+                FrameCodec.decode(
+                        "{\"type\":\"error\",\"scope\":"
+                                + scope
+                                + ",\"content\":\"failed\",\"seq\":0}"));
+    }
+
+    @Test
+    void everyDeltaPayloadPreservesItsTypedValueAcrossBytesAndText() throws Exception {
+        var args = JsonNodeFactory.instance.objectNode();
+        args.put("中文", "提示");
+        args.putArray("items").add(1).add(true).addNull();
+        Delta.Data[] updates = {
+            new Delta.Message("command", null),
+            new Delta.Notice("notice"),
+            new Delta.Thought("thought", 1),
+            new Delta.Message("message", 2),
+            new Delta.ToolCall("call", "tool", args, 3),
+            new Delta.ToolResult("call", "result", true, 4),
+            new Delta.RecordUpdated(5),
+            new Delta.SessionInvalidated(List.of("execution")),
+            new Delta.PluginEvent("topic", args),
+            new Delta.BreakerTripped("limit", 20, 6),
+        };
+        for (var update : updates) {
             var original =
-                    EventFrame.builder()
-                            .sessionId(UUID.randomUUID())
-                            .sequence(42)
-                            .kind(kind)
-                            .text("消息 /compact")
-                            .attr("detail", attrs)
-                            .attr("success", true)
-                            .build();
+                    new Delta(
+                            new Scope.AgentScope(
+                                    UUID.fromString("00000000-0000-0000-0000-000000000010"),
+                                    (UUID.randomUUID()).toString(),
+                                    "agent"),
+                            update);
             var bytes = FrameCodec.encode(original);
             var text = FrameCodec.encodeString(original);
             assertArrayEquals(text.getBytes(StandardCharsets.UTF_8), bytes);
             assertEquals(original, FrameCodec.decode(bytes));
             assertEquals(original, FrameCodec.decode(text));
             var envelope = new ObjectMapper().readTree(text);
-            assertEquals(original.emittedAt().toString(), envelope.path("emittedAt").asText());
-            assertEquals(kind.name(), envelope.path("kind").asText());
-            assertEquals(attrs, envelope.path("attrs").path("detail"));
+            assertEquals("delta", envelope.path("type").asText());
+            assertTrue(envelope.path("data").path("type").isTextual());
+            assertFalse(envelope.has("attrs"));
         }
+    }
+
+    @ParameterizedTest
+    @ValueSource(
+            strings = {
+                "{\"type\":\"thought\",\"turnNumber\":1}",
+                "{\"type\":\"thought\",\"text\":\"x\"}",
+                "{\"type\":\"tool_result\",\"text\":\"x\",\"turnNumber\":1}",
+                "{\"type\":\"tool_call\",\"tool\":\"run\",\"args\":null,\"turnNumber\":1}",
+                "{\"type\":\"unknown\"}"
+            })
+    void invalidDeltaPayloadsAreRejected(@NonNull String data) {
+        String payload =
+                "{\"type\":\"delta\",\"sessionId\":null,\"agentId\":null,"
+                        + "\"sequence\":1,\"emittedAt\":\"2026-10-12T00:00:00Z\",\"data\":"
+                        + data
+                        + "}";
+        assertNull(FrameCodec.decode(payload));
     }
 
     @Test
     void textAndByteTransportsUseTheSameWireContract() {
-        var heartbeat = new Frame.Heartbeat(9);
-        assertEquals("{\"type\":\"heartbeat\",\"seq\":9}", FrameCodec.encodeString(heartbeat));
+        var heartbeat = new Frame.Heartbeat();
+        assertEquals("{\"type\":\"heartbeat\"}", FrameCodec.encodeString(heartbeat));
         Frame original = new Frame.Done(Map.of("username", "alice"), "完成");
         assertArrayEquals(
                 FrameCodec.encodeString(original).getBytes(StandardCharsets.UTF_8),

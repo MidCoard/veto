@@ -40,9 +40,11 @@ import top.focess.veto.api.agent.ToolCallEvent;
 import top.focess.veto.api.agent.ToolResultEvent;
 import top.focess.veto.api.llm.LlmBinding;
 import top.focess.veto.api.llm.ToolResultPresentationMode;
+import top.focess.veto.api.plugin.Scope;
 import top.focess.veto.api.plugin.agent.AgentProfile;
 import top.focess.veto.bus.DeltaBroker;
-import top.focess.veto.contract.EventFrame;
+import top.focess.veto.contract.Delta;
+import top.focess.veto.contract.Frame.Done;
 import top.focess.veto.event.EventManager;
 import top.focess.veto.i18n.Msg;
 import top.focess.veto.integration.plugins.SessionPlugins;
@@ -195,10 +197,10 @@ public class AgentService {
     /**
      * Fire-and-forget submit: resolves (or creates) the agent, binds the model configuration, and
      * starts the episode, returning as soon as the run is enqueued. The episode's progress and
-     * outcome travel as {@link EventFrame} events on the {@code DeltaBroker} (session-scoped), and
-     * the durable result lands in the turn log — callers subscribe and read, they do not block
-     * here. This is the transport shape the web UI uses: REST submits, WebSocket streams, REST GET
-     * history stays the authoritative read.
+     * outcome travel as {@link Delta} updates and {@link Done} completion on the {@code
+     * DeltaBroker} (session-scoped), and the durable result lands in the turn log — callers
+     * subscribe and read, they do not block here. This is the transport shape the web UI uses: REST
+     * submits, WebSocket streams, REST GET history stays the authoritative read.
      */
     public @NonNull RequestHandle submitNow(
             @NonNull String agentKey,
@@ -501,6 +503,11 @@ public class AgentService {
      * (masking per the option). Returns {@code false} if no pending veto exists for the key.
      */
     public boolean resolveVeto(
+            @NonNull String agentId, @NonNull String callId, @NonNull String optionName, long seq) {
+        return hitlRegistry.resolveReply(agentId, callId, optionName, seq);
+    }
+
+    public boolean resolveVeto(
             @NonNull String agentId, @NonNull String callId, @NonNull String optionName) {
         return hitlRegistry.resolveOption(agentId, callId, optionName);
     }
@@ -609,7 +616,9 @@ public class AgentService {
                         objectMapper,
                         maxCallsPerEpisode,
                         binding,
-                        new DeltaBrokerEventSink(persona.id(), sessionId, deltaBroker),
+                        new DeltaBrokerEventSink(
+                                new Scope.AgentScope(userId, sessionId.toString(), persona.id()),
+                                deltaBroker),
                         userId,
                         turnLogService,
                         sessionId);
@@ -696,7 +705,9 @@ public class AgentService {
                         objectMapper,
                         maxCallsPerEpisode,
                         binding,
-                        new DeltaBrokerEventSink(scoped.id(), sessionId, deltaBroker),
+                        new DeltaBrokerEventSink(
+                                new Scope.AgentScope(userId, sessionId.toString(), scoped.id()),
+                                deltaBroker),
                         userId,
                         turnLogService,
                         sessionId);

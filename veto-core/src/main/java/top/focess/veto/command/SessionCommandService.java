@@ -12,8 +12,9 @@ import top.focess.command.CommandManager;
 import top.focess.veto.agent.Agent;
 import top.focess.veto.agent.AgentService;
 import top.focess.veto.api.agent.AgentResult;
+import top.focess.veto.api.plugin.Scope;
 import top.focess.veto.bus.DeltaBroker;
-import top.focess.veto.contract.EventFrame;
+import top.focess.veto.contract.Delta;
 import top.focess.veto.i18n.Msg;
 import top.focess.veto.session.SessionService;
 
@@ -62,23 +63,27 @@ public class SessionCommandService {
     }
 
     /** Plain presentation feedback, never a model-context or account-command operation. */
-    public void notice(@NonNull String sessionId, String agentId, @NonNull String prompt) {
+    public void notice(
+            @NonNull UUID userId,
+            @NonNull String sessionId,
+            String agentId,
+            @NonNull String prompt) {
         if (!prompt.strip().startsWith("/")) return;
-        publishNotice(sessionId, agentId, Msg.get("input.command.asPrompt"));
+        publishNotice(userId, sessionId, agentId, Msg.get("input.command.asPrompt"));
     }
 
-    public void primaryNotice(@NonNull String sessionId, @NonNull String agentId) {
-        publishNotice(sessionId, agentId, Msg.get("input.command.primaryCompaction"));
+    public void primaryNotice(
+            @NonNull UUID userId, @NonNull String sessionId, @NonNull String agentId) {
+        publishNotice(userId, sessionId, agentId, Msg.get("input.command.primaryCompaction"));
     }
 
-    private void publishNotice(@NonNull String sessionId, String agentId, @NonNull String text) {
-        var frame =
-                EventFrame.builder()
-                        .sessionId(UUID.fromString(sessionId))
-                        .kind(EventFrame.Kind.NOTICE)
-                        .text(text);
-        if (agentId != null) frame.attr("agentId", agentId);
-        broker.publish(frame.build());
+    private void publishNotice(
+            @NonNull UUID userId, @NonNull String sessionId, String agentId, @NonNull String text) {
+        Scope scope =
+                agentId == null
+                        ? new Scope.SessionScope(userId, sessionId)
+                        : new Scope.AgentScope(userId, sessionId, agentId);
+        broker.publish(new Delta(scope, new Delta.Notice(text)));
     }
 
     /** Terminal compaction wait; web input returns as soon as execution is queued. */

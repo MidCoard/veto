@@ -14,6 +14,7 @@ import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.atomic.AtomicLong;
 import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Component;
 import top.focess.veto.agent.AgentService;
@@ -98,12 +99,15 @@ public class HitlRegistry {
      */
     private volatile Workspace defaultWorkspace;
 
+    private final @NonNull AtomicLong sequences = new AtomicLong();
+
     /**
      * A pending veto: the future the agent parks on, plus the original call/def/offered-options
      * stashed at {@link #register} time so {@link #resolve} can build a grant without the resolver
      * supplying them (the transport cannot reach a {@link ToolDefinition}).
      */
     record Pending(
+            long seq,
             @NonNull CompletableFuture<@NonNull InterceptResolution> future,
             ToolCall call,
             ToolDefinition def,
@@ -474,11 +478,35 @@ public class HitlRegistry {
         CompletableFuture<@NonNull InterceptResolution> future = new CompletableFuture<>();
         record(agentId, callId, "OPENED", "", "SCREENING", null);
         pending.put(
-                key(agentId, callId), new Pending(future, call, def, options, danger, relevance));
+                key(agentId, callId),
+                new Pending(
+                        sequences.incrementAndGet(),
+                        future,
+                        call,
+                        def,
+                        options,
+                        danger,
+                        relevance));
         invalidations.agentChanged(agentId, "interactions");
         future.whenComplete(
                 (ignored, error) -> invalidations.agentChanged(agentId, "interactions"));
         return future;
+    }
+
+    /** Stable request identity, also included in pending snapshots for reconnecting clients. */
+    public long sequence(@NonNull String agentId, @NonNull String callId) {
+        var value = pending.get(key(agentId, callId));
+        if (value == null) throw new IllegalStateException("Approval is not registered");
+        return value.seq();
+    }
+
+    /** Rejects replies to a different registration of the same tool call. */
+    public boolean resolveReply(
+            @NonNull String agentId, @NonNull String callId, @NonNull String optionName, long seq) {
+        var value = pending.get(key(agentId, callId));
+        return value != null
+                && value.seq() == seq
+                && resolveOption(agentId, callId, optionName, value);
     }
 
     /** Parks the calling (virtual) thread until the user resolves the veto. */
@@ -518,8 +546,16 @@ public class HitlRegistry {
         if (p == null) {
             return false;
         }
+        return resolve(agentId, callId, resolution, p);
+    }
+
+    private boolean resolve(
+            @NonNull String agentId,
+            @NonNull String callId,
+            @NonNull InterceptResolution resolution,
+            @NonNull Pending p) {
         synchronized (p) {
-            if (p.future().isDone()) return false;
+            if (pending.get(key(agentId, callId)) != p || p.future().isDone()) return false;
             PermissionGrant approvedGrant =
                     resolution.createsGrant() && p.call() != null && p.def() != null
                             ? buildGrant(agentId, p.call(), p.def(), resolution)
@@ -559,6 +595,14 @@ public class HitlRegistry {
         if (p == null) {
             return false;
         }
+        return resolveOption(agentId, callId, optionName, p);
+    }
+
+    private boolean resolveOption(
+            @NonNull String agentId,
+            @NonNull String callId,
+            @NonNull String optionName,
+            @NonNull Pending p) {
         VetoOption chosen =
                 VetoOption.DECLINE_AND_CONTINUE.name().equalsIgnoreCase(optionName)
                         ? VetoOption.DECLINE_AND_CONTINUE
@@ -571,7 +615,7 @@ public class HitlRegistry {
                                 null,
                                 true,
                                 InterceptResolution.Source.INVALID_RESPONSE);
-        return resolve(agentId, callId, resolution);
+        return resolve(agentId, callId, resolution, p);
     }
 
     /**
@@ -772,6 +816,7 @@ public class HitlRegistry {
      */
     @JsonInclude(JsonInclude.Include.NON_NULL)
     public record PendingVeto(
+            long seq,
             @NonNull String agentId,
             @NonNull String callId,
             @NonNull String toolName,
@@ -796,6 +841,7 @@ public class HitlRegistry {
                         return;
                     out.add(
                             new PendingVeto(
+                                    pendingCall.seq(),
                                     agentId,
                                     call.callId(),
                                     call.toolName(),

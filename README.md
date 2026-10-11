@@ -67,7 +67,7 @@ the deterministic danger result remains active.
 
 ```text
 veto/
-|-- veto-protocol/   Frame contracts, codecs, protocol transports, and generated browser bindings
+|-- veto-protocol/   Frame contracts, codecs, and protocol transports
 |-- veto-nullness-checker/ Build-only Checker Framework extension for non-null Java class literals
 |-- veto-core/       Spring Boot backend, agent runtime, security gateway, persistence, and tools
 |-- veto-terminal/   JLine/Mordant application, client interaction state, themes and logging
@@ -314,7 +314,7 @@ Veto currently provides several independent controls, but they have different as
 - **Audit:** local records are hash-chained and tamper-evident. A local writable log cannot be
   described as tamper-proof against the same host user.
 - **WebSocket:** the login token is validated during the handshake, origins are deployer-scoped,
-  and each EventFrame is delivered only to connections owned by the frame's persisted Session
+  and each Delta is delivered only to connections owned by the frame's persisted Session
   owner.
 - **Subprocess execution:** commands are passed as executable plus `argv[]`; Veto does not construct
   a shell command string. The child receives the host terminal environment, except sandbox-owned
@@ -442,7 +442,7 @@ is generated output and must not be committed.
   its public `FrameCodec` for UTF-8 bytes and JSON text, with strict parsing in that same codec.
   Authentication, backend dispatch and
   recipient routing belong to the application. Both transports use the same `Frame` hierarchy
-  and `type` discriminator, including `EventFrame` for streaming events. ZeroMQ transport and
+  and `type` discriminator, including `Delta` for streaming events. ZeroMQ transport and
   connection code live in `veto-protocol`; terminal interaction, rendering and logging live in
   `veto-terminal`. `ProtocolClient` runs the terminal handshake, IO, heartbeat and correlation
   over `ZmqChannel.Client`. Each connection uses one virtual
@@ -455,8 +455,21 @@ is generated output and must not be committed.
   The browser entry point is `veto-ui/src/state/SessionContext.tsx`, which connects `VetoBus`
   to `/ws/veto/bus` on the backend HTTP port. `WebSocketConfig` registers the authenticated native WebSocket
   endpoint; `VetoWebSocketHandler` decodes frames directly in Spring callbacks and owns socket
-  authentication, subscriptions and recipient routing. Agent output follows
+  authentication, Hello admission and owner-based recipient routing. Agent output follows
   `DeltaBroker -> DeltaBusBridge -> VetoWebSocketHandler -> VetoBus`.
+  Protocol v4 requires clients to send Hello before application traffic; Welcome echoes its sequence.
+  Heartbeat and HeartbeatAck carry no sequence; the browser allows one outstanding heartbeat and
+  reconnects if its acknowledgement does not arrive within 10 seconds. There are no topic subscriptions.
+  Prompt/Input is terminal-only text interaction. Veto/VetoResult carries human approvals on both
+  transports, while gateway enforcement remains backend-owned. Approval
+  frames originate in the agent and pass through the same owner-scoped broker; pending
+  approval snapshots remain available for reconnect recovery. Delta carries a typed nested payload
+  (thought, message, tool call/result, notice or resource update); Done ends a completed request,
+  while Error ends a failed request. Application output carries the same Scope used by plugin
+  operations: null for connection-local output, SessionScope for session resources, AgentScope
+  for an agent (including its owning account and session). Terminal deltas also render while idle.
+  Compaction feedback uses the generic Notice renderer. PluginEvent transports custom plugin
+  facts; current clients consume resource invalidations, not custom plugin-event payloads. Client-triggered gateway processing is not part of the wire protocol.
   There is no outbound Java cloud bus or remote task executor. `/api/tasks` is a user-owned
   in-memory task registry; creating a task records it locally without executing it.
   Browser message types, JSON validation, schema and wire fixtures belong to

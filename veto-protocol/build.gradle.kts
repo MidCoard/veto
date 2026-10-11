@@ -21,6 +21,7 @@ val jeromqVersion: String by rootProject.extra
 val logbackVersion: String by rootProject.extra
 
 dependencies {
+    api(project(":veto-api"))
     // ZeroMQ is the Java protocol transport; TypeScript wire handling belongs to veto-ui.
     api("org.zeromq:jeromq:$jeromqVersion")
 

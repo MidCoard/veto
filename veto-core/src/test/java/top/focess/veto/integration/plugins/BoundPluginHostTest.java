@@ -61,7 +61,7 @@ class BoundPluginHostTest {
             verifyNoInteractions(delegate);
             host.publish(valid, "changed", facts);
             host.invalidate(valid, "groups");
-            verify(delegate).publish(fixture.session.getId(), "test.plugin:changed", facts);
+            verify(delegate).publish(valid, "test.plugin:changed", facts);
             verify(delegate).invalidate(fixture.session.getId(), "groups");
             assertEquals(valid.userId(), grant.scope().userId());
             host.invalidate(grant.scope(), "groups");

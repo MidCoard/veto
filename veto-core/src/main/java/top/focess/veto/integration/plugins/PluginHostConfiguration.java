@@ -1,6 +1,5 @@
 package top.focess.veto.integration.plugins;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.Map;
 import java.util.UUID;
@@ -16,11 +15,12 @@ import top.focess.veto.agent.capability.CapabilityAccess;
 import top.focess.veto.agent.tool.ToolCallContextHolder;
 import top.focess.veto.api.agent.workflow.PluginAwait;
 import top.focess.veto.api.plugin.PluginHost;
+import top.focess.veto.api.plugin.Scope;
 import top.focess.veto.api.plugin.contract.JsonValue;
 import top.focess.veto.api.plugin.contract.JsonValues;
 import top.focess.veto.bus.DeltaBroker;
 import top.focess.veto.bus.SessionInvalidations;
-import top.focess.veto.contract.EventFrame;
+import top.focess.veto.contract.Delta;
 import top.focess.veto.session.SessionService;
 import top.focess.veto.util.Nullness;
 import top.focess.veto.vault.ExecutionSecurity;
@@ -80,24 +80,16 @@ public class PluginHostConfiguration {
                     }
 
                     public void publish(
-                            @NonNull String session,
+                            Scope.@NonNull SessionScope scope,
                             @NonNull String topic,
                             JsonValue.@NonNull ObjectValue facts) {
                         var mapper = new ObjectMapper();
-                        Map<String, JsonNode> attrs =
-                                Map.of(
-                                        "topic",
-                                        mapper.valueToTree(topic),
-                                        "data",
-                                        mapper.valueToTree(JsonValues.toMap(facts)));
                         broker.publish(
-                                new EventFrame(
-                                        UUID.fromString(session),
-                                        0,
-                                        null,
-                                        EventFrame.Kind.PLUGIN_EVENT,
-                                        "",
-                                        attrs));
+                                new Delta(
+                                        scope,
+                                        new Delta.PluginEvent(
+                                                topic,
+                                                mapper.valueToTree(JsonValues.toMap(facts)))));
                     }
 
                     public void invalidate(@NonNull String session, @NonNull String resource) {

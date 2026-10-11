@@ -1,7 +1,7 @@
 package top.focess.veto.terminal.client;
 
 import org.jspecify.annotations.NonNull;
-import top.focess.veto.contract.EventFrame;
+import top.focess.veto.contract.Delta;
 import top.focess.veto.contract.Frame;
 
 /**
@@ -42,7 +42,7 @@ public interface ClientView {
      * before the matching {@link #onToolResult} or user-facing message so the user can see exactly
      * which tool the agent is invoking with which arguments.
      */
-    default void onToolCall(@NonNull EventFrame call) {}
+    default void onToolCall(Delta.@NonNull ToolCall call) {}
 
     /**
      * The framed observation the model received for a tool call (the agent's transparency emission
@@ -53,7 +53,7 @@ public interface ClientView {
      * <p>Default implementation ignores the result, so views that predate this hook still compile
      * and behave as before.
      */
-    default void onToolResult(@NonNull EventFrame result) {}
+    default void onToolResult(Delta.@NonNull ToolResult result) {}
 
     /**
      * Progress hint, already wrapped in a {@link StyledText} (typically {@link StyleToken#MUTED}).
@@ -61,7 +61,7 @@ public interface ClientView {
     void onProgress(@NonNull StyledText content);
 
     /** Backend requests input. The view should swap its prompt to the prompted shape. */
-    void onPrompt(Frame.@NonNull Prompt prompt);
+    void onPrompt(Frame.@NonNull Interaction prompt);
 
     /**
      * Fatal error, already wrapped in a {@link StyledText} (typically {@link StyleToken#ERROR}).

@@ -139,7 +139,7 @@ class AgentPromptControllerTest {
                         .prompt("session", "mate", new SubmitPromptRequest("/compact"))
                         .getStatusCode());
         verify(commands).enqueue("session", TestUsers.OWNER);
-        verify(commands).primaryNotice(sessionId.toString(), "mate");
+        verify(commands).primaryNotice(TestUsers.OWNER, sessionId.toString(), "mate");
         verify(mate, never()).submitUserPrompt(anyString());
     }
 
@@ -154,7 +154,7 @@ class AgentPromptControllerTest {
                         .prompt("session", "mate", new SubmitPromptRequest(prompt))
                         .getStatusCode());
         verify(mate).submitUserPrompt(prompt);
-        verify(commands).notice(sessionId.toString(), "mate", prompt);
+        verify(commands).notice(TestUsers.OWNER, sessionId.toString(), "mate", prompt);
         verify(commands, never()).enqueue(anyString(), any());
     }
 

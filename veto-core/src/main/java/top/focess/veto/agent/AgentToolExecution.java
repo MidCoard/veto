@@ -40,7 +40,6 @@ import top.focess.veto.api.event.BeforeToolEvent;
 import top.focess.veto.api.llm.ToolCall;
 import top.focess.veto.api.llm.ToolResultPresentationMode;
 import top.focess.veto.api.plugin.Scope;
-import top.focess.veto.contract.EventFrame;
 
 /**
  * Screens tool batches, obtains approvals and executes under host-issued permits.
@@ -197,7 +196,8 @@ final class AgentToolExecution {
                                 call,
                                 new ApprovalDecision.Prompt(
                                         VetoScenario.GENERIC, offered, Danger.CRITICAL, null),
-                                offered);
+                                offered,
+                                toolBoundary.approvalSequence(callId));
                         awaitResolution(callId, invocation);
                         refusalDetail =
                                 "refused by the security policy (CRITICAL - no approval path)";
@@ -210,7 +210,8 @@ final class AgentToolExecution {
                         // otherwise race register and resolve against a not-yet-registered future.
                         List<VetoOption> offered = p.options();
                         toolBoundary.register(screened, offered, p.danger(), p.relevance());
-                        output.emitVetoRequired(call, p, offered);
+                        output.emitVetoRequired(
+                                call, p, offered, toolBoundary.approvalSequence(callId));
                         InterceptResolution resolution = awaitResolution(callId, invocation);
 
                         if (resolution.option() == VetoOption.DECLINE_AND_CONTINUE) {
@@ -543,15 +544,6 @@ final class AgentToolExecution {
                                 resolution.option(),
                                 resolution.source(),
                                 Instant.now().toString()));
-        output.publishFrame(
-                EventFrame.builder()
-                        .sessionId(sessionId)
-                        .kind(EventFrame.Kind.VETO_RESOLVED)
-                        .attr("agentId", agentId)
-                        .attr("callId", callId)
-                        .attr("option", resolution.option().name())
-                        .attr("refusal", resolution.isRefusal())
-                        .build());
         return resolution;
     }
 
@@ -566,7 +558,7 @@ final class AgentToolExecution {
         List<VetoOption> offered = p.options();
         String callId = call.callId();
         toolBoundary.register(screened, offered, p.danger(), p.relevance());
-        output.emitVetoRequired(call, p, offered);
+        output.emitVetoRequired(call, p, offered, toolBoundary.approvalSequence(callId));
         InterceptResolution resolution = awaitResolution(callId, invocation);
         runner.setActivity(ExecutionControl.Activity.TOOL);
         if (resolution.isRefusal()) {

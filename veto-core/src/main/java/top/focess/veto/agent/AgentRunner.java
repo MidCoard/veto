@@ -150,7 +150,7 @@ public final class AgentRunner {
         output =
                 new AgentOutput(
                         new AgentHistory(turnLogService, sessionId, userId, agentId),
-                        new AgentEvents(agentId, objectMapper, eventSink, sessionId),
+                        new AgentEvents(agentId, objectMapper, eventSink, sessionId, userId),
                         promptCompiler,
                         new ToolResultPresenter(objectMapper),
                         toolEngine,

@@ -30,7 +30,8 @@ import top.focess.veto.api.llm.exceptions.LlmRateLimitException;
 import top.focess.veto.api.llm.exceptions.LlmTimeoutException;
 import top.focess.veto.api.llm.exceptions.ModelCapabilityException;
 import top.focess.veto.api.llm.exceptions.ModelSchemaException;
-import top.focess.veto.contract.EventFrame;
+import top.focess.veto.contract.Delta;
+import top.focess.veto.contract.Frame;
 import top.focess.veto.i18n.Msg;
 import top.focess.veto.llm.core.ToolResultPresenter;
 import top.focess.veto.util.Nullness;
@@ -148,7 +149,7 @@ final class AgentOutput {
         events.thought(thought, turnNumber());
     }
 
-    void publishFrame(@NonNull EventFrame frame) {
+    void publishFrame(Frame.@NonNull ScopedFrame frame) {
         events.publishFrame(frame);
     }
 
@@ -255,8 +256,9 @@ final class AgentOutput {
     void emitVetoRequired(
             @NonNull ToolCall call,
             ApprovalDecision.@NonNull Prompt prompt,
-            @NonNull List<VetoOption> offered) {
-        events.emitVetoRequired(call, prompt, offered);
+            @NonNull List<VetoOption> offered,
+            long seq) {
+        events.emitVetoRequired(call, prompt, offered, seq);
     }
 
     String latestUserTask() {
@@ -282,44 +284,29 @@ final class AgentOutput {
         if (cancelled) failure.put("outcome", "CANCELLED");
         if (requestId != null) failure.put("requestId", requestId);
         appendTurn(new TurnRecord(nextTurn(), TurnType.EXECUTION_ERROR, failure, null));
-        publishFrame(
-                events.frame(EventFrame.Kind.ERROR)
-                        .attr("turnNumber", turnNumber())
-                        .text(text)
-                        .build());
         return AgentResult.failure(text, Map.of("turns", turnNumber()));
     }
 
     void completed(RequestHandle task, @NonNull AgentResult result) {
         // Publish before completing the future, so awaiting clients observe the terminal event.
-        publishFrame(
-                events.frame(EventFrame.Kind.EPISODE_DONE)
-                        .attr("requestId", task == null ? "" : task.episode.id())
-                        .attr("turnNumber", turnNumber())
-                        .attr("success", result.success())
-                        .text(result.message())
-                        .build());
+        events.completed(
+                task == null ? null : task.episode.id(),
+                turnNumber(),
+                result.success(),
+                result.message());
     }
 
     void breaker(@NonNull RequestHandle task) {
         String notice = LoopBreaker.tripNotice(view.get().locale());
         emitMessage(notice);
-        publishFrame(
-                events.frame(EventFrame.Kind.BREAKER_TRIPPED)
-                        .attr("turnNumber", turnNumber())
-                        .attr("maxCallsPerEpisode", task.episode.breaker().maxCallsPerEpisode())
-                        .text(notice)
-                        .build());
+        events.publish(
+                new Delta.BreakerTripped(
+                        notice, task.episode.breaker().maxCallsPerEpisode(), turnNumber()));
     }
 
-    void compacted(@NonNull String summary, int count) {
-        emitMessage(Msg.get(view.get().locale(), "error.agent.compactDone", count));
-        publishFrame(
-                events.frame(EventFrame.Kind.COMPACTION)
-                        .attr("turnNumber", turnNumber())
-                        .attr("compactedTurns", count)
-                        .text(summary)
-                        .build());
+    void compacted(int count) {
+        events.publish(
+                new Delta.Notice(Msg.get(view.get().locale(), "error.agent.compactDone", count)));
     }
 
     @NonNull String failureMessage(@NonNull Throwable e) {

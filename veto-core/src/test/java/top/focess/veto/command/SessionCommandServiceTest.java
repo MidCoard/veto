@@ -16,7 +16,7 @@ import top.focess.veto.agent.AgentService;
 import top.focess.veto.agent.RequestHandle;
 import top.focess.veto.agent.VetoAgent;
 import top.focess.veto.bus.DeltaBroker;
-import top.focess.veto.contract.EventFrame;
+import top.focess.veto.contract.Delta;
 import top.focess.veto.session.SessionService;
 import top.focess.veto.session.SessionService.SessionConfig;
 import top.focess.veto.vault.TestUsers;
@@ -103,23 +103,28 @@ class SessionCommandServiceTest {
         var agents = mock(AgentService.class);
         var service = new SessionCommandService(sessions, agents, broker);
         var id = UUID.randomUUID();
-        List<@NonNull EventFrame> frames = new ArrayList<>();
-        var subscription = broker.subscribe(id, frames::add);
+        List<@NonNull Delta> frames = new ArrayList<>();
+        var subscription =
+                broker.subscribe(
+                        id,
+                        frame -> {
+                            if (frame instanceof Delta delta) frames.add(delta);
+                        });
         try {
-            service.notice(id.toString(), "child", "/signup secret-password");
-            service.notice(id.toString(), null, "ordinary prompt");
+            service.notice(TestUsers.OWNER, id.toString(), "child", "/signup secret-password");
+            service.notice(TestUsers.OWNER, id.toString(), null, "ordinary prompt");
             assertEquals(1, frames.size());
             var frame = frames.getFirst();
-            assertEquals(EventFrame.Kind.NOTICE, frame.kind());
-            var agentId = frame.attrs().get("agentId");
+            assertInstanceOf(Delta.Notice.class, frame.data());
+            var agentId = frame.agentId();
             if (agentId == null) throw new AssertionError("Missing notice scope");
-            assertEquals("child", agentId.asText());
-            assertFalse(frame.text().contains("secret-password"));
-            assertTrue(frame.text().contains("message"));
+            assertEquals("child", agentId);
+            assertFalse(((Delta.Notice) frame.data()).text().contains("secret-password"));
+            assertTrue(((Delta.Notice) frame.data()).text().contains("message"));
         } finally {
             subscription.close();
         }
-        service.notice(id.toString(), "child", "/unknown");
+        service.notice(TestUsers.OWNER, id.toString(), "child", "/unknown");
         assertEquals(1, frames.size());
         verifyNoInteractions(sessions, agents);
     }

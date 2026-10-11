@@ -23,14 +23,15 @@ import top.focess.veto.api.llm.ProviderType;
 import top.focess.veto.api.llm.VetoResponse;
 import top.focess.veto.bus.DeltaBroker;
 import top.focess.veto.bus.SessionInvalidations;
-import top.focess.veto.contract.EventFrame;
+import top.focess.veto.contract.Delta;
+import top.focess.veto.contract.Frame;
 import top.focess.veto.llm.core.ToolResultPresenter;
 import top.focess.veto.llm.core.UniformLLMCaller;
 import top.focess.veto.vault.TestUsers;
 
 /**
  * Verifies the Part-8 emission seam: an agent's user-facing message is published as a per-session
- * {@link EventFrame} to the {@link DeltaBroker} (which the {@code DeltaBusBridge} then forwards to
+ * {@link Delta} to the {@link DeltaBroker} (which the {@code DeltaBusBridge} then forwards to
  * WebSocket clients). The broker assigns a monotonic sequence; the frame text is the message
  * verbatim.
  */
@@ -90,9 +91,32 @@ class DeltaBrokerWiringTest {
     }
 
     @Test
-    void emitMessagePublishesEventFrameToBroker() throws Exception {
+    void failedEpisodePublishesErrorWithoutDone() throws Exception {
+        var broker = new DeltaBroker();
+        var frames = new CopyOnWriteArrayList<Frame.ScopedFrame>();
+        broker.subscribeAll(frames::add);
+        var service =
+                serviceWithBroker(
+                        (request, modelSessionId) -> {
+                            throw new IllegalStateException("test provider failure");
+                        },
+                        broker);
+        var result =
+                service.submit("failed-wire", "Hi", binding(""), EPISODE_TIMEOUT, TestUsers.OWNER);
+        assertFalse(result.success());
+        var terminal = frames.stream().filter(Frame.TerminalResponse.class::isInstance).toList();
+        assertEquals(1, terminal.size());
+        var error = assertInstanceOf(Frame.Error.class, terminal.getFirst());
+        assertTrue(error.sessionId() != null);
+        assertTrue(error.agentId() != null);
+        assertTrue(error.requestId() != null);
+        assertEquals(result.message(), error.content());
+    }
+
+    @Test
+    void emitMessagePublishesDeltaToBroker() throws Exception {
         DeltaBroker broker = new DeltaBroker();
-        List<EventFrame> frames = new CopyOnWriteArrayList<>();
+        List<Frame.ScopedFrame> frames = new CopyOnWriteArrayList<>();
         broker.subscribeAll(frames::add);
 
         AgentService service =
@@ -106,26 +130,35 @@ class DeltaBrokerWiringTest {
                         TestUsers.OWNER);
 
         assertTrue(result.success(), "episode should finish successfully");
-        assertFalse(frames.isEmpty(), "a EventFrame should be published on emitMessage");
+        assertFalse(frames.isEmpty(), "a Delta should be published on emitMessage");
         var content =
                 frames.stream()
-                        .filter(frame -> frame.kind() != EventFrame.Kind.SESSION_INVALIDATED)
+                        .filter(
+                                frame ->
+                                        !(frame instanceof Delta delta
+                                                && delta.data()
+                                                        instanceof Delta.SessionInvalidated))
                         .toList();
-        assertEquals(3, content.size(), "thought, message and episode outcome remain distinct");
-        assertEquals(EventFrame.Kind.ASSISTANT_THOUGHT, content.get(0).kind());
-        assertEquals("2 + 2 = 4.", content.get(0).text());
-        assertEquals(EventFrame.Kind.ASSISTANT_MESSAGE, content.get(1).kind());
-        assertEquals("The answer is 4.", content.get(1).text());
-        assertEquals(EventFrame.Kind.EPISODE_DONE, content.get(2).kind());
-        assertTrue(content.get(0).sequence() < content.get(1).sequence());
-        assertTrue(content.get(1).sequence() < content.get(2).sequence());
+        assertEquals(3, content.size(), "thought, message and completion remain distinct");
+        var thought = assertInstanceOf(Delta.class, content.get(0));
+        var message = assertInstanceOf(Delta.class, content.get(1));
+        var done = assertInstanceOf(Frame.Done.class, content.get(2));
+        assertEquals("2 + 2 = 4.", assertInstanceOf(Delta.Thought.class, thought.data()).text());
+        assertEquals(
+                "The answer is 4.", assertInstanceOf(Delta.Message.class, message.data()).text());
+        assertTrue(thought.sequence() < message.sequence());
+        assertEquals(message.sessionId(), done.sessionId());
+        assertEquals(message.agentId(), done.agentId());
+        assertTrue(done.requestId() != null);
         assertTrue(
                 frames.stream()
                         .anyMatch(
                                 frame ->
-                                        frame.kind() == EventFrame.Kind.SESSION_INVALIDATED
-                                                && String.valueOf(frame.attrs().get("resources"))
-                                                        .contains("execution")),
+                                        frame instanceof Delta delta
+                                                && delta.data()
+                                                        instanceof
+                                                        Delta.SessionInvalidated invalidation
+                                                && invalidation.resources().contains("execution")),
                 "execution changes must reach clients independently of conversation content");
     }
 }

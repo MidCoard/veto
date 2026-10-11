@@ -1,7 +1,7 @@
 package top.focess.veto.bus;
 
-import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import jakarta.annotation.PreDestroy;
+import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
@@ -11,8 +11,10 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
-import top.focess.veto.contract.EventFrame;
+import top.focess.veto.api.plugin.Scope;
+import top.focess.veto.contract.Delta;
 import top.focess.veto.model.AgentInstanceRepository;
+import top.focess.veto.model.SessionRepository;
 
 /**
  * Best-effort invalidations after readable state changes; never sends sockets under registry locks.
@@ -20,6 +22,7 @@ import top.focess.veto.model.AgentInstanceRepository;
 @Component
 public class SessionInvalidations {
     private final @NonNull DeltaBroker broker;
+    private final @NonNull SessionRepository sessions;
     private final @NonNull AgentInstanceRepository agents;
     private final @NonNull ThreadPoolExecutor delivery =
             new ThreadPoolExecutor(
@@ -32,9 +35,12 @@ public class SessionInvalidations {
 
     /** Creates the invalidator on top of the frame broker and agent registry. */
     public SessionInvalidations(
-            @NonNull DeltaBroker broker, @NonNull AgentInstanceRepository agents) {
+            @NonNull DeltaBroker broker,
+            @NonNull AgentInstanceRepository agents,
+            @NonNull SessionRepository sessions) {
         this.broker = broker;
         this.agents = agents;
+        this.sessions = sessions;
     }
 
     /**
@@ -61,14 +67,14 @@ public class SessionInvalidations {
     }
 
     private void send(@NonNull UUID sessionId, @NonNull String @NonNull [] resources) {
-        var values = JsonNodeFactory.instance.arrayNode();
-        for (String resource : resources) values.add(resource);
-        broker.publish(
-                EventFrame.builder()
-                        .sessionId(sessionId)
-                        .kind(EventFrame.Kind.SESSION_INVALIDATED)
-                        .attr("resources", values)
-                        .build());
+        sessions.findById(sessionId.toString())
+                .ifPresent(
+                        session ->
+                                broker.publish(
+                                        new Delta(
+                                                new Scope.SessionScope(
+                                                        session.getUserId(), sessionId.toString()),
+                                                new Delta.SessionInvalidated(List.of(resources)))));
     }
 
     private void afterCommit(@NonNull Runnable action) {

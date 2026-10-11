@@ -37,7 +37,7 @@ class InMemoryTransportTest {
                 new Thread(
                         () -> {
                             while (responderRunning) {
-                                Frame.ClientFrame frame;
+                                Frame frame;
                                 try {
                                     frame = transport.sent.poll(50, TimeUnit.MILLISECONDS);
                                 } catch (InterruptedException e) {
@@ -60,7 +60,7 @@ class InMemoryTransportTest {
         conn.close();
     }
 
-    private void respond(Frame.@NonNull ClientFrame frame) {
+    private void respond(@NonNull Frame frame) {
         if (frame instanceof Frame.Hello) {
             // The transport already auto-replied with Welcome in send(); nothing more to do.
             return;
@@ -72,8 +72,8 @@ class InMemoryTransportTest {
         } else if (frame instanceof Frame.Hint h) {
             transport.deliver(new Frame.HintResult(new Frame.HintInfo("<user>", null), h.seq()));
         } else if (frame instanceof Frame.Request) {
-            transport.deliver(EventFrame.command("hello "));
-            transport.deliver(EventFrame.command("world"));
+            transport.deliver(Delta.message("hello "));
+            transport.deliver(Delta.message("world"));
             transport.deliver(new Frame.Done(Map.of(), null));
         }
         // Heartbeat / Bye / Cancel / Input: ignored by the responder.
@@ -110,18 +110,18 @@ class InMemoryTransportTest {
     void streamingRequestDeliversDeltaThenDone() throws InterruptedException {
         conn.send(new Frame.Request("do something"));
         // The responder emits Delta, Delta, Done. Receive them in order from the incoming queue.
-        Frame.ServerFrame f1 =
+        Frame f1 =
                 requireValue(
                         conn.receive(2, TimeUnit.SECONDS), "first server frame should not be null");
-        Frame.ServerFrame f2 =
+        Frame f2 =
                 requireValue(
                         conn.receive(2, TimeUnit.SECONDS),
                         "second server frame should not be null");
-        Frame.ServerFrame f3 =
+        Frame f3 =
                 requireValue(
                         conn.receive(2, TimeUnit.SECONDS), "third server frame should not be null");
-        assertInstanceOf(Objects.requireNonNull(EventFrame.class), f1);
-        assertInstanceOf(Objects.requireNonNull(EventFrame.class), f2);
+        assertInstanceOf(Objects.requireNonNull(Delta.class), f1);
+        assertInstanceOf(Objects.requireNonNull(Delta.class), f2);
         assertInstanceOf(Objects.requireNonNull(Frame.Done.class), f3);
     }
 
@@ -134,7 +134,7 @@ class InMemoryTransportTest {
         conn.close();
         assertTrue(conn.isClosed());
         // Drain what was sent; the Bye must have been flushed by the IO loop's final drain.
-        List<Frame.@NonNull ClientFrame> sent = new ArrayList<>();
+        List<@NonNull Frame> sent = new ArrayList<>();
         transport.sent.drainTo(sent);
         assertTrue(
                 sent.stream().anyMatch(f -> f instanceof Frame.Bye),

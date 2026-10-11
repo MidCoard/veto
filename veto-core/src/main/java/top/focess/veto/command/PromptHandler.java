@@ -142,6 +142,7 @@ public class PromptHandler {
                         config.options(),
                         config.baseUrl());
 
+        var owner = user;
         try (var subscription = broker.subscribe(UUID.fromString(sessionId), sender::sendEvent)) {
             // Forward canonical broker events while waiting for the episode result.
             AgentResult result =
@@ -151,7 +152,7 @@ public class PromptHandler {
                             binding,
                             EPISODE_TIMEOUT,
                             null,
-                            sender::sendVetoPrompt,
+                            veto -> sender.sendVetoPrompt(owner, UUID.fromString(sessionId), veto),
                             user);
 
             Map<String, Object> doneMeta = new HashMap<>();

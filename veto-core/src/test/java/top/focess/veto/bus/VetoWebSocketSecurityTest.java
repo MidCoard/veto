@@ -9,7 +9,6 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import java.io.IOException;
@@ -32,15 +31,17 @@ import org.springframework.web.socket.TextMessage;
 import org.springframework.web.socket.WebSocketHandler;
 import org.springframework.web.socket.WebSocketSession;
 import top.focess.veto.VetoVersion;
+import top.focess.veto.agent.AgentService;
+import top.focess.veto.agent.intercept.HitlRegistry;
+import top.focess.veto.api.plugin.Scope;
 import top.focess.veto.contract.DAGPayload;
-import top.focess.veto.contract.EventFrame;
+import top.focess.veto.contract.Delta;
 import top.focess.veto.contract.Frame;
 import top.focess.veto.contract.FrameCodec;
 import top.focess.veto.model.SessionEntity;
 import top.focess.veto.model.SessionRepository;
 import top.focess.veto.vault.LoginSessionManager;
 import top.focess.veto.vault.TestUsers;
-import top.focess.veto.veto.VetoGateway;
 
 class VetoWebSocketSecurityTest {
 
@@ -75,7 +76,8 @@ class VetoWebSocketSecurityTest {
         SessionRepository sessions = mock(SessionRepository.class);
         LoginSessionManager tokens = new LoginSessionManager();
         VetoWebSocketHandler handler =
-                new VetoWebSocketHandler(mock(VetoGateway.class), sessions, tokens);
+                new VetoWebSocketHandler(
+                        sessions, tokens, mock(AgentService.class), mock(HitlRegistry.class));
         WebSocketSession alice =
                 socket(
                         "alice-socket",
@@ -86,44 +88,73 @@ class VetoWebSocketSecurityTest {
                         "bob-socket",
                         TestUsers.BOB,
                         tokens.createLoginSession(TestUsers.BOB, "bob"));
-        handler.afterConnectionEstablished(alice);
-        handler.afterConnectionEstablished(bob);
+        connect(handler, alice);
+        connect(handler, bob);
         clearInvocations(alice, bob);
 
         SessionEntity session = new SessionEntity(TestUsers.ALICE, "work");
         when(sessions.findById(session.getId())).thenReturn(Optional.of(session));
         handler.sendFrame(
-                EventFrame.builder()
-                        .sessionId(UUID.fromString(session.getId()))
-                        .kind(EventFrame.Kind.ASSISTANT_MESSAGE)
-                        .text("private")
-                        .build());
+                new Delta(
+                        new Scope.SessionScope(session.getUserId(), session.getId()),
+                        new Delta.Message("private", 0)));
 
         var sent = ArgumentCaptor.forClass(TextMessage.class);
         verify(alice).sendMessage(sent.capture());
         var frame = FrameCodec.decode(sent.getValue().getPayload());
-        if (!(frame instanceof EventFrame decoded)) throw new AssertionError("Missing event");
+        if (!(frame instanceof Delta decoded)) throw new AssertionError("Missing event");
         assertEquals(UUID.fromString(session.getId()), decoded.sessionId());
-        assertEquals("private", decoded.text());
+        assertEquals(new Delta.Message("private", 0), decoded.data());
+        clearInvocations(alice);
+        var broker = new DeltaBroker();
+        var bridge = new DeltaBusBridge(broker, handler);
+        bridge.start();
+        var done =
+                new Frame.Done(
+                        new Scope.AgentScope(session.getUserId(), session.getId(), "agent"),
+                        "request",
+                        Map.of("turnNumber", 2),
+                        null);
+        try {
+            broker.publish(done);
+            verify(alice).sendMessage(sent.capture());
+            assertEquals(done, FrameCodec.decode(sent.getValue().getPayload()));
+            clearInvocations(alice);
+            var error =
+                    new Frame.Error(
+                            new Scope.AgentScope(session.getUserId(), session.getId(), "agent"),
+                            "failed-request",
+                            3,
+                            "failed",
+                            0);
+            broker.publish(error);
+            verify(alice).sendMessage(sent.capture());
+            assertEquals(error, FrameCodec.decode(sent.getValue().getPayload()));
+        } finally {
+            bridge.stop();
+        }
         verify(bob, never()).sendMessage(ArgumentMatchers.any(TextMessage.class));
     }
 
     @Test
-    void malformedProtocolEnvelopesNeverReachTheGateway() throws Exception {
+    void malformedProtocolEnvelopesAreRejected() throws Exception {
         var tokens = new LoginSessionManager();
         var token = tokens.createLoginSession(TestUsers.ALICE, "alice");
-        var gateway = mock(VetoGateway.class);
-        var handler = new VetoWebSocketHandler(gateway, mock(SessionRepository.class), tokens);
+        var handler =
+                new VetoWebSocketHandler(
+                        mock(SessionRepository.class),
+                        tokens,
+                        mock(AgentService.class),
+                        mock(HitlRegistry.class));
         var socket = socket("alice", TestUsers.ALICE, token);
-        handler.afterConnectionEstablished(socket);
+        connect(handler, socket);
         clearInvocations(socket);
         handler.handleTextMessage(
                 socket,
                 new TextMessage(
-                        "{\"type\":\"heartbeat\",\"type\":\"veto.process\",\"payload\":\"private\"}"));
+                        "{\"type\":\"heartbeat\",\"type\":\"process\",\"payload\":\"private\"}"));
         handler.handleTextMessage(
-                socket, new TextMessage("{\"type\":\"veto.process\",\"payload\":\"private\"} {}"));
-        verifyNoInteractions(gateway);
+                socket, new TextMessage("{\"type\":\"process\",\"payload\":\"private\"} {}"));
         var sent = ArgumentCaptor.forClass(TextMessage.class);
         verify(socket, times(2)).sendMessage(sent.capture());
         for (var message : sent.getAllValues()) {
@@ -134,16 +165,20 @@ class VetoWebSocketSecurityTest {
     @Test
     void sharedFramesRetainWebSocketAdmissionBoundaries() throws Exception {
         var tokens = new LoginSessionManager();
-        var gateway = mock(VetoGateway.class);
-        var handler = new VetoWebSocketHandler(gateway, mock(SessionRepository.class), tokens);
+        var handler =
+                new VetoWebSocketHandler(
+                        mock(SessionRepository.class),
+                        tokens,
+                        mock(AgentService.class),
+                        mock(HitlRegistry.class));
         var socket =
                 socket(
                         "alice",
                         TestUsers.ALICE,
                         tokens.createLoginSession(TestUsers.ALICE, "alice"));
-        handler.afterConnectionEstablished(socket);
+        connect(handler, socket);
         handler.handleTextMessage(
-                socket, new TextMessage(FrameCodec.encodeString(new Frame.Heartbeat(7))));
+                socket, new TextMessage(FrameCodec.encodeString(new Frame.Heartbeat())));
         handler.handleTextMessage(
                 socket, new TextMessage(FrameCodec.encodeString(new Frame.Request("/signup"))));
         var sent = ArgumentCaptor.forClass(TextMessage.class);
@@ -153,57 +188,72 @@ class VetoWebSocketSecurityTest {
         if (!(first instanceof Frame.Welcome welcome)) throw new AssertionError("Missing welcome");
         assertEquals(Frame.PROTOCOL_VERSION, welcome.version());
         var second = FrameCodec.decode(values.get(1).getPayload());
-        if (!(second instanceof Frame.HeartbeatAck ack))
-            throw new AssertionError("Missing heartbeat acknowledgement");
-        assertEquals(7, ack.seq());
+        assertTrue(second instanceof Frame.HeartbeatAck);
+        assertFalse(values.get(1).getPayload().contains("seq"));
         assertTrue(FrameCodec.decode(values.get(2).getPayload()) instanceof Frame.Error);
-        verifyNoInteractions(gateway);
     }
 
     @Test
-    void helloAndSubscriptionsUseTheRealCallbackEntryPoint() throws Exception {
+    void helloIsRequiredBeforeDeliveryAndWelcomeEchoesClientSequence() throws Exception {
         var tokens = new LoginSessionManager();
-        var gateway = mock(VetoGateway.class);
-        var handler = new VetoWebSocketHandler(gateway, mock(SessionRepository.class), tokens);
+        var sessions = mock(SessionRepository.class);
+        var handler =
+                new VetoWebSocketHandler(
+                        sessions, tokens, mock(AgentService.class), mock(HitlRegistry.class));
         var socket =
                 socket(
                         "client",
                         TestUsers.ALICE,
                         tokens.createLoginSession(TestUsers.ALICE, "alice"));
         handler.afterConnectionEstablished(socket);
-        clearInvocations(socket);
-        handler.handleTextMessage(
-                socket,
-                new TextMessage(
-                        FrameCodec.encodeString(
-                                new Frame.Hello(
-                                        Frame.PROTOCOL_VERSION, 23, VetoVersion.VERSION, ""))));
-        handler.handleTextMessage(
-                socket, new TextMessage(FrameCodec.encodeString(new Frame.Subscribe("all"))));
-        handler.handleTextMessage(
-                socket, new TextMessage(FrameCodec.encodeString(new Frame.Unsubscribe())));
+        handler.sendFrame(event(sessions));
+        verify(socket, never()).sendMessage(ArgumentMatchers.any(TextMessage.class));
+        hello(handler, socket, 23);
         var sent = ArgumentCaptor.forClass(TextMessage.class);
-        verify(socket, times(3)).sendMessage(sent.capture());
-        var replies = sent.getAllValues();
-        if (!(FrameCodec.decode(replies.getFirst().getPayload()) instanceof Frame.Welcome welcome))
+        verify(socket).sendMessage(sent.capture());
+        if (!(FrameCodec.decode(sent.getValue().getPayload()) instanceof Frame.Welcome welcome))
             throw new AssertionError("Missing welcome");
         assertEquals(23, welcome.seq());
-        assertTrue(FrameCodec.decode(replies.get(1).getPayload()) instanceof Frame.Subscribed);
-        assertTrue(FrameCodec.decode(replies.get(2).getPayload()) instanceof Frame.Unsubscribed);
-        verifyNoInteractions(gateway);
+        clearInvocations(socket);
+        handler.sendFrame(event(sessions));
+        verify(socket).sendMessage(ArgumentMatchers.any(TextMessage.class));
+    }
+
+    @Test
+    void applicationFrameBeforeHelloIsRejected() throws Exception {
+        var tokens = new LoginSessionManager();
+        var handler =
+                new VetoWebSocketHandler(
+                        mock(SessionRepository.class),
+                        tokens,
+                        mock(AgentService.class),
+                        mock(HitlRegistry.class));
+        var socket =
+                socket(
+                        "client",
+                        TestUsers.ALICE,
+                        tokens.createLoginSession(TestUsers.ALICE, "alice"));
+        handler.afterConnectionEstablished(socket);
+        handler.handleTextMessage(
+                socket, new TextMessage(FrameCodec.encodeString(new Frame.Heartbeat())));
+        verify(socket).close(CloseStatus.PROTOCOL_ERROR);
     }
 
     @Test
     void serverOnlyFramesAndUnsupportedVersionsAreRejected() throws Exception {
         var tokens = new LoginSessionManager();
-        var gateway = mock(VetoGateway.class);
-        var handler = new VetoWebSocketHandler(gateway, mock(SessionRepository.class), tokens);
+        var handler =
+                new VetoWebSocketHandler(
+                        mock(SessionRepository.class),
+                        tokens,
+                        mock(AgentService.class),
+                        mock(HitlRegistry.class));
         var socket =
                 socket(
                         "client",
                         TestUsers.ALICE,
                         tokens.createLoginSession(TestUsers.ALICE, "alice"));
-        handler.afterConnectionEstablished(socket);
+        connect(handler, socket);
         clearInvocations(socket);
         handler.handleTextMessage(
                 socket,
@@ -221,28 +271,24 @@ class VetoWebSocketSecurityTest {
         verify(socket, times(2)).sendMessage(sent.capture());
         for (var reply : sent.getAllValues())
             assertTrue(FrameCodec.decode(reply.getPayload()) instanceof Frame.Error);
-        verifyNoInteractions(gateway);
     }
 
     @Test
-    void dagBroadcastHonorsOwnerAndTopicWithoutEchoingSender() throws Exception {
+    void dagBroadcastHonorsOwnerWithoutEchoingSender() throws Exception {
         var tokens = new LoginSessionManager();
         var handler =
                 new VetoWebSocketHandler(
-                        mock(VetoGateway.class), mock(SessionRepository.class), tokens);
+                        mock(SessionRepository.class),
+                        tokens,
+                        mock(AgentService.class),
+                        mock(HitlRegistry.class));
         var token = tokens.createLoginSession(TestUsers.ALICE, "alice");
         var sender = socket("sender", TestUsers.ALICE, token);
         var recipient = socket("recipient", TestUsers.ALICE, token);
         var filtered = socket("filtered", TestUsers.ALICE, token);
         var foreign =
                 socket("foreign", TestUsers.BOB, tokens.createLoginSession(TestUsers.BOB, "bob"));
-        for (var socket : List.of(sender, recipient, filtered, foreign))
-            handler.afterConnectionEstablished(socket);
-        handler.handleTextMessage(
-                recipient,
-                new TextMessage(FrameCodec.encodeString(new Frame.Subscribe("dag.payload"))));
-        handler.handleTextMessage(
-                filtered, new TextMessage(FrameCodec.encodeString(new Frame.Subscribe("other"))));
+        for (var socket : List.of(sender, recipient, filtered, foreign)) connect(handler, socket);
         clearInvocations(sender, recipient, filtered, foreign);
         handler.handleTextMessage(
                 sender,
@@ -261,7 +307,7 @@ class VetoWebSocketSecurityTest {
         if (!(FrameCodec.decode(delivered.getValue().getPayload()) instanceof Frame.DagPayload dag))
             throw new AssertionError("Missing DAG payload");
         assertEquals("sender", dag.source());
-        verify(filtered, never()).sendMessage(ArgumentMatchers.any(TextMessage.class));
+        verify(filtered).sendMessage(ArgumentMatchers.any(TextMessage.class));
         verify(foreign, never()).sendMessage(ArgumentMatchers.any(TextMessage.class));
     }
 
@@ -270,10 +316,12 @@ class VetoWebSocketSecurityTest {
         var tokens = new LoginSessionManager();
         var token = tokens.createLoginSession(TestUsers.ALICE, "alice");
         var sessions = mock(SessionRepository.class);
-        var handler = new VetoWebSocketHandler(mock(VetoGateway.class), sessions, tokens);
+        var handler =
+                new VetoWebSocketHandler(
+                        sessions, tokens, mock(AgentService.class), mock(HitlRegistry.class));
         var socket = socket("revoked", TestUsers.ALICE, token);
         var event = event(sessions);
-        handler.afterConnectionEstablished(socket);
+        connect(handler, socket);
         clearInvocations(socket);
         tokens.revokeToken(token);
         handler.sendFrame(event);
@@ -287,13 +335,14 @@ class VetoWebSocketSecurityTest {
         var tokens = new LoginSessionManager();
         var token = tokens.createLoginSession(TestUsers.ALICE, "alice");
         var sessions = mock(SessionRepository.class);
-        var handler = new VetoWebSocketHandler(mock(VetoGateway.class), sessions, tokens);
+        var handler =
+                new VetoWebSocketHandler(
+                        sessions, tokens, mock(AgentService.class), mock(HitlRegistry.class));
         var failed = socket("failed", TestUsers.ALICE, token);
         var closed = socket("closed", TestUsers.ALICE, token);
         var healthy = socket("healthy", TestUsers.ALICE, token);
         var event = event(sessions);
-        for (var socket : List.of(failed, closed, healthy))
-            handler.afterConnectionEstablished(socket);
+        for (var socket : List.of(failed, closed, healthy)) connect(handler, socket);
         clearInvocations(failed, closed, healthy);
         doThrow(new IOException("send failed"))
                 .when(failed)
@@ -314,36 +363,181 @@ class VetoWebSocketSecurityTest {
     void greetingFailureAndByeRemoveAdmissionBeforeLaterMessages() throws Exception {
         var tokens = new LoginSessionManager();
         var token = tokens.createLoginSession(TestUsers.ALICE, "alice");
-        var gateway = mock(VetoGateway.class);
-        var handler = new VetoWebSocketHandler(gateway, mock(SessionRepository.class), tokens);
+        var handler =
+                new VetoWebSocketHandler(
+                        mock(SessionRepository.class),
+                        tokens,
+                        mock(AgentService.class),
+                        mock(HitlRegistry.class));
         var failed = socket("failed", TestUsers.ALICE, token);
         doThrow(new IOException("greeting failed"))
                 .when(failed)
                 .sendMessage(ArgumentMatchers.any(TextMessage.class));
-        handler.afterConnectionEstablished(failed);
+        connect(handler, failed);
         assertEquals(0, handler.getActiveSessionCount());
         verify(failed).close(CloseStatus.SERVER_ERROR);
         var closed = socket("bye", TestUsers.ALICE, token);
-        handler.afterConnectionEstablished(closed);
+        connect(handler, closed);
         handler.handleTextMessage(
                 closed, new TextMessage(FrameCodec.encodeString(new Frame.Bye())));
         assertEquals(0, handler.getActiveSessionCount());
         handler.handleTextMessage(
-                closed,
-                new TextMessage(
-                        FrameCodec.encodeString(new Frame.Process("late", null, null, null))));
+                closed, new TextMessage(FrameCodec.encodeString(new Frame.Heartbeat())));
         verify(closed).close(CloseStatus.NORMAL);
-        verifyNoInteractions(gateway);
     }
 
-    private static @NonNull EventFrame event(@NonNull SessionRepository sessions) {
+    @Test
+    void approvalDecisionChecksOwnerAndAgentMembershipBeforeResolving() throws Exception {
+        var tokens = new LoginSessionManager();
+        var sessions = mock(SessionRepository.class);
+        var agents = mock(AgentService.class);
+        var approvals = mock(HitlRegistry.class);
+        var handler = new VetoWebSocketHandler(sessions, tokens, agents, approvals);
+        var socket =
+                socket(
+                        "alice",
+                        TestUsers.ALICE,
+                        tokens.createLoginSession(TestUsers.ALICE, "alice"));
+        connect(handler, socket);
+        var owned = new SessionEntity(TestUsers.ALICE, "owned");
+        owned.setPrimaryAgentId("root");
+        var foreign = new SessionEntity(TestUsers.BOB, "foreign");
+        foreign.setPrimaryAgentId("foreign-root");
+        when(sessions.findById(owned.getId())).thenReturn(Optional.of(owned));
+        when(sessions.findById(foreign.getId())).thenReturn(Optional.of(foreign));
+        when(approvals.sessionAgents("root")).thenReturn(List.of("root", "member"));
+        when(agents.resolveVeto("member", "call", "EXEC_DECLINE", 2)).thenReturn(true);
+        clearInvocations(socket);
+        var accepted =
+                new Frame.VetoResult(
+                        new Scope.AgentScope(owned.getUserId(), owned.getId(), "member"),
+                        "call",
+                        "EXEC_DECLINE",
+                        2);
+        handler.handleTextMessage(socket, new TextMessage(FrameCodec.encodeString(accepted)));
+        handler.handleTextMessage(
+                socket,
+                new TextMessage(
+                        FrameCodec.encodeString(
+                                new Frame.VetoResult(
+                                        new Scope.AgentScope(
+                                                owned.getUserId(), foreign.getId(), "member"),
+                                        "call",
+                                        "EXEC_DECLINE",
+                                        3))));
+        handler.handleTextMessage(
+                socket,
+                new TextMessage(
+                        FrameCodec.encodeString(
+                                new Frame.VetoResult(
+                                        new Scope.AgentScope(
+                                                owned.getUserId(), owned.getId(), "foreign-agent"),
+                                        "call",
+                                        "EXEC_DECLINE",
+                                        4))));
+        handler.handleTextMessage(
+                socket,
+                new TextMessage(
+                        FrameCodec.encodeString(
+                                new Frame.VetoResult(
+                                        new Scope.AgentScope(
+                                                owned.getUserId(), owned.getId(), "member"),
+                                        "expired",
+                                        "EXEC_DECLINE",
+                                        5))));
+        handler.handleTextMessage(
+                socket,
+                new TextMessage(
+                        FrameCodec.encodeString(
+                                new Frame.VetoResult(
+                                        new Scope.AgentScope(
+                                                TestUsers.BOB, owned.getId(), "member"),
+                                        "call",
+                                        "EXEC_DECLINE",
+                                        6))));
+        verify(agents).resolveVeto("member", "call", "EXEC_DECLINE", 2);
+        verify(agents, never())
+                .resolveVeto(
+                        ArgumentMatchers.eq("foreign-agent"),
+                        ArgumentMatchers.anyString(),
+                        ArgumentMatchers.anyString(),
+                        ArgumentMatchers.anyLong());
+        var sent = ArgumentCaptor.forClass(TextMessage.class);
+        verify(socket, times(4)).sendMessage(sent.capture());
+        for (int index = 0; index < 4; index++) {
+            var reply = FrameCodec.decode(sent.getAllValues().get(index).getPayload());
+            if (!(reply instanceof Frame.Error error))
+                throw new AssertionError("Expected rejection");
+            assertEquals(0, error.seq());
+        }
+    }
+
+    @Test
+    void approvalLifecycleUsesDedicatedWireFrames() throws Exception {
+        var tokens = new LoginSessionManager();
+        var sessions = mock(SessionRepository.class);
+        var handler =
+                new VetoWebSocketHandler(
+                        sessions, tokens, mock(AgentService.class), mock(HitlRegistry.class));
+        var socket =
+                socket(
+                        "alice",
+                        TestUsers.ALICE,
+                        tokens.createLoginSession(TestUsers.ALICE, "alice"));
+        connect(handler, socket);
+        var session = new SessionEntity(TestUsers.ALICE, "owned");
+        when(sessions.findById(session.getId())).thenReturn(Optional.of(session));
+        clearInvocations(socket);
+        handler.sendFrame(
+                new Frame.Veto(
+                        new Scope.AgentScope(session.getUserId(), session.getId(), "agent"),
+                        "call",
+                        "run_command",
+                        "EXEC_NETWORK",
+                        List.of("EXEC_DECLINE"),
+                        Map.of(),
+                        "DANGEROUS",
+                        42));
+        handler.sendFrame(
+                new Delta(
+                        new Scope.AgentScope(session.getUserId(), session.getId(), "agent"),
+                        new Delta.ToolResult("call", "Declined by user", false, 1)));
+        var sent = ArgumentCaptor.forClass(TextMessage.class);
+        verify(socket, times(2)).sendMessage(sent.capture());
+        var first = FrameCodec.decode(sent.getAllValues().getFirst().getPayload());
+        if (!(first instanceof Frame.Veto veto)) throw new AssertionError("Expected approval");
+        assertEquals("DANGEROUS", veto.danger());
+        assertEquals("call", veto.callId());
+        var second = FrameCodec.decode(sent.getAllValues().get(1).getPayload());
+        if (!(second instanceof Delta delta) || !(delta.data() instanceof Delta.ToolResult result))
+            throw new AssertionError("Expected tool result");
+        assertFalse(result.success());
+        assertEquals("call", result.callId());
+    }
+
+    private static void connect(
+            @NonNull VetoWebSocketHandler handler, @NonNull WebSocketSession socket)
+            throws Exception {
+        handler.afterConnectionEstablished(socket);
+        hello(handler, socket, 1);
+    }
+
+    private static void hello(
+            @NonNull VetoWebSocketHandler handler, @NonNull WebSocketSession socket, long seq) {
+        handler.handleTextMessage(
+                socket,
+                new TextMessage(
+                        FrameCodec.encodeString(
+                                new Frame.Hello(
+                                        Frame.PROTOCOL_VERSION, seq, VetoVersion.VERSION, ""))));
+    }
+
+    private static @NonNull Delta event(@NonNull SessionRepository sessions) {
         var session = new SessionEntity(TestUsers.ALICE, "work");
         when(sessions.findById(session.getId())).thenReturn(Optional.of(session));
-        return EventFrame.builder()
-                .sessionId(UUID.fromString(session.getId()))
-                .kind(EventFrame.Kind.ASSISTANT_MESSAGE)
-                .text("private")
-                .build();
+        return new Delta(
+                new Scope.SessionScope(session.getUserId(), session.getId()),
+                new Delta.Message("private", 0));
     }
 
     private static @NonNull ServerHttpRequest request(@NonNull String uri) {
@@ -358,30 +552,28 @@ class VetoWebSocketSecurityTest {
         var tokens = new LoginSessionManager();
         var token = tokens.createLoginSession(TestUsers.ALICE, "alice");
         var sessions = mock(SessionRepository.class);
-        var gateway = mock(VetoGateway.class);
-        var handler = new VetoWebSocketHandler(gateway, sessions, tokens);
+        var handler =
+                new VetoWebSocketHandler(
+                        sessions, tokens, mock(AgentService.class), mock(HitlRegistry.class));
         var oldSocket = socket("old-alice", TestUsers.ALICE, token);
-        handler.afterConnectionEstablished(oldSocket);
+        connect(handler, oldSocket);
         clearInvocations(oldSocket);
         tokens.revokeToken(token);
         var newToken = tokens.createLoginSession(TestUsers.OWNER, "alice");
         var newSocket = socket("new-alice", TestUsers.OWNER, newToken);
-        handler.afterConnectionEstablished(newSocket);
+        connect(handler, newSocket);
         clearInvocations(newSocket);
         var session = new SessionEntity(TestUsers.OWNER, "new-account-session");
         when(sessions.findById(session.getId())).thenReturn(Optional.of(session));
         handler.sendFrame(
-                EventFrame.builder()
-                        .sessionId(UUID.fromString(session.getId()))
-                        .kind(EventFrame.Kind.ASSISTANT_MESSAGE)
-                        .text("private-new-account-data")
-                        .build());
+                new Delta(
+                        new Scope.SessionScope(session.getUserId(), session.getId()),
+                        new Delta.Message("private-new-account-data", 0)));
         verify(oldSocket, never()).sendMessage(ArgumentMatchers.any(TextMessage.class));
         verify(newSocket).sendMessage(ArgumentMatchers.any(TextMessage.class));
         handler.handleTextMessage(
-                oldSocket, new TextMessage("{\"type\":\"veto.process\",\"payload\":\"private\"}"));
+                oldSocket, new TextMessage("{\"type\":\"process\",\"payload\":\"private\"}"));
         verify(oldSocket).close(ArgumentMatchers.any(CloseStatus.class));
-        verifyNoInteractions(gateway);
     }
 
     private static @NonNull WebSocketSession socket(

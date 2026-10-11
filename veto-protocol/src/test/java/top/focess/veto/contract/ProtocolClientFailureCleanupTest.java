@@ -12,6 +12,21 @@ import org.junit.jupiter.api.Timeout;
 
 class ProtocolClientFailureCleanupTest {
     @Test
+    @Timeout(5)
+    void transportFactoryFailureReachesConstructor() {
+        var setupFailure = new IllegalStateException("transport setup failed");
+        var failure =
+                assertThrows(
+                        IllegalStateException.class,
+                        () ->
+                                new ProtocolClient(
+                                        () -> {
+                                            throw setupFailure;
+                                        }));
+        assertSame(setupFailure, failure);
+    }
+
+    @Test
     void rejectedHandshakeClosesTransportAndPreservesTheOriginalFailure() {
         var handshakeFailure = new IllegalStateException("handshake rejected");
         var cleanupFailure = new IllegalStateException("cleanup failed");

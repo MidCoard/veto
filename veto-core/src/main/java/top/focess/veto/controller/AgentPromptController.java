@@ -73,10 +73,10 @@ public class AgentPromptController {
         try {
             if (commands.supports(prompt)) {
                 var sessionId = commands.enqueue(name, userId);
-                commands.primaryNotice(sessionId, agentId);
+                commands.primaryNotice(userId, sessionId, agentId);
             } else {
                 agent.submitUserPrompt(prompt);
-                commands.notice(session.sessionId(), agentId, prompt);
+                commands.notice(userId, session.sessionId(), agentId, prompt);
             }
         } catch (ProtectedInputException rejected) {
             return ResponseEntity.unprocessableEntity()

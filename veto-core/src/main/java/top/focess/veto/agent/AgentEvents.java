@@ -1,6 +1,7 @@
 package top.focess.veto.agent;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -15,7 +16,9 @@ import top.focess.veto.agent.intercept.VetoPrompt;
 import top.focess.veto.api.agent.ToolCallEvent;
 import top.focess.veto.api.agent.ToolResultEvent;
 import top.focess.veto.api.llm.ToolCall;
-import top.focess.veto.contract.EventFrame;
+import top.focess.veto.api.plugin.Scope;
+import top.focess.veto.contract.Delta;
+import top.focess.veto.contract.Frame;
 
 /**
  * Inline agent-output listeners and transport notifications; never owns execution or persistence.
@@ -29,10 +32,9 @@ import top.focess.veto.contract.EventFrame;
 final class AgentEvents {
     private static final @NonNull Logger log =
             LoggerFactory.getLogger("top.focess.veto.agent.AgentEvents");
-    private final @NonNull String agentId;
+    private final Scope.@NonNull AgentScope scope;
     private final @NonNull ObjectMapper objectMapper;
     private final @NonNull AgentEventSink eventSink;
-    private final @NonNull UUID sessionId;
     final @NonNull Listeners<String> messages = new Listeners<>("message");
     final @NonNull Listeners<String> thoughts = new Listeners<>("thought");
     final @NonNull Listeners<VetoPrompt> vetoes = new Listeners<>("veto");
@@ -43,11 +45,11 @@ final class AgentEvents {
             @NonNull String agentId,
             @NonNull ObjectMapper mapper,
             @NonNull AgentEventSink eventSink,
-            @NonNull UUID sessionId) {
-        this.agentId = agentId;
+            @NonNull UUID sessionId,
+            @NonNull UUID userId) {
+        this.scope = new Scope.AgentScope(userId, sessionId.toString(), agentId);
         this.objectMapper = mapper;
         this.eventSink = eventSink;
-        this.sessionId = sessionId;
     }
 
     final class Listeners<T> {
@@ -71,7 +73,7 @@ final class AgentEvents {
                 try {
                     listener.accept(event);
                 } catch (RuntimeException error) {
-                    log.warn("Agent {} {} listener threw", agentId, kind, error);
+                    log.warn("Agent {} {} listener threw", scope.agent(), kind, error);
                 }
             }
         }
@@ -79,31 +81,30 @@ final class AgentEvents {
 
     void message(@NonNull String text, int turn) {
         messages.emit(text);
-        textFrame(EventFrame.Kind.ASSISTANT_MESSAGE, text, turn);
+        publish(new Delta.Message(text, turn));
     }
 
     void thought(@NonNull String text, int turn) {
         if (text.isBlank()) return;
         thoughts.emit(text);
-        textFrame(EventFrame.Kind.ASSISTANT_THOUGHT, text, turn);
+        publish(new Delta.Thought(text, turn));
     }
 
-    EventFrame.@NonNull Builder frame(EventFrame.@NonNull Kind kind) {
-        return EventFrame.builder().sessionId(sessionId).kind(kind);
+    void publish(Delta.@NonNull Data data) {
+        publishFrame(new Delta(scope, data));
+    }
+
+    void completed(String requestId, int turnNumber, boolean success, @NonNull String message) {
+        if (success) {
+            publishFrame(
+                    new Frame.Done(scope, requestId, Map.of("turnNumber", turnNumber), message));
+        } else {
+            publishFrame(new Frame.Error(scope, requestId, turnNumber, message, 0));
+        }
     }
 
     void executionChanged() {
-        publishFrame(
-                frame(EventFrame.Kind.SESSION_INVALIDATED)
-                        .attr("agentId", agentId)
-                        .attr(
-                                "resources",
-                                objectMapper.createArrayNode().add("agents").add("execution"))
-                        .build());
-    }
-
-    private void textFrame(EventFrame.@NonNull Kind kind, @NonNull String text, int turn) {
-        publishFrame(frame(kind).attr("turnNumber", turn).text(text).build());
+        publish(new Delta.SessionInvalidated(List.of("agents", "execution")));
     }
 
     void turn(@NonNull TurnRecord numbered) {
@@ -122,24 +123,14 @@ final class AgentEvents {
                             args instanceof Map<?, ?> values
                                     ? ToolCall.snapshotArguments(values)
                                     : Map.<String, Object>of();
-                    var argumentFrame = objectMapper.valueToTree(argMap);
+                    ObjectNode argumentFrame = objectMapper.valueToTree(argMap);
                     calls.emit(new ToolCallEvent(toolName, argMap));
-                    // Domain event for every subscriber (web, terminal adapter): the call the agent
-                    // is about to run. Carries the authoritative turnNumber + callId so a client
-                    // can
-                    // apply it incrementally and pair the later result without refetching history.
-                    EventFrame.@NonNull Builder b =
-                            EventFrame.builder()
-                                    .sessionId(sessionId)
-                                    .kind(EventFrame.Kind.TOOL_CALL)
-                                    .attr("turnNumber", numbered.turnNumber())
-                                    .attr("toolName", toolName)
-                                    .attr("args", argumentFrame)
-                                    .text(toolName);
-                    if (callId instanceof @NonNull String c) {
-                        b.attr("callId", c);
-                    }
-                    publishFrame(b.build());
+                    publish(
+                            new Delta.ToolCall(
+                                    callId instanceof String c ? c : null,
+                                    toolName,
+                                    argumentFrame,
+                                    numbered.turnNumber()));
                 }
             }
             case TOOL_RESPONSE -> {
@@ -148,17 +139,12 @@ final class AgentEvents {
                 Object callId = numbered.payload().get("call_id");
                 if (content instanceof @NonNull String body) {
                     results.emit(new ToolResultEvent(body, Boolean.TRUE.equals(success)));
-                    EventFrame.@NonNull Builder b =
-                            EventFrame.builder()
-                                    .sessionId(sessionId)
-                                    .kind(EventFrame.Kind.TOOL_RESULT)
-                                    .attr("turnNumber", numbered.turnNumber())
-                                    .attr("success", Boolean.TRUE.equals(success))
-                                    .text(body);
-                    if (callId instanceof @NonNull String c) {
-                        b.attr("callId", c);
-                    }
-                    publishFrame(b.build());
+                    publish(
+                            new Delta.ToolResult(
+                                    callId instanceof String c ? c : null,
+                                    body,
+                                    Boolean.TRUE.equals(success),
+                                    numbered.turnNumber()));
                 }
             }
             default -> {
@@ -167,56 +153,54 @@ final class AgentEvents {
         }
     }
 
-    void publishFrame(@NonNull EventFrame frame) {
+    void publishFrame(Frame.@NonNull ScopedFrame frame) {
         try {
             eventSink.publish(frame);
         } catch (RuntimeException e) {
-            log.warn("Agent {} delta-broker publish failed (kind={})", agentId, frame.kind(), e);
+            log.warn(
+                    "Agent {} delta-broker publish failed (kind={})",
+                    scope.agent(),
+                    frame.getClass().getSimpleName(),
+                    e);
         }
     }
 
     void emitVetoRequired(
             @NonNull ToolCall call,
             ApprovalDecision.@NonNull Prompt p,
-            @NonNull List<VetoOption> offered) {
+            @NonNull List<VetoOption> offered,
+            long seq) {
         String callId = call.callId();
         log.info(
                 "VETO_REQUIRED agent={} callId={} tool={} scenario={} options={}",
-                agentId,
+                scope.agent(),
                 callId,
                 call.toolName(),
                 p.scenario(),
                 offered);
-        // Notify the veto emission seam: a transport renders a picker (a Prompt with a
-        // VetoPayload) and routes the user's reply back to resolve the parked veto. The agent
+        // Notify the veto emission seam: a transport renders a picker from a Veto frame and routes
+        // the user's reply back to resolve the parked veto. The agent
         // parks in HitlRegistry regardless; a throwing listener is logged, not propagated.
         vetoes.emit(
                 new VetoPrompt(
-                        agentId,
+                        scope.agent(),
                         callId,
                         call.toolName(),
                         p.scenario(),
                         offered,
                         call.args(),
-                        p.danger()));
-        // Domain event: a veto is parked and waiting for the user's decision. Subscribers (the web
-        // UI, the terminal adapter) render a prompt from this instead of polling; the user's reply
-        // still goes through the authenticated resolve path.
-        EventFrame.@NonNull Builder frame =
-                EventFrame.builder()
-                        .sessionId(sessionId)
-                        .kind(EventFrame.Kind.VETO_REQUIRED)
-                        .attr("agentId", agentId)
-                        .attr("callId", callId)
-                        .attr("toolName", call.toolName())
-                        .attr("scenario", p.scenario().name())
-                        .attr("options", objectMapper.valueToTree(offered))
-                        .attr("args", objectMapper.valueToTree(call.args()));
-        // Danger rides the frame so the UI can warn prominently on DANGEROUS/CRITICAL calls.
+                        p.danger(),
+                        seq));
         var danger = p.danger();
-        if (danger != null) {
-            frame.attr("danger", danger.name());
-        }
-        publishFrame(frame.text(call.toolName()).build());
+        publishFrame(
+                new Frame.Veto(
+                        scope,
+                        callId,
+                        call.toolName(),
+                        p.scenario().name(),
+                        offered.stream().map(Enum::name).toList(),
+                        call.args(),
+                        danger == null ? null : danger.name(),
+                        seq));
     }
 }

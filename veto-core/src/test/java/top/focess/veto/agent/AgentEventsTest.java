@@ -14,9 +14,50 @@ import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 import top.focess.veto.api.agent.ToolCallEvent;
 import top.focess.veto.api.llm.ToolCall;
-import top.focess.veto.contract.EventFrame;
+import top.focess.veto.api.plugin.Scope;
+import top.focess.veto.contract.Delta;
+import top.focess.veto.contract.Frame;
 
 class AgentEventsTest {
+    @Test
+    void completionPublishesExactlyOneScopedOutcome() {
+        var frames = new ArrayList<Frame.ScopedFrame>();
+        var session = UUID.randomUUID();
+        var events =
+                new AgentEvents(
+                        "agent",
+                        new ObjectMapper(),
+                        frames::add,
+                        session,
+                        UUID.fromString("00000000-0000-0000-0000-000000000010"));
+        events.completed("failed-request", 7, false, "failed");
+        assertEquals(
+                List.of(
+                        new Frame.Error(
+                                new Scope.AgentScope(
+                                        UUID.fromString("00000000-0000-0000-0000-000000000010"),
+                                        session.toString(),
+                                        "agent"),
+                                "failed-request",
+                                7,
+                                "failed",
+                                0)),
+                frames);
+        frames.clear();
+        events.completed("successful-request", 8, true, "ok");
+        assertEquals(
+                List.of(
+                        new Frame.Done(
+                                new Scope.AgentScope(
+                                        UUID.fromString("00000000-0000-0000-0000-000000000010"),
+                                        session.toString(),
+                                        "agent"),
+                                "successful-request",
+                                Map.of("turnNumber", 8),
+                                "ok")),
+                frames);
+    }
+
     @Test
     void toolOutputOwnsNestedJsonAndListenersCannotChangeHistoryOrFrame() throws Exception {
         var mapper = new ObjectMapper();
@@ -46,10 +87,18 @@ class AgentEventsTest {
         assertEquals(expected, mapper.writeValueAsString(call.args()));
         assertEquals(expected, mapper.writeValueAsString(required(history.payload().get("args"))));
 
-        var frames = new ArrayList<EventFrame>();
+        var frames = new ArrayList<Delta>();
         var laterEvents = new ArrayList<ToolCallEvent>();
         var session = UUID.randomUUID();
-        var events = new AgentEvents("agent", mapper, frames::add, session);
+        var events =
+                new AgentEvents(
+                        "agent",
+                        mapper,
+                        frame -> {
+                            if (frame instanceof Delta delta) frames.add(delta);
+                        },
+                        session,
+                        UUID.fromString("00000000-0000-0000-0000-000000000010"));
         events.calls.add(
                 event -> {
                     if (event == null) throw new AssertionError("Missing tool event");
@@ -68,7 +117,7 @@ class AgentEventsTest {
         assertEquals(expected, mapper.writeValueAsString(required(history.payload().get("args"))));
         assertEquals(
                 expected,
-                mapper.writeValueAsString(required(frames.getFirst().attrs().get("args"))));
+                mapper.writeValueAsString(((Delta.ToolCall) frames.getFirst().data()).args()));
     }
 
     private static @NonNull Object required(Object value) {

@@ -3,6 +3,9 @@ package top.focess.veto.contract;
 import static org.junit.jupiter.api.Assertions.*;
 import static top.focess.veto.contract.ContractTestSupport.assertThrows;
 
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
@@ -12,9 +15,50 @@ import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
+import top.focess.veto.api.plugin.Scope;
 
 @Timeout(10)
 class ProtocolClientLifecycleTest {
+    @Test
+    void serverRequestDoesNotConsumeClientExchangeWithTheSameSequence() throws Exception {
+        var peer = new Peer();
+        try (var client = new ProtocolClient(() -> peer)) {
+            var answer = new CompletableFuture<Frame.@Nullable HintResult>();
+            var worker =
+                    Thread.ofVirtual()
+                            .start(
+                                    () ->
+                                            answer.complete(
+                                                    client.hint("command", 5, TimeUnit.SECONDS)));
+            var sent = peer.sent.poll(1, TimeUnit.SECONDS);
+            if (!(sent instanceof Frame.Hint hint))
+                throw new AssertionError("Expected hint request");
+            var scope =
+                    new Scope.AgentScope(UUID.randomUUID(), UUID.randomUUID().toString(), "agent");
+            var request =
+                    new Frame.Veto(
+                            scope,
+                            "call",
+                            "tool",
+                            "GENERIC",
+                            List.of("DECLINE"),
+                            Map.of(),
+                            null,
+                            hint.seq());
+            assertTrue(peer.incoming.offer(request));
+            assertEquals(request, client.receive(1, TimeUnit.SECONDS));
+            assertFalse(answer.isDone(), "Incoming requests must not resolve outgoing requests");
+            var reply = new Frame.VetoResult(scope, "call", "DECLINE", request.seq());
+            client.send(reply);
+            assertEquals(reply, peer.sent.poll(1, TimeUnit.SECONDS));
+            var expected = new Frame.HintResult(new Frame.HintInfo("argument", null), hint.seq());
+            assertTrue(peer.incoming.offer(expected));
+            assertEquals(expected, answer.get(1, TimeUnit.SECONDS));
+            worker.join(1000);
+            assertFalse(worker.isAlive());
+        }
+    }
+
     @Test
     void unregisteredSequencedRepliesRemainVisibleToTheCaller() throws Exception {
         var peer = new Peer();
@@ -35,7 +79,7 @@ class ProtocolClientLifecycleTest {
         var client = new ProtocolClient(() -> peer);
         try {
             var hint = new CompletableFuture<Frame.@Nullable HintResult>();
-            var stream = new CompletableFuture<Frame.@Nullable ServerFrame>();
+            var stream = new CompletableFuture<@Nullable Frame>();
             var requester =
                     Thread.ofVirtual()
                             .start(
@@ -87,12 +131,11 @@ class ProtocolClientLifecycleTest {
     void receiveOverflowClosesConnectionAndRetainsAcceptedFrames() throws Exception {
         var peer = new Peer();
         try (var client = new ProtocolClient(() -> peer)) {
-            for (int i = 0; i < 257; i++)
-                assertTrue(peer.incoming.offer(EventFrame.command("event")));
+            for (int i = 0; i < 257; i++) assertTrue(peer.incoming.offer(Delta.message("event")));
             assertTrue(peer.closed.await(2, TimeUnit.SECONDS));
             assertTrue(client.isClosed());
             for (int i = 0; i < 256; i++)
-                assertTrue(client.receive(0, TimeUnit.MILLISECONDS) instanceof EventFrame);
+                assertTrue(client.receive(0, TimeUnit.MILLISECONDS) instanceof Delta);
             assertNull(client.receive(1, TimeUnit.SECONDS));
         }
     }

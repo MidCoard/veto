@@ -1,6 +1,5 @@
 package top.focess.veto.terminal;
 
-import com.fasterxml.jackson.databind.node.BooleanNode;
 import com.github.ajalt.mordant.terminal.Terminal;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -12,7 +11,7 @@ import org.jline.terminal.TerminalBuilder;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import top.focess.veto.contract.EventFrame;
+import top.focess.veto.contract.Delta;
 import top.focess.veto.contract.Frame;
 import top.focess.veto.contract.ProtocolClient;
 import top.focess.veto.contract.Version;
@@ -237,19 +236,17 @@ public class VetoTerminal {
         while (running) {
             ClientSession.PromptView view = session.promptView();
             ClientSession.State state = view.state();
-            Frame.Prompt activePrompt = view.activePrompt();
-            Frame.VetoPayload activeVeto =
-                    (state == ClientSession.State.PROMPTED && activePrompt != null)
-                            ? activePrompt.veto()
-                            : null;
+            Frame.Interaction interaction = view.activePrompt();
+            Frame.Prompt activePrompt = interaction instanceof Frame.Prompt text ? text : null;
+            Frame.Veto activeVeto = interaction instanceof Frame.Veto veto ? veto : null;
 
             String promptText;
             Character mask;
-            if (state == ClientSession.State.PROMPTED && activePrompt != null) {
+            if (state == ClientSession.State.PROMPTED && interaction != null) {
                 if (activeVeto != null) {
                     // HITL veto: render a numbered option picker above the prompt. The reply is
                     // resolved to an option name (by index or name) after readLine and sent as an
-                    // Input frame; the server's veto-first routing resolves the parked veto.
+                    // VetoResult frame matching the parked approval.
                     renderVetoPicker(activeVeto);
                     promptText =
                             theme.style(StyleToken.PROMPT, "▸")
@@ -258,7 +255,7 @@ public class VetoTerminal {
                                     + " pick> ";
                     mask = null;
                     reader.setVariable(LineReader.DISABLE_HISTORY, Boolean.TRUE);
-                } else {
+                } else if (activePrompt != null) {
                     // Server-prompted input request.
                     promptText =
                             theme.style(StyleToken.PROMPT, "▸")
@@ -267,6 +264,8 @@ public class VetoTerminal {
                                     + " ";
                     mask = activePrompt.mask() ? '*' : null;
                     reader.setVariable(LineReader.DISABLE_HISTORY, Boolean.TRUE);
+                } else {
+                    throw new IllegalStateException("Unknown interaction");
                 }
             } else {
                 // Standard prompt: green when logged in, red when logged out.
@@ -388,7 +387,7 @@ public class VetoTerminal {
      *
      * @param veto the pending veto payload
      */
-    private void renderVetoPicker(Frame.@NonNull VetoPayload veto) {
+    private void renderVetoPicker(Frame.@NonNull Veto veto) {
         renderer.println("");
         renderer.println(
                 theme.style(StyleToken.BORDER, "  ╭─ HITL ")
@@ -414,7 +413,7 @@ public class VetoTerminal {
      * @param reply the user's reply (index or name)
      * @return the resolved option name, or {@code null} if invalid
      */
-    private String resolveVetoChoice(Frame.@NonNull VetoPayload veto, @NonNull String reply) {
+    private String resolveVetoChoice(Frame.@NonNull Veto veto, @NonNull String reply) {
         List<String> options = veto.options();
         if (options.isEmpty()) {
             return null;
@@ -476,10 +475,10 @@ public class VetoTerminal {
      * is about to operate on, falling back to a generic {@code tool(k=v, k2=v2)} for unknown tools.
      * Empty args reduce to just the tool name.
      */
-    private static @NonNull String summarizeToolCall(@NonNull EventFrame call) {
-        String tool = call.text();
-        var args = call.attrs().get("args");
-        if (args == null || args.isEmpty()) {
+    private static @NonNull String summarizeToolCall(Delta.@NonNull ToolCall call) {
+        String tool = call.tool();
+        var args = call.args();
+        if (args.isEmpty()) {
             return tool;
         }
         String[] preferred = {
@@ -573,7 +572,7 @@ public class VetoTerminal {
         }
 
         @Override
-        public void onToolCall(@NonNull EventFrame call) {
+        public void onToolCall(Delta.@NonNull ToolCall call) {
             // Claude-Code-style indicator: a single muted line announcing the tool + its key arg
             // (the "what is the agent about to do"). Compact so a long sequence of tool calls does
             // not bury the reasoning. The matching result lands in onToolResult right after.
@@ -582,15 +581,12 @@ public class VetoTerminal {
         }
 
         @Override
-        public void onToolResult(@NonNull EventFrame result) {
+        public void onToolResult(Delta.@NonNull ToolResult result) {
             // Framed observation the model saw. Default: truncate to the first 20 lines + show
             // success/failure marker so a long tool output does not flood the REPL. The user
             // can set VETO_DEBUG=1 to render the full body for debugging.
             String body = result.text();
-            String marker =
-                    result.attrs().getOrDefault("success", BooleanNode.FALSE).asBoolean()
-                            ? "✓"
-                            : "✗";
+            String marker = result.success() ? "✓" : "✗";
             String header = "  ◇ result " + marker;
             if (!verboseToolTrace) {
                 body = truncateForPreview(body, 20);
@@ -610,7 +606,7 @@ public class VetoTerminal {
         }
 
         @Override
-        public void onPrompt(Frame.@NonNull Prompt prompt) {
+        public void onPrompt(Frame.@NonNull Interaction prompt) {
             // The session already set state=PROMPTED. Signal the main thread to re-render with the
             // prompted prompt: set the flag FIRST, then interrupt readLine. The ordering matters —
             // "interrupt fired" must imply "flag was set" so the catch can distinguish this

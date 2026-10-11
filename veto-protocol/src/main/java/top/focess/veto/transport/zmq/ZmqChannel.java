@@ -25,10 +25,10 @@ public abstract class ZmqChannel {
         try {
             if (created.register(socket, ZMQ.Poller.POLLIN) < 0)
                 throw new IllegalStateException("Cannot register ZeroMQ socket");
-        } catch (RuntimeException | Error failure) {
+        } catch (Throwable failure) {
             try {
                 created.close();
-            } catch (RuntimeException | Error cleanup) {
+            } catch (Throwable cleanup) {
                 failure.addSuppressed(cleanup);
             }
             throw failure;
@@ -76,10 +76,10 @@ public abstract class ZmqChannel {
             if (!(type == SocketType.ROUTER ? socket.bind(address) : socket.connect(address)))
                 throw new IllegalStateException("Cannot open ZeroMQ channel");
             return socket;
-        } catch (RuntimeException | Error failure) {
+        } catch (Throwable failure) {
             try {
                 socket.close();
-            } catch (RuntimeException | Error cleanup) {
+            } catch (Throwable cleanup) {
                 failure.addSuppressed(cleanup);
             }
             throw failure;
@@ -99,10 +99,10 @@ public abstract class ZmqChannel {
             var socket = open(context, SocketType.DEALER, address, identity);
             try {
                 return new Client(socket, context, owned);
-            } catch (RuntimeException | Error failure) {
+            } catch (Throwable failure) {
                 try {
                     socket.close();
-                } catch (RuntimeException | Error cleanup) {
+                } catch (Throwable cleanup) {
                     failure.addSuppressed(cleanup);
                 }
                 throw failure;
@@ -114,14 +114,19 @@ public abstract class ZmqChannel {
             return connect(context, address, identity, false);
         }
 
+        /**
+         * Opens a client with its own context, releasing partial resources if setup fails.
+         *
+         * @throws RuntimeException if the address is invalid or socket/poller setup fails
+         */
         public static @NonNull Client connect(@NonNull String address) {
             var context = new ZContext();
             try {
                 return connect(context, address, UUID.randomUUID().toString(), true);
-            } catch (RuntimeException | Error failure) {
+            } catch (Throwable failure) {
                 try {
                     context.close();
-                } catch (RuntimeException | Error cleanup) {
+                } catch (Throwable cleanup) {
                     failure.addSuppressed(cleanup);
                 }
                 throw failure;
@@ -157,10 +162,10 @@ public abstract class ZmqChannel {
             var socket = open(context, SocketType.ROUTER, address, null);
             try {
                 return new Server(socket, context);
-            } catch (RuntimeException | Error failure) {
+            } catch (Throwable failure) {
                 try {
                     socket.close();
-                } catch (RuntimeException | Error cleanup) {
+                } catch (Throwable cleanup) {
                     failure.addSuppressed(cleanup);
                 }
                 throw failure;

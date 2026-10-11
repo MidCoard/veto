@@ -17,13 +17,13 @@ import org.springframework.web.socket.WebSocketSession;
 import org.springframework.web.socket.handler.ConcurrentWebSocketSessionDecorator;
 import org.springframework.web.socket.handler.TextWebSocketHandler;
 import top.focess.veto.VetoVersion;
-import top.focess.veto.contract.EventFrame;
+import top.focess.veto.agent.AgentService;
+import top.focess.veto.agent.intercept.HitlRegistry;
 import top.focess.veto.contract.Frame;
 import top.focess.veto.contract.FrameCodec;
 import top.focess.veto.model.SessionRepository;
 import top.focess.veto.vault.LoginSessionManager;
 import top.focess.veto.vault.LoginSessionManager.LoginSession;
-import top.focess.veto.veto.VetoGateway;
 
 /**
  * Authenticated browser endpoint registered by {@link WebSocketConfig} at /ws/veto/bus. Spring
@@ -34,7 +34,8 @@ public class VetoWebSocketHandler extends TextWebSocketHandler {
     private static final @NonNull Logger log =
             LoggerFactory.getLogger("top.focess.veto.bus.VetoWebSocketHandler");
 
-    private final @NonNull VetoGateway vetoGateway;
+    private final @NonNull AgentService agents;
+    private final @NonNull HitlRegistry approvals;
     private final @NonNull SessionRepository sessionRepository;
     private final @NonNull LoginSessionManager loginSessions;
     private final @NonNull ConcurrentHashMap<@NonNull String, @NonNull Connection> connections =
@@ -42,10 +43,12 @@ public class VetoWebSocketHandler extends TextWebSocketHandler {
     private final @NonNull AtomicLong messageCounter = new AtomicLong();
 
     public VetoWebSocketHandler(
-            @NonNull VetoGateway vetoGateway,
             @NonNull SessionRepository sessionRepository,
-            @NonNull LoginSessionManager loginSessions) {
-        this.vetoGateway = vetoGateway;
+            @NonNull LoginSessionManager loginSessions,
+            @NonNull AgentService agents,
+            @NonNull HitlRegistry approvals) {
+        this.agents = agents;
+        this.approvals = approvals;
         this.sessionRepository = sessionRepository;
         this.loginSessions = loginSessions;
     }
@@ -59,7 +62,6 @@ public class VetoWebSocketHandler extends TextWebSocketHandler {
         }
         var connection = new Connection(socket, user);
         connections.put(socket.getId(), connection);
-        send(connection, new Frame.Welcome(Frame.PROTOCOL_VERSION, 0, VetoVersion.VERSION));
     }
 
     @Override
@@ -73,36 +75,33 @@ public class VetoWebSocketHandler extends TextWebSocketHandler {
             send(connection, new Frame.Error("Invalid client frame", 0));
             return;
         }
-        switch (frame) {
-            case Frame.Hello hello -> {
-                if (hello.version() != Frame.PROTOCOL_VERSION)
-                    send(connection, new Frame.Error("Unsupported protocol version", hello.seq()));
-                else
-                    send(
-                            connection,
-                            new Frame.Welcome(
-                                    Frame.PROTOCOL_VERSION, hello.seq(), VetoVersion.VERSION));
+        if (frame instanceof Frame.Hello hello) {
+            if (connection.ready || hello.version() != Frame.PROTOCOL_VERSION) {
+                send(connection, new Frame.Error("Invalid protocol handshake", hello.seq()));
+                close(connection, CloseStatus.PROTOCOL_ERROR);
+                return;
             }
+            send(
+                    connection,
+                    new Frame.Welcome(Frame.PROTOCOL_VERSION, hello.seq(), VetoVersion.VERSION));
+            connection.ready = true;
+            return;
+        }
+        if (!connection.ready) {
+            send(connection, new Frame.Error("Hello required before application frames", 0));
+            close(connection, CloseStatus.PROTOCOL_ERROR);
+            return;
+        }
+        switch (frame) {
             case Frame.Bye ignored -> close(connection, CloseStatus.NORMAL);
-            case Frame.Heartbeat heartbeat ->
-                    send(connection, new Frame.HeartbeatAck(heartbeat.seq(), Instant.now()));
+            case Frame.Heartbeat ignored -> send(connection, new Frame.HeartbeatAck(Instant.now()));
             case Frame.DagPayload dag -> {
                 send(
                         connection,
                         new Frame.Received(dag.data().taskType(), sequence, Instant.now()));
                 broadcast(connection, new Frame.DagPayload(dag.data(), socket.getId()));
             }
-            case Frame.Process process -> handleVetoProcess(connection, process, sequence);
-            case Frame.Subscribe subscribe -> {
-                String topic = subscribe.topic();
-                if (topic == null) topic = "all";
-                connection.topic = topic;
-                send(connection, new Frame.Subscribed(topic, Instant.now()));
-            }
-            case Frame.Unsubscribe ignored -> {
-                connection.topic = null;
-                send(connection, new Frame.Unsubscribed(Instant.now()));
-            }
+            case Frame.VetoResult result -> resolveVeto(connection, result);
             default ->
                     send(
                             connection,
@@ -112,30 +111,25 @@ public class VetoWebSocketHandler extends TextWebSocketHandler {
         }
     }
 
-    private void handleVetoProcess(
-            @NonNull Connection connection, Frame.@NonNull Process process, long sequence) {
-        String payload = process.payload();
-        if (payload.isEmpty()) {
-            send(connection, new Frame.Error("payload field is required", 0));
+    private void resolveVeto(@NonNull Connection connection, Frame.@NonNull VetoResult result) {
+        var scope = result.scope();
+        var session = sessionRepository.findById(scope.session()).orElse(null);
+        var primary = session == null ? null : session.getPrimaryAgentId();
+        if (session == null
+                || !connection.user.equals(scope.userId())
+                || !connection.user.equals(session.getUserId())
+                || primary == null
+                || !approvals.sessionAgents(primary).contains(result.scope().agent())) {
+            send(connection, new Frame.Error(scope, null, null, "Approval not found", 0));
             return;
         }
-        String dagPayloadId = process.dagPayloadId();
-        if (dagPayloadId == null) dagPayloadId = "ws-" + sequence;
-        String requestId = process.requestId();
-        if (requestId == null) requestId = "ws-req-" + sequence;
-        String componentSource = process.componentSource();
-        if (componentSource == null) componentSource = "WS-Client";
-        var result = vetoGateway.processOutbound(payload, dagPayloadId, requestId, componentSource);
-        send(
-                connection,
-                new Frame.VetoResult(
-                        sequence,
-                        result.decision().name(),
-                        result.processedPayload(),
-                        result.reason(),
-                        result.redactionCount(),
-                        result.isAllowed(),
-                        Instant.now()));
+        if (result.option().isBlank()
+                || !agents.resolveVeto(
+                        result.scope().agent(), result.callId(), result.option(), result.seq())) {
+            send(connection, new Frame.Error(scope, null, null, "Approval no longer pending", 0));
+            return;
+        }
+        // Tool execution or refusal produces the normal tool-result deltas.
     }
 
     @Override
@@ -161,17 +155,16 @@ public class VetoWebSocketHandler extends TextWebSocketHandler {
 
     private void broadcast(@NonNull Connection sender, Frame.@NonNull DagPayload frame) {
         for (var recipient : connections.values()) {
-            String topic = recipient.topic;
-            if (recipient != sender
-                    && sender.user.equals(recipient.user)
-                    && (topic == null || "all".equals(topic) || "dag.payload".equals(topic))) {
+            if (recipient != sender && sender.user.equals(recipient.user) && recipient.ready) {
                 send(recipient, frame);
             }
         }
     }
 
     /** Sends session events only to authenticated connections belonging to the session owner. */
-    public void sendFrame(@NonNull EventFrame frame) {
+    public void sendFrame(Frame.@NonNull ScopedFrame frame) {
+        if (!(frame instanceof Frame.ServerFrame outgoing))
+            throw new IllegalArgumentException("Only server frames can be published to clients");
         UUID sessionId = frame.sessionId();
         if (sessionId == null) return;
         UUID user =
@@ -179,9 +172,10 @@ public class VetoWebSocketHandler extends TextWebSocketHandler {
                         .findById(sessionId.toString())
                         .map(session -> session.getUserId())
                         .orElse(null);
-        if (user == null) return;
+        var scope = frame.scope();
+        if (user == null || scope == null || !user.equals(scope.userId())) return;
         for (var connection : connections.values()) {
-            if (user.equals(connection.user)) send(connection, frame);
+            if (connection.ready && user.equals(connection.user)) send(connection, outgoing);
         }
     }
 
@@ -247,7 +241,7 @@ public class VetoWebSocketHandler extends TextWebSocketHandler {
     private static final class Connection {
         private final @NonNull WebSocketSession socket;
         private final @NonNull UUID user;
-        private volatile String topic;
+        private volatile boolean ready;
 
         private Connection(@NonNull WebSocketSession socket, @NonNull UUID user) {
             this.socket = new ConcurrentWebSocketSessionDecorator(socket, 10_000, 1024 * 1024);

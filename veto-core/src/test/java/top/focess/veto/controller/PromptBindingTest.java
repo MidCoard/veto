@@ -3,7 +3,7 @@ package top.focess.veto.controller;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
-import java.time.Instant;
+import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -17,12 +17,13 @@ import top.focess.veto.api.agent.AgentResult;
 import top.focess.veto.api.llm.LlmBinding;
 import top.focess.veto.api.llm.ProviderType;
 import top.focess.veto.api.llm.ToolResultPresentationMode;
+import top.focess.veto.api.plugin.Scope;
 import top.focess.veto.api.plugin.agent.AgentProfile;
 import top.focess.veto.bus.DeltaBroker;
 import top.focess.veto.command.PromptHandler;
 import top.focess.veto.command.SessionCommandService;
 import top.focess.veto.command.VetoCommandSender;
-import top.focess.veto.contract.EventFrame;
+import top.focess.veto.contract.Delta;
 import top.focess.veto.contract.Frame;
 import top.focess.veto.controller.dto.SubmitPromptRequest;
 import top.focess.veto.model.tier.ModelBinding;
@@ -124,13 +125,12 @@ class PromptBindingTest {
         when(sessions.resolveLlmConfig("terminal")).thenReturn(Optional.of(config));
         when(sessions.activeSession("terminal")).thenReturn(Optional.of(id.toString()));
         var frame =
-                new EventFrame(
-                        id,
-                        0,
-                        Instant.parse("2026-10-10T00:00:00Z"),
-                        EventFrame.Kind.TOOL_CALL,
-                        "tool",
-                        Map.of());
+                new Delta(
+                        new Scope.AgentScope(
+                                UUID.fromString("00000000-0000-0000-0000-000000000010"),
+                                id.toString(),
+                                "agent"),
+                        new Delta.ToolCall(null, "tool", JsonNodeFactory.instance.objectNode(), 1));
         when(agents.submit(anyString(), anyString(), any(), any(), isNull(), any(), any()))
                 .thenAnswer(
                         invocation -> {
@@ -141,14 +141,13 @@ class PromptBindingTest {
                 new PromptHandler(vault, agents, sessions, broker)
                         .handle("prompt", "terminal", sender);
         assertInstanceOf(Frame.Error.class, result);
-        var delivered = ArgumentCaptor.forClass(EventFrame.class);
+        var delivered = ArgumentCaptor.forClass(Delta.class);
         verify(sender).sendEvent(delivered.capture());
         var event = delivered.getValue();
         assertEquals(id, event.sessionId());
         assertEquals(1, event.sequence());
         assertEquals(frame.emittedAt(), event.emittedAt());
-        assertEquals(frame.kind(), event.kind());
-        assertEquals(frame.text(), event.text());
+        assertEquals(frame.data(), event.data());
         broker.publish(frame);
         verify(sender, times(1)).sendEvent(any());
     }

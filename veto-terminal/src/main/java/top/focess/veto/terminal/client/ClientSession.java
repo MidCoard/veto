@@ -9,7 +9,7 @@ import java.util.Objects;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import top.focess.veto.contract.EventFrame;
+import top.focess.veto.contract.Delta;
 import top.focess.veto.contract.Frame;
 import top.focess.veto.contract.FrameMeta;
 import top.focess.veto.contract.ProtocolClient;
@@ -28,13 +28,9 @@ import top.focess.veto.contract.ProtocolClient;
  *       Frame.Input}.
  * </ul>
  *
- * <p>The inbound table is a <b>state × frame</b> matrix — every cell is defined. At {@code IDLE},
- * streaming frames ({@link EventFrame}/{@link Frame.Progress}/{@link Frame.Prompt}) are <b>rejected
- * + logged</b> (an orphan: under 1:1 a streaming frame belongs to the in-flight command, and at
- * {@code IDLE} none is in flight); the terminal frames ({@link Frame.Done}/{@link Frame.Error}) are
- * tolerated (a cancel racing a normal completion can deliver a duplicate terminal frame) — {@code
- * Done} applies meta, {@code Error} displays, and the state stays {@code IDLE}. {@link
- * Frame.Terminate} tears down from any state.
+ * <p>Deltas render in every state, including connection-local messages without a session or agent.
+ * Interaction requests require an active command. At IDLE, Done applies metadata and Error displays
+ * its message without starting a command. Terminate tears down from any state.
  *
  * <h3>Thread model</h3>
  *
@@ -45,7 +41,7 @@ import top.focess.veto.contract.ProtocolClient;
  * without deadlock and the critical section stays short.
  *
  * <p>The session never sends frames itself — {@link #submit}/{@link #onFrame}/{@link #cancel}
- * <b>return</b> the {@link Frame.ClientFrame} to send (or {@code null}); the caller owns the {@link
+ * <b>return</b> the {@link Frame} to send (or {@code null}); the caller owns the {@link
  * ProtocolClient} and does the send. This keeps the core free of the transport and avoids holding
  * the monitor across a bounded-outbox {@code offer}.
  *
@@ -83,7 +79,8 @@ public final class ClientSession {
      * (e.g. a {@link Frame.Prompt} arriving) between the reads, so the renderer could act on a
      * {@code state} and an {@code activePrompt} that never coexisted.
      */
-    public record PromptView(@NonNull State state, Frame.Prompt activePrompt, String username) {}
+    public record PromptView(
+            @NonNull State state, Frame.Interaction activePrompt, String username) {}
 
     /**
      * Immutable snapshot of everything the status bar renders at one instant: session metadata and
@@ -102,7 +99,7 @@ public final class ClientSession {
     private final @NonNull Deque<@NonNull String> pendingRequests = new ArrayDeque<>();
 
     private @NonNull State state = State.IDLE;
-    private Frame.Prompt activePrompt;
+    private Frame.Interaction activePrompt;
     private String username;
     private int turnCount;
     private String sessionId;
@@ -141,10 +138,14 @@ public final class ClientSession {
         Frame.ClientFrame frame;
         synchronized (lock) {
             if (state == State.PROMPTED) {
+                frame =
+                        activePrompt instanceof Frame.Veto veto
+                                ? new Frame.VetoResult(
+                                        veto.scope(), veto.callId(), line, veto.seq())
+                                : new Frame.Input(line);
                 activePrompt = null;
                 state = State.RUNNING;
                 events.add(view::onRunning);
-                frame = new Frame.Input(line);
             } else {
                 pendingRequests.addLast(line);
                 if (state == State.IDLE) {
@@ -201,9 +202,9 @@ public final class ClientSession {
      * metadata, dispatches the next queued request or goes idle, and emits render events.
      *
      * <p>{@link Frame.Done} applies meta (and transitions) but never displays content — command
-     * output streams via {@link EventFrame}; {@code Done} is the terminal marker only. {@link
-     * Frame.Error} displays and transitions. At {@code IDLE}, streaming frames are rejected +
-     * logged rather than displayed.
+     * output streams via {@link Delta}; {@code Done} is the terminal marker only. {@link
+     * Frame.Error} displays and transitions. Deltas also render at {@code IDLE} without changing
+     * command state.
      *
      * @param frame the inbound frame
      * @return the client frame to send (a dispatched next {@link Frame.Request}), or {@code null}
@@ -214,26 +215,25 @@ public final class ClientSession {
         synchronized (lock) {
             switch (frame) {
                 // ── streaming ───────────────────────────────────────────────────
-                case EventFrame event -> {
-                    if (state == State.IDLE) {
-                        rejectOrphan(event, "Event");
-                    } else {
-                        switch (event.kind()) {
-                            case ASSISTANT_THOUGHT ->
-                                    events.add(() -> view.onThought(event.text()));
-                            case COMMAND_MESSAGE, ASSISTANT_MESSAGE, NOTICE ->
-                                    events.add(() -> view.onDelta(event.text()));
-                            case TOOL_CALL -> events.add(() -> view.onToolCall(event));
-                            case TOOL_RESULT -> events.add(() -> view.onToolResult(event));
-                            default -> {}
-                        }
+                case Delta event -> {
+                    switch (event.data()) {
+                        case Delta.Progress progress ->
+                                events.add(
+                                        () ->
+                                                view.onProgress(
+                                                        StyledText.muted(
+                                                                "  ⏳ " + progress.content())));
+                        case Delta.Thought thought ->
+                                events.add(() -> view.onThought(thought.text()));
+                        case Delta.Message message ->
+                                events.add(() -> view.onDelta(message.text()));
+                        case Delta.Notice notice -> events.add(() -> view.onDelta(notice.text()));
+                        case Delta.ToolCall call -> events.add(() -> view.onToolCall(call));
+                        case Delta.ToolResult result -> events.add(() -> view.onToolResult(result));
+                        default -> {}
                     }
                 }
-                case Frame.Progress p -> {
-                    if (state == State.IDLE) rejectOrphan(p, "Progress");
-                    else events.add(() -> view.onProgress(StyledText.muted("  ⏳ " + p.content())));
-                }
-                case Frame.Prompt pr -> {
+                case Frame.Interaction pr -> {
                     switch (state) {
                         case IDLE -> rejectOrphan(pr, "Prompt");
                         case RUNNING -> {
@@ -298,7 +298,7 @@ public final class ClientSession {
      * Logs an orphan streaming frame that arrived at {@code IDLE} (a protocol violation under 1:1)
      * and drops it — never displayed. Must hold {@link #lock}.
      */
-    private void rejectOrphan(Frame.@NonNull ServerFrame frame, @NonNull String kind) {
+    private void rejectOrphan(@NonNull Frame frame, @NonNull String kind) {
         log.warn(
                 "Orphan {} frame at IDLE — no command in flight; dropping (protocol violation)",
                 kind);

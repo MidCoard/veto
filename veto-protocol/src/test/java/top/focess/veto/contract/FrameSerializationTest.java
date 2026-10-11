@@ -11,6 +11,7 @@ import java.util.Map;
 import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
+import top.focess.veto.api.plugin.Scope;
 
 class FrameSerializationTest {
     private static final @NonNull ObjectMapper JSON = new ObjectMapper();
@@ -24,33 +25,57 @@ class FrameSerializationTest {
             new Frame.Input("test input"),
             new Frame.Cancel(),
             new Frame.Bye(),
-            new Frame.Heartbeat(9),
+            new Frame.Heartbeat(),
             new Frame.Welcome(Frame.PROTOCOL_VERSION, 1, Version.parse("1.0.100")),
             new Frame.Complete("/log", 2),
             new Frame.Hint("/login ", 3),
             new Frame.CompleteResult(List.of(new Frame.Completion("/login", null, null)), 2),
             new Frame.HintResult(new Frame.HintInfo("<user>", null), 3),
             new Frame.Done(Map.of("username", "alice"), null),
+            new Frame.Error(
+                    new Scope.AgentScope(
+                            UUID.fromString("00000000-0000-0000-0000-000000000010"),
+                            (UUID.randomUUID()).toString(),
+                            "agent"),
+                    "request",
+                    7,
+                    "failed",
+                    0),
             new Frame.Error("failed", 0),
-            new Frame.Progress("working", -1),
+            new Delta(null, new Delta.Progress("working", -1)),
             new Frame.Prompt("Name", false),
+            new Frame.Veto(
+                    new Scope.AgentScope(
+                            UUID.fromString("00000000-0000-0000-0000-000000000010"),
+                            (UUID.randomUUID()).toString(),
+                            "agent"),
+                    "call",
+                    "tool",
+                    "EXEC",
+                    List.of("DECLINE"),
+                    Map.of(),
+                    null,
+                    42),
+            new Frame.VetoResult(
+                    new Scope.AgentScope(
+                            UUID.fromString("00000000-0000-0000-0000-000000000010"),
+                            (UUID.randomUUID()).toString(),
+                            "agent"),
+                    "call",
+                    "DECLINE",
+                    2),
             new Frame.Terminate("bye"),
-            new Frame.HeartbeatAck(9, now),
-            new Frame.Subscribe(null),
-            new Frame.Unsubscribe(),
-            new Frame.Process("payload", null, null, null),
+            new Frame.HeartbeatAck(now),
             new Frame.Received("compile", 4, now),
-            new Frame.VetoResult(4, "ALLOW", "payload", "ok", 0, true, now),
-            new Frame.Subscribed("all", now),
-            new Frame.Unsubscribed(now),
-            new EventFrame(
-                    UUID.randomUUID(),
+            new Delta(
+                    new Scope.AgentScope(
+                            UUID.fromString("00000000-0000-0000-0000-000000000010"),
+                            (UUID.randomUUID()).toString(),
+                            "agent"),
                     4,
                     now,
-                    EventFrame.Kind.TOOL_RESULT,
-                    "observation",
-                    Map.of()),
-            EventFrame.command("command output")
+                    new Delta.ToolResult("call", "observation", true, 1)),
+            Delta.message("command output")
         };
         for (var frame : frames) {
             var json = FrameCodec.encodeString(frame);
@@ -66,8 +91,8 @@ class FrameSerializationTest {
     @Test
     void invalidRequiredFieldsAndOldFormatsAreRejected() {
         assertNull(FrameCodec.decode("{\"type\":\"request\",\"raw\":null}"));
-        assertNull(FrameCodec.decode("{\"type\":\"veto.process\"}"));
-        assertNull(FrameCodec.decode("{\"type\":\"heartbeat\",\"seq\":null}"));
+        assertNull(FrameCodec.decode("{\"type\":\"process\"}"));
+        assertNull(FrameCodec.decode("{\"type\":\"error\",\"content\":\"bad\",\"seq\":null}"));
         assertNull(FrameCodec.decode("{\"type\":\"delta\",\"content\":\"old\"}"));
         assertNull(FrameCodec.decode("{\"type\":\"tool_call\",\"toolName\":\"old\"}"));
         assertNull(FrameCodec.decode("{\"sessionId\":\"s\",\"kind\":\"NOTICE\"}"));
@@ -78,8 +103,8 @@ class FrameSerializationTest {
         String[] payloads = {
             "{\"type\":\"request\",\"raw\":123}",
             "{\"type\":\"request\",\"raw\":true}",
-            "{\"type\":\"heartbeat\",\"seq\":\"1\"}",
-            "{\"type\":\"heartbeat\",\"seq\":1.5}",
+            "{\"type\":\"error\",\"content\":\"bad\",\"seq\":\"1\"}",
+            "{\"type\":\"error\",\"content\":\"bad\",\"seq\":1.5}",
             "{\"type\":\"prompt\",\"content\":\"Name\",\"mask\":1}",
             "{\"type\":\"prompt\",\"content\":\"Name\",\"mask\":\"true\"}"
         };

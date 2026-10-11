@@ -40,7 +40,7 @@ class ProtocolClientWorkerTest {
         transport.client.set(client);
         transport.keepSending.set(busy);
         try (client) {
-            if (busy) client.send(new Frame.Subscribe("all"));
+            if (busy) client.send(new Frame.Request("test"));
             assertTrue(transport.heartbeats.await(2, TimeUnit.SECONDS), "heartbeats were starved");
             assertTrue(transport.receives.get() > 0, "receive was starved");
             var owner = transport.owner.get();
@@ -83,10 +83,10 @@ class ProtocolClientWorkerTest {
             }
             recordOwner();
             if (frame instanceof Frame.Heartbeat) heartbeats.countDown();
-            if (frame instanceof Frame.Subscribe && keepSending.get()) {
+            if (frame instanceof Frame.Request && keepSending.get()) {
                 sends.incrementAndGet();
                 var active = client.get();
-                if (active != null) active.send(new Frame.Subscribe("all"));
+                if (active != null) active.send(new Frame.Request("test"));
             }
         }
 

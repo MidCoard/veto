@@ -22,6 +22,7 @@ import top.focess.veto.command.PromptHandler;
 import top.focess.veto.command.VetoCommandSender;
 import top.focess.veto.contract.Frame;
 import top.focess.veto.contract.FrameCodec;
+import top.focess.veto.contract.Version;
 import top.focess.veto.event.EventManager;
 import top.focess.veto.vault.AuthLifecycleManager;
 import top.focess.veto.vault.CurrentUser;
@@ -145,8 +146,8 @@ class IpcPeerIsolationTest {
         dealer.connect(address);
         assertTrue(
                 dealer.send(
-                        "{\"type\":\"hello\",\"version\":2,\"seq\":1,"
-                                + "\"productVersion\":\"0.0.0-unknown\",\"cwd\":\".\"}"));
+                        FrameCodec.encodeString(
+                                new Frame.Hello(Frame.PROTOCOL_VERSION, 1, Version.UNKNOWN, "."))));
         assertInstanceOf(Frame.Welcome.class, receive(dealer));
         return dealer;
     }
@@ -176,15 +177,16 @@ class IpcPeerIsolationTest {
             dealer.setIdentity("x".getBytes(StandardCharsets.UTF_8));
             dealer.setReceiveTimeOut(3_000);
             dealer.connect(address);
-            assertTrue(dealer.send("{\"type\":\"heartbeat\",\"seq\":0}"));
+            assertTrue(dealer.send("{\"type\":\"heartbeat\"}"));
             assertInstanceOf(Frame.Terminate.class, receive(dealer));
             assertTrue(
                     dealer.send(
-                            "{\"type\":\"hello\",\"version\":2,\"seq\":1,"
-                                    + "\"productVersion\":\"0.0.0-unknown\",\"cwd\":\".\"}"));
+                            FrameCodec.encodeString(
+                                    new Frame.Hello(
+                                            Frame.PROTOCOL_VERSION, 1, Version.UNKNOWN, "."))));
             assertInstanceOf(Frame.Welcome.class, receive(dealer));
-            assertTrue(dealer.send("{\"type\":\"heartbeat\",\"seq\":9}"));
-            assertEquals(9, assertInstanceOf(Frame.HeartbeatAck.class, receive(dealer)).seq());
+            assertTrue(dealer.send("{\"type\":\"heartbeat\"}"));
+            assertInstanceOf(Frame.HeartbeatAck.class, receive(dealer));
             assertTrue(dealer.send("{malformed json"));
             assertTrue(dealer.send("{\"type\":\"complete\",\"raw\":\"explode\",\"seq\":2}"));
             var rejected = receive(dealer);
@@ -277,7 +279,7 @@ class IpcPeerIsolationTest {
                     nextEntered.getCount(),
                     "replacement body must wait for cancelled body exit");
             assertTrue(terminal.send(FrameCodec.encode(new Frame.Cancel())));
-            assertTrue(terminal.send(FrameCodec.encode(new Frame.Heartbeat(9))));
+            assertTrue(terminal.send(FrameCodec.encode(new Frame.Heartbeat())));
             assertInstanceOf(Frame.HeartbeatAck.class, receive(terminal));
             release.countDown();
             var cancelled = assertInstanceOf(Frame.Done.class, receive(terminal));
@@ -285,7 +287,7 @@ class IpcPeerIsolationTest {
             var completed = assertInstanceOf(Frame.Done.class, receive(terminal));
             assertEquals("next", completed.content());
             assertTrue(nextEntered.await(1, TimeUnit.SECONDS));
-            assertTrue(terminal.send(FrameCodec.encode(new Frame.Heartbeat(10))));
+            assertTrue(terminal.send(FrameCodec.encode(new Frame.Heartbeat())));
             assertInstanceOf(Frame.HeartbeatAck.class, receive(terminal));
         } finally {
             release.countDown();

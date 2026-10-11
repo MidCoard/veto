@@ -30,6 +30,25 @@ class HitlRegistryTest {
     }
 
     @Test
+    void pendingSnapshotRetainsSequenceAndRejectsStaleReplies() throws Exception {
+        var registry = new HitlRegistry(null, Mockito.mock(SessionInvalidations.class));
+        var call = new ToolCall("run_command", Map.of("command", "echo hi"), "call");
+        var future = registry.register("agent", "call", call, null, E2_OPTIONS, null);
+        long seq = registry.sequence("agent", "call");
+        assertEquals(seq, registry.pendingFor("agent").getFirst().seq());
+        assertFalse(registry.resolveReply("agent", "call", "ACCEPT_COMMAND", seq + 1));
+        assertFalse(future.isDone());
+        assertTrue(registry.resolveReply("agent", "call", "EXEC_DECLINE", seq));
+        assertTrue(future.get(1, TimeUnit.SECONDS).isRefusal());
+        assertFalse(registry.resolveReply("agent", "call", "ACCEPT_COMMAND", seq));
+        registry.await("agent", "call");
+        var next = registry.register("agent", "call", call, null, E2_OPTIONS, null);
+        assertFalse(registry.resolveReply("agent", "call", "ACCEPT_COMMAND", seq));
+        assertFalse(next.isDone());
+        registry.declineAll("agent");
+    }
+
+    @Test
     void lifecycleCancellationIsNotAttributedToAUserClick() throws Exception {
         HitlRegistry registry = new HitlRegistry(null, Mockito.mock(SessionInvalidations.class));
         var future = registry.register("agent", "cancel", call(), null, E2_OPTIONS, null);

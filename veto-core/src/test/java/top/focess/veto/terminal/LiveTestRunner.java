@@ -174,7 +174,7 @@ class LiveTestRunner {
             assert hint instanceof Frame.HintResult;
 
             // 8. Heartbeat
-            send(new Frame.Heartbeat(0));
+            send(new Frame.Heartbeat());
             System.out.println("[HEARTBEAT] -> sent");
 
             // 9. Unknown command

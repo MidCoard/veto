@@ -27,9 +27,10 @@ import top.focess.veto.vault.KeysteadVault;
  * REST prompt submission endpoint — the command half of the transport rule (commands -> REST POST,
  * events -> WebSocket, authoritative reads -> REST GET). The episode starts and this call acks
  * immediately with 202 + the session id; progress (thoughts, tool calls/results, HITL vetoes) and
- * the episode outcome arrive as {@code EventFrame} events on the WS bus, and {@code GET
- * /api/sessions/{name}/history} is the durable source of truth. A blocking collect-and-return call
- * would cap episode length at the HTTP timeout — HITL pauses alone outlast any such cap.
+ * the episode outcome arrive as {@code Delta}, {@code Veto} and {@code Done} frames on the WS bus,
+ * and {@code GET /api/sessions/{name}/history} is the durable source of truth. A blocking
+ * collect-and-return call would cap episode length at the HTTP timeout — HITL pauses alone outlast
+ * any such cap.
  */
 @RestController
 @RequestMapping("/api/sessions")
@@ -104,7 +105,7 @@ public class PromptController {
                         .body(new PromptStartedResponse("started", sessionId));
             }
             agentService.submitNow(cfg.sessionId(), prompt, binding, userId);
-            commands.notice(cfg.sessionId(), null, prompt);
+            commands.notice(userId, cfg.sessionId(), null, prompt);
             log.info("Prompt accepted for session {} (agent {})", name, cfg.sessionId());
             return ResponseEntity.status(HttpStatus.ACCEPTED)
                     .body(new PromptStartedResponse("started", cfg.sessionId()));

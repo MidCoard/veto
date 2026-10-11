@@ -298,11 +298,17 @@ public class IpcServer {
                     if (activeRequest == null) startNext();
                 }
                 case Frame.Input input -> {
-                    var veto = sender.claimPendingVeto();
-                    if (veto != null)
-                        agentService.resolveVeto(veto.agentId(), veto.callId(), input.raw());
-                    else if (!sender.receiveInput(input.raw()))
+                    if (!sender.receiveInput(input.raw()))
                         log.debug("Discarded input without a pending prompt");
+                }
+                case Frame.VetoResult result -> {
+                    if (sender.claimPendingVeto(result))
+                        agentService.resolveVeto(
+                                result.scope().agent(),
+                                result.callId(),
+                                result.option(),
+                                result.seq());
+                    else log.debug("Discarded decision without a matching pending approval");
                 }
                 case Frame.Complete complete ->
                         send(
@@ -315,8 +321,8 @@ public class IpcServer {
                                 new Frame.HintResult(
                                         registry.hint(sender, hint.raw()), hint.seq()));
                 case Frame.Cancel ignored -> cancel();
-                case Frame.Heartbeat heartbeat ->
-                        send(identity, new Frame.HeartbeatAck(heartbeat.seq(), Instant.now()));
+                case Frame.Heartbeat ignored ->
+                        send(identity, new Frame.HeartbeatAck(Instant.now()));
                 default ->
                         send(identity, new Frame.Error("Unsupported frame on this connection", 0));
             }
@@ -332,7 +338,7 @@ public class IpcServer {
             } else if (sender.cancelCurrentPrompt()) {
                 log.debug("Dismissed terminal prompt");
             } else if (sender.claimPendingVeto() instanceof VetoCommandSender.PendingVeto veto) {
-                agentService.declineVeto(veto.agentId(), veto.callId());
+                agentService.declineVeto(veto.scope().agent(), veto.callId());
             } else {
                 activeRequest = new ActiveRequest(request.worker(), true);
                 request.worker().interrupt();
