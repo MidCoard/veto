@@ -49,8 +49,7 @@ import top.focess.veto.api.llm.ToolResultPresentationMode;
 import top.focess.veto.api.llm.VetoRequest;
 import top.focess.veto.api.llm.VetoResponse;
 import top.focess.veto.builtin.web.WebFetchTool;
-import top.focess.veto.bus.DeltaBroker;
-import top.focess.veto.bus.SessionInvalidations;
+import top.focess.veto.bus.SessionActions;
 import top.focess.veto.event.EventManager;
 import top.focess.veto.integration.plugins.SessionPlugins;
 import top.focess.veto.llm.core.ToolResultPresenter;
@@ -85,7 +84,7 @@ class WebReadAgentIntegrationTest {
                 new SessionAgentRegistry(
                         Mockito.mock(AgentInstanceRepository.class),
                         Mockito.mock(TurnRecordRepository.class),
-                        Mockito.mock(SessionInvalidations.class));
+                        Mockito.mock(SessionActions.class));
         UUID sessionId = UUID.randomUUID();
         List<VetoRequest> childRequests = new ArrayList<>();
         List<VetoAgent> childAgents = new ArrayList<>();
@@ -158,7 +157,8 @@ class WebReadAgentIntegrationTest {
                         models,
                         new VetoCapabilityTranslator(),
                         registry,
-                        new TurnLogService(turnRepository, mapper, new DeltaBroker()),
+                        new TurnLogService(
+                                turnRepository, mapper, Mockito.mock(SessionActions.class)),
                         maxRounds,
                         15,
                         32000,
@@ -231,7 +231,7 @@ class WebReadAgentIntegrationTest {
                         throw new AssertionError(error);
                     }
                 };
-        HitlRegistry hitl = new HitlRegistry(null, Mockito.mock(SessionInvalidations.class));
+        HitlRegistry hitl = new HitlRegistry(null, Mockito.mock(SessionActions.class));
         AgentService service =
                 service(
                         engine,
@@ -387,7 +387,7 @@ class WebReadAgentIntegrationTest {
                         engine,
                         parentCaller,
                         mapper,
-                        new HitlRegistry(null, Mockito.mock(SessionInvalidations.class)),
+                        new HitlRegistry(null, Mockito.mock(SessionActions.class)),
                         new AgentServiceTestSupport.Dependencies());
         String resumedSession = UUID.randomUUID().toString();
         resumed.getOrCreateAgent(
@@ -429,7 +429,7 @@ class WebReadAgentIntegrationTest {
                         new SessionAgentRegistry(
                                 Mockito.mock(AgentInstanceRepository.class),
                                 Mockito.mock(TurnRecordRepository.class),
-                                Mockito.mock(SessionInvalidations.class)));
+                                Mockito.mock(SessionActions.class)));
         doAnswer(
                         invocation -> {
                             assertFalse(
@@ -474,7 +474,8 @@ class WebReadAgentIntegrationTest {
                         models,
                         new VetoCapabilityTranslator(),
                         registry,
-                        new TurnLogService(turnRepository, mapper, new DeltaBroker()),
+                        new TurnLogService(
+                                turnRepository, mapper, Mockito.mock(SessionActions.class)),
                         5,
                         30,
                         32000,
@@ -517,7 +518,7 @@ class WebReadAgentIntegrationTest {
                                                 "https://example.com/docs",
                                                 "objective",
                                                 "Find timeout."));
-        HitlRegistry hitl = new HitlRegistry(null, Mockito.mock(SessionInvalidations.class));
+        HitlRegistry hitl = new HitlRegistry(null, Mockito.mock(SessionActions.class));
         AtomicInteger persistedCancellations = new AtomicInteger();
         TurnLogService parentLog = mock(TurnLogService.class);
         doAnswer(

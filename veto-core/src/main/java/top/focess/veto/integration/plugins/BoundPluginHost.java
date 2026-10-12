@@ -113,17 +113,6 @@ final class BoundPluginHost implements PluginHost {
         publish(scope.session(), topic, facts);
     }
 
-    public void invalidate(@NonNull String session, @NonNull String resource) {
-        authorize(session);
-        delegate.invalidate(session, resource);
-    }
-
-    @Override
-    public void invalidate(Scope.@NonNull SessionScope scope, @NonNull String resource) {
-        authorize(scope);
-        invalidate(scope.session(), resource);
-    }
-
     private void authorize(Scope.@NonNull SessionScope scope) {
         if (!authorize(scope.session()).equals(scope.userId()))
             throw new SecurityException("Session userId mismatch");

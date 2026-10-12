@@ -111,13 +111,15 @@ public class VetoWebSocketHandler extends TextWebSocketHandler {
                 || !connection.user.equals(session.getUserId())
                 || primary == null
                 || !approvals.sessionAgents(primary).contains(result.scope().agent())) {
-            send(connection, new Frame.Error(scope, null, null, "Approval not found", 0));
+            send(connection, new Frame.Error(scope, null, -1, "Approval not found", 0, null));
             return;
         }
         if (result.option().isBlank()
                 || !agents.resolveVeto(
                         result.scope().agent(), result.callId(), result.option(), result.seq())) {
-            send(connection, new Frame.Error(scope, null, null, "Approval no longer pending", 0));
+            send(
+                    connection,
+                    new Frame.Error(scope, null, -1, "Approval no longer pending", 0, null));
             return;
         }
         // Tool execution or refusal produces the normal tool-result deltas.
@@ -156,7 +158,7 @@ public class VetoWebSocketHandler extends TextWebSocketHandler {
                         .map(session -> session.getUserId())
                         .orElse(null);
         var scope = frame.scope();
-        if (user == null || scope == null || !user.equals(scope.userId())) return;
+        if (user == null || !user.equals(scope.userId())) return;
         for (var connection : connections.values()) {
             if (connection.ready && user.equals(connection.user)) send(connection, outgoing);
         }

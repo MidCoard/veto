@@ -3,8 +3,8 @@ package top.focess.veto.agent.intercept;
 import java.util.List;
 import java.util.Map;
 import org.jspecify.annotations.NonNull;
-import top.focess.veto.agent.screening.Relevance;
 import top.focess.veto.api.agent.screening.Danger;
+import top.focess.veto.api.agent.screening.Relevance;
 
 /**
  * The core HITL veto event emitted by the agent loop (the veto emission seam, parallel to the

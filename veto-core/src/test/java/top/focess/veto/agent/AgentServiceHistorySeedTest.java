@@ -23,8 +23,7 @@ import top.focess.veto.api.llm.LlmOptions;
 import top.focess.veto.api.llm.ProviderType;
 import top.focess.veto.api.llm.VetoRequest;
 import top.focess.veto.api.llm.VetoResponse;
-import top.focess.veto.bus.DeltaBroker;
-import top.focess.veto.bus.SessionInvalidations;
+import top.focess.veto.bus.SessionActions;
 import top.focess.veto.llm.core.ToolResultPresenter;
 import top.focess.veto.llm.core.UniformLLMCaller;
 import top.focess.veto.memory.TurnLogService;
@@ -184,7 +183,7 @@ class AgentServiceHistorySeedTest {
         return AgentServiceTestSupport.create(
                 new AgentServiceTestSupport.Dependencies(),
                 new TestToolEngine(),
-                new HitlRegistry(null, Mockito.mock(SessionInvalidations.class)),
+                new HitlRegistry(null, Mockito.mock(SessionActions.class)),
                 IngressDefenseTestSupport.inMemory(),
                 compiler,
                 caller,
@@ -196,7 +195,9 @@ class AgentServiceHistorySeedTest {
                 "STRICT",
                 null,
                 new TurnLogService(
-                        Mockito.mock(TurnRecordRepository.class), mapper, new DeltaBroker()));
+                        Mockito.mock(TurnRecordRepository.class),
+                        mapper,
+                        Mockito.mock(SessionActions.class)));
     }
 
     private static @NonNull LlmBinding binding() {

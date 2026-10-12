@@ -3,6 +3,7 @@ package top.focess.veto.contract;
 import static org.junit.jupiter.api.Assertions.*;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
@@ -15,6 +16,22 @@ import top.focess.veto.api.plugin.Scope;
 
 class FrameSerializationTest {
     private static final @NonNull ObjectMapper JSON = new ObjectMapper();
+
+    @Test
+    void everyGeneralOutputRequiresExplicitScope() throws Exception {
+        Frame[] frames = {
+            new Frame.Done("ok"), Frame.Error.ofError("failed"), Delta.message("text")
+        };
+        for (var frame : frames) {
+            var json = (ObjectNode) JSON.readTree(FrameCodec.encodeString(frame));
+            assertEquals("global", json.path("scope").path("type").asText());
+            assertEquals(frame, FrameCodec.decode(json.toString()));
+            json.putNull("scope");
+            assertNull(FrameCodec.decode(json.toString()));
+            json.remove("scope");
+            assertNull(FrameCodec.decode(json.toString()));
+        }
+    }
 
     @Test
     void allVariantsUseOneDiscriminatorAndRoundTrip() throws Exception {
@@ -32,7 +49,6 @@ class FrameSerializationTest {
             new Frame.CompleteResult(List.of(new Frame.Completion("/login", null, null)), 2),
             new Frame.HintResult(new Frame.HintInfo("<user>", null), 3),
             new Frame.Done(null),
-            new Delta(null, new Delta.TerminalState("alice", 3)),
             new Frame.Error(
                     new Scope.AgentScope(
                             UUID.fromString("00000000-0000-0000-0000-000000000010"),
@@ -41,9 +57,10 @@ class FrameSerializationTest {
                     "request",
                     7,
                     "failed",
-                    0),
+                    0,
+                    null),
             new Frame.Error("failed", 0),
-            new Delta(null, new Delta.Progress("working", -1)),
+            new Delta(new Scope.GlobalScope(), new Delta.Progress("working", -1)),
             new Frame.Prompt("Name", false),
             new Frame.Veto(
                     new Scope.AgentScope(
@@ -91,13 +108,44 @@ class FrameSerializationTest {
         var prompt = JSON.readTree(FrameCodec.encodeString(new Frame.Prompt("Password", true)));
         assertFalse(prompt.has("scope"));
         var done =
-                JSON.readTree(FrameCodec.encodeString(new Frame.Done(null, null, 3, true, null)));
+                JSON.readTree(
+                        FrameCodec.encodeString(
+                                new Frame.Done(
+                                        new Scope.GlobalScope(), null, 3, true, null, null)));
         assertFalse(done.has("meta"));
         assertEquals(3, done.path("turnNumber").asInt());
         assertTrue(done.path("cancelled").asBoolean());
         assertTrue(
                 List.of(Frame.ServerFrame.class.getPermittedSubclasses())
                         .contains(Frame.Veto.class));
+    }
+
+    @Test
+    void agentDataRequiresAnAgentScopeInMemoryAndOnTheWire() throws Exception {
+        var owner = UUID.randomUUID();
+        var agent = new Scope.AgentScope(owner, "session", "agent");
+        Delta.AgentData[] data = {
+            new Delta.TokenUsage("call", 100, 20, null, null, 8192, null, null, null, 1),
+            new Delta.Notice("hint", Delta.Level.INFO),
+            new Delta.Thought("thinking", 1),
+            new Delta.ToolCall("call", "tool", JSON.createObjectNode(), 1),
+            new Delta.ToolResult("call", "result", true, 1)
+        };
+        for (var update : data) {
+            assertThrows(
+                    IllegalArgumentException.class,
+                    () -> new Delta(new Scope.GlobalScope(), update));
+            assertThrows(
+                    IllegalArgumentException.class,
+                    () -> new Delta(new Scope.SessionScope(owner, "session"), update));
+            var frame = new Delta(agent, update);
+            assertEquals(frame, FrameCodec.decode(FrameCodec.encode(frame)));
+            var tree = (ObjectNode) JSON.readTree(FrameCodec.encodeString(frame));
+            tree.putNull("scope");
+            assertNull(FrameCodec.decode(tree.toString()));
+        }
+        assertEquals(-1, new Frame.Done(null).turnNumber());
+        assertEquals(-1, Frame.Error.ofError("command").turnNumber());
     }
 
     @Test

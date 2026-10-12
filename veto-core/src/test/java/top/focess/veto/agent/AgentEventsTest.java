@@ -15,15 +15,45 @@ import org.junit.jupiter.api.Test;
 import top.focess.veto.agent.intercept.ApprovalDecision;
 import top.focess.veto.agent.intercept.VetoOption;
 import top.focess.veto.agent.intercept.VetoScenario;
-import top.focess.veto.agent.screening.Relevance;
 import top.focess.veto.api.agent.ToolCallEvent;
 import top.focess.veto.api.agent.screening.Danger;
+import top.focess.veto.api.agent.screening.Relevance;
 import top.focess.veto.api.llm.ToolCall;
 import top.focess.veto.api.plugin.Scope;
+import top.focess.veto.bus.DeltaBroker;
 import top.focess.veto.contract.Delta;
 import top.focess.veto.contract.Frame;
 
 class AgentEventsTest {
+    @Test
+    void executionActionsKeepTheAgentSessionOwnershipBoundary() {
+        var scope = new Scope.AgentScope(UUID.randomUUID(), UUID.randomUUID().toString(), "agent");
+        var frames = new ArrayList<Frame.ScopedFrame>();
+        var broker = new DeltaBroker();
+        broker.subscribeAll(frames::add);
+        var sink = new DeltaBrokerEventSink(scope, broker);
+        var action = new Frame.Action(scope.sessionScope(), List.of("agents", "execution"));
+        sink.publish(action);
+        assertEquals(List.of(action), frames);
+        assertThrows(
+                IllegalArgumentException.class,
+                () ->
+                        sink.publish(
+                                new Frame.Action(
+                                        new Scope.SessionScope(UUID.randomUUID(), scope.session()),
+                                        List.of("agents"))));
+        assertThrows(
+                IllegalArgumentException.class,
+                () ->
+                        sink.publish(
+                                new Frame.Action(
+                                        new Scope.SessionScope(
+                                                scope.userId(), UUID.randomUUID().toString()),
+                                        List.of("agents"))));
+        assertThrows(IllegalArgumentException.class, () -> sink.publish(Delta.message("global")));
+        assertEquals(List.of(action), frames);
+    }
+
     @Test
     void liveApprovalIncludesBothScreeningDimensions() {
         var frames = new ArrayList<Frame.ScopedFrame>();
@@ -44,8 +74,8 @@ class AgentEventsTest {
                 List.of(VetoOption.EXEC_DECLINE),
                 42);
         var frame = assertInstanceOf(Frame.Veto.class, frames.getFirst());
-        assertEquals("DANGEROUS", frame.danger());
-        assertEquals("LOW", frame.relevance());
+        assertEquals(Danger.DANGEROUS, frame.danger());
+        assertEquals(Relevance.LOW, frame.relevance());
         assertEquals(42, frame.seq());
     }
 
@@ -71,7 +101,8 @@ class AgentEventsTest {
                                 "failed-request",
                                 7,
                                 "failed",
-                                0)),
+                                0,
+                                null)),
                 frames);
         frames.clear();
         events.completed("successful-request", 8, true, "ok");
@@ -85,7 +116,8 @@ class AgentEventsTest {
                                 "successful-request",
                                 8,
                                 false,
-                                "ok")),
+                                "ok",
+                                null)),
                 frames);
     }
 

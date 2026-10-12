@@ -46,8 +46,7 @@ import top.focess.veto.api.llm.ToolDefinition;
 import top.focess.veto.api.llm.VetoRequest;
 import top.focess.veto.api.llm.VetoResponse;
 import top.focess.veto.builtin.web.WebFetchTool;
-import top.focess.veto.bus.DeltaBroker;
-import top.focess.veto.bus.SessionInvalidations;
+import top.focess.veto.bus.SessionActions;
 import top.focess.veto.llm.core.UniformLLMCaller;
 import top.focess.veto.memory.TurnLogService;
 import top.focess.veto.memory.TurnRecordRepository;
@@ -66,7 +65,9 @@ class WebFetchExecutorLoopTest {
     private final @NonNull TurnLogService turnLog =
             spy(
                     new TurnLogService(
-                            Mockito.mock(TurnRecordRepository.class), mapper, new DeltaBroker()));
+                            Mockito.mock(TurnRecordRepository.class),
+                            mapper,
+                            Mockito.mock(SessionActions.class)));
     private final @NonNull ApprovedHttpDestination access = mock(ApprovedHttpDestination.class);
     private final @NonNull List<@NonNull VetoRequest> requests = new ArrayList<>();
     private final @NonNull ModelTierRegistry models = mock();
@@ -577,7 +578,7 @@ class WebFetchExecutorLoopTest {
                 new SessionAgentRegistry(
                         Mockito.mock(AgentInstanceRepository.class),
                         Mockito.mock(TurnRecordRepository.class),
-                        Mockito.mock(SessionInvalidations.class));
+                        Mockito.mock(SessionActions.class));
         var reader =
                 ReaderTestHarness.create(
                         mapper,

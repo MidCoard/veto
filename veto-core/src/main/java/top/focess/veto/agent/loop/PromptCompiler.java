@@ -475,7 +475,8 @@ public class PromptCompiler {
                 extensionData.put(
                         "extension",
                         ToolPresentations.inspect(tool, sessionWorkspace.hostRoots()).facts());
-                var extension = PromptCompiler.compileDocument(prompt.value(), extensionData);
+                var extension =
+                        PromptLibrary.compileTool(local.toolClass(), prompt.value(), extensionData);
                 text.append('\n');
                 int offset = text.length();
                 text.append(extension.text());

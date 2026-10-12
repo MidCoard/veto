@@ -210,16 +210,10 @@ public final class VetoCommandSender extends AbstractCommandSender {
         ipcServer.send(
                 terminalId,
                 new Delta(
-                        null,
+                        new Scope.GlobalScope(),
                         outputSequence.incrementAndGet(),
                         Instant.now(),
-                        new Delta.Message(message, null)));
-    }
-
-    /** Replaces the terminal's display state independently of command completion. */
-    public void terminalState(Scope scope, int turnNumber) {
-        ipcServer.send(
-                terminalId, new Delta(scope, new Delta.TerminalState(username(), turnNumber)));
+                        new Delta.Message(message, -1)));
     }
 
     /** Forwards the canonical broker event without translating or rebuilding its payload. */
@@ -350,8 +344,8 @@ public final class VetoCommandSender extends AbstractCommandSender {
                         vp.scenario().name(),
                         vp.options().stream().map(Enum::name).toList(),
                         vp.args(),
-                        danger == null ? null : danger.name(),
-                        relevance == null ? null : relevance.name(),
+                        danger,
+                        relevance,
                         vp.seq()));
     }
 

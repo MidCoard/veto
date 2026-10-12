@@ -72,8 +72,7 @@ import top.focess.veto.builtin.monitor.MonitorRecord.ActivationState;
 import top.focess.veto.builtin.monitor.MonitorRepository;
 import top.focess.veto.builtin.monitor.MonitorService;
 import top.focess.veto.builtin.response.CitationResponsePolicy;
-import top.focess.veto.bus.DeltaBroker;
-import top.focess.veto.bus.SessionInvalidations;
+import top.focess.veto.bus.SessionActions;
 import top.focess.veto.event.EventManager;
 import top.focess.veto.integration.plugins.PluginDataCleanup;
 import top.focess.veto.integration.plugins.PluginManager;
@@ -161,7 +160,7 @@ class AgentEpisodeModelTest {
                         },
                         limit,
                         engine,
-                        new HitlRegistry(null, Mockito.mock(SessionInvalidations.class)));
+                        new HitlRegistry(null, Mockito.mock(SessionActions.class)));
         String session = UUID.randomUUID().toString();
         var agent =
                 service.getOrCreateAgent(
@@ -947,7 +946,8 @@ class AgentEpisodeModelTest {
         ReflectionTestUtils.setField(
                 service,
                 "turnLogService",
-                new TurnLogService(records, new ObjectMapper(), new DeltaBroker()));
+                new TurnLogService(
+                        records, new ObjectMapper(), Mockito.mock(SessionActions.class)));
         try {
             assertFalse(
                     service.submit(

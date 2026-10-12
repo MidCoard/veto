@@ -41,7 +41,7 @@ import top.focess.veto.api.event.SessionDeletedEvent;
 import top.focess.veto.api.llm.ProviderType;
 import top.focess.veto.api.llm.ToolResultPresentationMode;
 import top.focess.veto.api.plugin.Scope;
-import top.focess.veto.bus.SessionInvalidations;
+import top.focess.veto.bus.SessionActions;
 import top.focess.veto.event.EventManager;
 import top.focess.veto.integration.plugins.PluginDataCleanup;
 import top.focess.veto.integration.plugins.PluginManager;
@@ -74,7 +74,7 @@ class SessionServiceTest {
                 new SessionAgentRegistry(
                         mock(AgentInstanceRepository.class),
                         mock(TurnRecordRepository.class),
-                        mock(SessionInvalidations.class))) {
+                        mock(SessionActions.class))) {
             var primary = mock(VetoAgent.class);
             when(primary.id()).thenReturn("primary");
             when(primary.name()).thenReturn("primary");

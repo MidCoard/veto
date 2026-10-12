@@ -2,6 +2,7 @@ package top.focess.veto.agent.screening;
 
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.api.agent.screening.Danger;
+import top.focess.veto.api.agent.screening.Relevance;
 
 /**
  * The user's runtime-tunable auto-approve cell set. CRITICAL is always REFUSED in every mode.

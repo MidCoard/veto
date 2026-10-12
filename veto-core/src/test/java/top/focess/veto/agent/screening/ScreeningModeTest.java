@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import top.focess.veto.api.agent.screening.Danger;
+import top.focess.veto.api.agent.screening.Relevance;
 
 class ScreeningModeTest {
 

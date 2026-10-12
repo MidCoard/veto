@@ -236,7 +236,7 @@ public class VetoTerminal {
         while (running) {
             ClientSession.PromptView view = session.promptView();
             ClientSession.State state = view.state();
-            Frame.Interaction interaction = view.activePrompt();
+            Frame.ServerFrame interaction = view.activePrompt();
             Frame.Prompt activePrompt = interaction instanceof Frame.Prompt text ? text : null;
             Frame.Veto activeVeto = interaction instanceof Frame.Veto veto ? veto : null;
 
@@ -606,7 +606,7 @@ public class VetoTerminal {
         }
 
         @Override
-        public void onPrompt(Frame.@NonNull Interaction prompt) {
+        public void onPrompt(Frame.@NonNull ServerFrame prompt) {
             // The session already set state=PROMPTED. Signal the main thread to re-render with the
             // prompted prompt: set the flag FIRST, then interrupt readLine. The ordering matters —
             // "interrupt fired" must imply "flag was set" so the catch can distinguish this

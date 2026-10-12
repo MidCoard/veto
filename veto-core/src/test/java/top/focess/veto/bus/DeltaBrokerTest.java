@@ -34,15 +34,17 @@ class DeltaBrokerTest {
             assertNotNull(s2);
             broker.publish(
                     new Delta(
-                            new Scope.SessionScope(
+                            new Scope.AgentScope(
                                     UUID.fromString("00000000-0000-0000-0000-000000000010"),
-                                    sessionId.toString()),
+                                    sessionId.toString(),
+                                    "agent"),
                             new Delta.Message("hello", 0)));
             broker.publish(
                     new Delta(
-                            new Scope.SessionScope(
+                            new Scope.AgentScope(
                                     UUID.fromString("00000000-0000-0000-0000-000000000010"),
-                                    sessionId.toString()),
+                                    sessionId.toString(),
+                                    "agent"),
                             new Delta.Thought("thinking...", 0)));
             assertEquals(2, received1.size());
             assertEquals(2, received2.size());
@@ -65,18 +67,20 @@ class DeltaBrokerTest {
                         });
         broker.publish(
                 new Delta(
-                        new Scope.SessionScope(
+                        new Scope.AgentScope(
                                 UUID.fromString("00000000-0000-0000-0000-000000000010"),
-                                sessionId.toString()),
+                                sessionId.toString(),
+                                "agent"),
                         new Delta.Message("a", 0)));
         assertEquals(1, received.size());
         // Unsubscribe.
         handle.close();
         broker.publish(
                 new Delta(
-                        new Scope.SessionScope(
+                        new Scope.AgentScope(
                                 UUID.fromString("00000000-0000-0000-0000-000000000010"),
-                                sessionId.toString()),
+                                sessionId.toString(),
+                                "agent"),
                         new Delta.Message("b", 0)));
         // The unsubscribed listener should not have received the second frame.
         assertEquals(1, received.size());
@@ -97,9 +101,10 @@ class DeltaBrokerTest {
             for (int i = 0; i < 10; i++) {
                 broker.publish(
                         new Delta(
-                                new Scope.SessionScope(
+                                new Scope.AgentScope(
                                         UUID.fromString("00000000-0000-0000-0000-000000000010"),
-                                        sessionId.toString()),
+                                        sessionId.toString(),
+                                        "agent"),
                                 new Delta.Thought("step " + i, 0)));
             }
         }

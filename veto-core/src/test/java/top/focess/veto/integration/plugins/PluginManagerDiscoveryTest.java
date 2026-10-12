@@ -23,7 +23,7 @@ import top.focess.veto.api.plugin.PluginState;
 import top.focess.veto.api.plugin.Scope;
 import top.focess.veto.api.plugin.contract.PluginFailure;
 import top.focess.veto.api.plugin.contract.StandardContributionPoints;
-import top.focess.veto.bus.SessionInvalidations;
+import top.focess.veto.bus.SessionActions;
 import top.focess.veto.model.SessionEntity;
 import top.focess.veto.model.SessionRepository;
 import top.focess.veto.plugin.runtime.*;
@@ -39,7 +39,7 @@ class PluginManagerDiscoveryTest {
     @Test
     void constructorOwnsFrontendInvalidationOnPluginShutdown() throws Exception {
         var sessions = mock(SessionRepository.class);
-        var invalidations = mock(SessionInvalidations.class);
+        var invalidations = mock(SessionActions.class);
         var session =
                 new SessionEntity(
                         UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"), "session");

@@ -18,7 +18,6 @@ import java.util.concurrent.atomic.AtomicLong;
 import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Component;
 import top.focess.veto.agent.AgentService;
-import top.focess.veto.agent.screening.Relevance;
 import top.focess.veto.agent.screening.Screening;
 import top.focess.veto.agent.screening.ScreeningMode;
 import top.focess.veto.agent.screening.ScreeningOutcome;
@@ -28,11 +27,12 @@ import top.focess.veto.agent.tool.ToolDefinition;
 import top.focess.veto.agent.workspace.Resolution;
 import top.focess.veto.agent.workspace.Workspace;
 import top.focess.veto.api.agent.screening.Danger;
+import top.focess.veto.api.agent.screening.Relevance;
 import top.focess.veto.api.agent.tool.ParamCategory;
 import top.focess.veto.api.agent.tool.ToolCapability;
 import top.focess.veto.api.event.BeforeToolEvent;
 import top.focess.veto.api.llm.ToolCall;
-import top.focess.veto.bus.SessionInvalidations;
+import top.focess.veto.bus.SessionActions;
 import top.focess.veto.i18n.Msg;
 import top.focess.veto.util.Nullness;
 
@@ -61,7 +61,7 @@ import top.focess.veto.util.Nullness;
  */
 @Component
 public class HitlRegistry {
-    private final @NonNull SessionInvalidations invalidations;
+    private final @NonNull SessionActions invalidations;
     private final HitlHistory durableHistory;
 
     /**
@@ -71,7 +71,7 @@ public class HitlRegistry {
      * @param history durable decisions and grants, or null for an isolated ephemeral execution
      * @param invalidations session resource notifications
      */
-    public HitlRegistry(HitlHistory history, @NonNull SessionInvalidations invalidations) {
+    public HitlRegistry(HitlHistory history, @NonNull SessionActions invalidations) {
         this.durableHistory = history;
         this.invalidations = invalidations;
     }
@@ -822,8 +822,8 @@ public class HitlRegistry {
             @NonNull String toolName,
             @NonNull Map<@NonNull String, Object> args,
             @NonNull List<@NonNull String> options,
-            String danger,
-            String relevance) {
+            Danger danger,
+            Relevance relevance) {
         /** Defensively copies the offered option list. */
         public PendingVeto {
             options = List.copyOf(options);
@@ -849,12 +849,8 @@ public class HitlRegistry {
                                     pendingCall.danger() == Danger.CRITICAL
                                             ? List.of(VetoOption.EXEC_DECLINE.name())
                                             : transportOptions(pendingCall.options()),
-                                    pendingCall.danger() == null
-                                            ? null
-                                            : pendingCall.danger().name(),
-                                    pendingCall.relevance() == null
-                                            ? null
-                                            : pendingCall.relevance().name()));
+                                    pendingCall.danger(),
+                                    pendingCall.relevance()));
                 });
         return List.copyOf(out);
     }

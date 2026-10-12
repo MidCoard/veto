@@ -64,7 +64,7 @@ import top.focess.veto.api.plugin.service.ServiceException;
 import top.focess.veto.api.plugin.storage.PluginStorage;
 import top.focess.veto.api.process.ProcessHost;
 import top.focess.veto.api.resources.CatalogueAccess;
-import top.focess.veto.bus.SessionInvalidations;
+import top.focess.veto.bus.SessionActions;
 import top.focess.veto.event.EventListenerRegistry;
 import top.focess.veto.integration.plugins.storage.PluginInvocationContext;
 import top.focess.veto.integration.plugins.storage.PluginStorageFactory;
@@ -267,7 +267,7 @@ public final class PluginManager implements AutoCloseable {
     private final @NonNull ObjectProvider<ToolEngineImpl> toolEngine;
     private final @NonNull ObjectProvider<PluginLlmProviders> llmProviders;
     private final @NonNull ObjectProvider<SessionRepository> sessions;
-    private final @NonNull ObjectProvider<SessionInvalidations> invalidations;
+    private final @NonNull ObjectProvider<SessionActions> invalidations;
     private final @NonNull Set<String> installedIds = new HashSet<>();
     private final @NonNull Set<String> dataLifecycleOwners = ConcurrentHashMap.newKeySet();
     private final @NonNull Map<ContributionPoint<?>, PointDefinition> definedPoints =
@@ -351,7 +351,7 @@ public final class PluginManager implements AutoCloseable {
             @NonNull PluginActivationStore activationStore,
             @NonNull ObjectProvider<SessionPlugins> sessionPlugins,
             @NonNull ObjectProvider<SessionRepository> sessions,
-            @NonNull ObjectProvider<SessionInvalidations> invalidations,
+            @NonNull ObjectProvider<SessionActions> invalidations,
             @NonNull ObjectProvider<ToolEngineImpl> tools,
             @NonNull ObjectProvider<PluginLlmProviders> providers)
             throws IOException {

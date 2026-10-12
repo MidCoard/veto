@@ -23,8 +23,7 @@ import top.focess.veto.api.llm.LlmOptions;
 import top.focess.veto.api.llm.ProviderType;
 import top.focess.veto.api.llm.VetoRequest;
 import top.focess.veto.api.llm.VetoResponse;
-import top.focess.veto.bus.DeltaBroker;
-import top.focess.veto.bus.SessionInvalidations;
+import top.focess.veto.bus.SessionActions;
 import top.focess.veto.llm.core.ToolResultPresenter;
 import top.focess.veto.llm.core.UniformLLMCaller;
 import top.focess.veto.memory.TurnLogService;
@@ -60,7 +59,7 @@ class PerUserIdentityTest {
         return AgentServiceTestSupport.create(
                 new AgentServiceTestSupport.Dependencies(),
                 new TestToolEngine(),
-                new HitlRegistry(null, Mockito.mock(SessionInvalidations.class)),
+                new HitlRegistry(null, Mockito.mock(SessionActions.class)),
                 IngressDefenseTestSupport.inMemory(),
                 compiler,
                 caller,
@@ -90,7 +89,8 @@ class PerUserIdentityTest {
     @Test
     void suppliedUserIdFlowsToTurnLog() throws Exception {
         TurnRecordRepository repo = Mockito.mock(TurnRecordRepository.class);
-        TurnLogService turnLog = new TurnLogService(repo, new ObjectMapper(), new DeltaBroker());
+        TurnLogService turnLog =
+                new TurnLogService(repo, new ObjectMapper(), Mockito.mock(SessionActions.class));
 
         List<VetoRequest> seenRequests = new CopyOnWriteArrayList<>();
         UniformLLMCaller caller =
@@ -124,7 +124,8 @@ class PerUserIdentityTest {
     @Test
     void ownerStampedOnAgentThreadForCredentialResolution() throws Exception {
         TurnRecordRepository repo = Mockito.mock(TurnRecordRepository.class);
-        TurnLogService turnLog = new TurnLogService(repo, new ObjectMapper(), new DeltaBroker());
+        TurnLogService turnLog =
+                new TurnLogService(repo, new ObjectMapper(), Mockito.mock(SessionActions.class));
 
         List<UUID> seen = new CopyOnWriteArrayList<>();
         UniformLLMCaller caller =

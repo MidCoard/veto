@@ -21,8 +21,7 @@ import top.focess.veto.api.llm.LlmBinding;
 import top.focess.veto.api.llm.LlmOptions;
 import top.focess.veto.api.llm.ProviderType;
 import top.focess.veto.api.llm.VetoResponse;
-import top.focess.veto.bus.DeltaBroker;
-import top.focess.veto.bus.SessionInvalidations;
+import top.focess.veto.bus.SessionActions;
 import top.focess.veto.llm.core.ToolResultPresenter;
 import top.focess.veto.llm.core.UniformLLMCaller;
 import top.focess.veto.memory.TurnLogService;
@@ -42,7 +41,8 @@ class TurnLogWiringTest {
     @Test
     void submittedEpisodeLogsTurnsIntoRawLog() throws Exception {
         TurnRecordRepository repo = mock(TurnRecordRepository.class);
-        TurnLogService turnLog = new TurnLogService(repo, new ObjectMapper(), new DeltaBroker());
+        TurnLogService turnLog =
+                new TurnLogService(repo, new ObjectMapper(), Mockito.mock(SessionActions.class));
 
         ObjectMapper mapper = new ObjectMapper();
         PromptCompiler compiler =
@@ -59,7 +59,7 @@ class TurnLogWiringTest {
                 AgentServiceTestSupport.create(
                         new AgentServiceTestSupport.Dependencies(),
                         new TestToolEngine(),
-                        new HitlRegistry(null, Mockito.mock(SessionInvalidations.class)),
+                        new HitlRegistry(null, Mockito.mock(SessionActions.class)),
                         IngressDefenseTestSupport.inMemory(),
                         compiler,
                         callerFinishingImmediately(),

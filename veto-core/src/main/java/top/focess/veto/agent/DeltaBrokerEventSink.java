@@ -27,8 +27,11 @@ public final class DeltaBrokerEventSink implements AgentEventSink {
     @Override
     public void publish(Frame.@NonNull ScopedFrame frame) {
         if (broker == null) return;
-        if (!scope.equals(frame.scope()))
-            throw new IllegalArgumentException("Frame does not belong to this agent");
+        boolean owned =
+                frame instanceof Frame.Action
+                        ? scope.sessionScope().equals(frame.scope())
+                        : scope.equals(frame.scope());
+        if (!owned) throw new IllegalArgumentException("Frame does not belong to this agent");
         broker.publish(frame);
     }
 }

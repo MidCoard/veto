@@ -12,17 +12,17 @@ import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.mockito.Mockito;
-import top.focess.veto.agent.screening.Relevance;
 import top.focess.veto.agent.screening.Screening;
 import top.focess.veto.agent.tool.AgentToolDefinition;
 import top.focess.veto.agent.tool.NativeToolDefinition;
 import top.focess.veto.agent.workspace.PathMode;
 import top.focess.veto.agent.workspace.Workspace;
 import top.focess.veto.api.agent.screening.Danger;
+import top.focess.veto.api.agent.screening.Relevance;
 import top.focess.veto.api.agent.tool.ParamCategory;
 import top.focess.veto.api.agent.tool.ToolCapability;
 import top.focess.veto.api.llm.ToolCall;
-import top.focess.veto.bus.SessionInvalidations;
+import top.focess.veto.bus.SessionActions;
 import top.focess.veto.secret.detection.SecretMasker;
 
 /**
@@ -181,7 +181,7 @@ class PermissionGrantTest {
 
     @Test
     void hitlRegistryPersistsGrantOnLikeThis(@TempDir @NonNull Path tmp) {
-        HitlRegistry registry = new HitlRegistry(null, Mockito.mock(SessionInvalidations.class));
+        HitlRegistry registry = new HitlRegistry(null, Mockito.mock(SessionActions.class));
         Path root = tmp.resolve("svc");
         Workspace ws = Workspace.single(root, PathMode.REAL);
         String agentId = "agent-1";
@@ -209,7 +209,7 @@ class PermissionGrantTest {
 
     @Test
     void hitlRegistryRevokesGrant() {
-        HitlRegistry registry = new HitlRegistry(null, Mockito.mock(SessionInvalidations.class));
+        HitlRegistry registry = new HitlRegistry(null, Mockito.mock(SessionActions.class));
         // First seed: register a pending veto future + resolve with a grant-creating option.
         String agentId = "agent-1";
         // We can't easily add a grant without going through resolve(), so use buildGrant +
@@ -289,7 +289,7 @@ class PermissionGrantTest {
 
     @Test
     void scenarioForReadToolIsRead() {
-        HitlRegistry registry = new HitlRegistry(null, Mockito.mock(SessionInvalidations.class));
+        HitlRegistry registry = new HitlRegistry(null, Mockito.mock(SessionActions.class));
         NativeToolDefinition readDef =
                 new NativeToolDefinition(
                         "view_file",
@@ -308,7 +308,7 @@ class PermissionGrantTest {
 
     @Test
     void scenarioForShellExecCriticalIsExecDeterministic() {
-        HitlRegistry registry = new HitlRegistry(null, Mockito.mock(SessionInvalidations.class));
+        HitlRegistry registry = new HitlRegistry(null, Mockito.mock(SessionActions.class));
         NativeToolDefinition execDef =
                 new NativeToolDefinition(
                         "run_command",
@@ -333,7 +333,7 @@ class PermissionGrantTest {
 
     @Test
     void scenarioForShellExecDangerousIsExecSemantic() {
-        HitlRegistry registry = new HitlRegistry(null, Mockito.mock(SessionInvalidations.class));
+        HitlRegistry registry = new HitlRegistry(null, Mockito.mock(SessionActions.class));
         NativeToolDefinition execDef =
                 new NativeToolDefinition(
                         "run_command",
@@ -353,7 +353,7 @@ class PermissionGrantTest {
 
     @Test
     void scenarioForAgentToolIsGeneric() {
-        HitlRegistry registry = new HitlRegistry(null, Mockito.mock(SessionInvalidations.class));
+        HitlRegistry registry = new HitlRegistry(null, Mockito.mock(SessionActions.class));
         AgentToolDefinition agentDef =
                 new AgentToolDefinition(
                         "create_group",

@@ -18,7 +18,7 @@ import org.springframework.stereotype.Component;
 import top.focess.veto.agent.identity.AgentPersona;
 import top.focess.veto.agent.identity.Role;
 import top.focess.veto.api.agent.AgentState;
-import top.focess.veto.bus.SessionInvalidations;
+import top.focess.veto.bus.SessionActions;
 import top.focess.veto.memory.TurnRecordRepository;
 import top.focess.veto.model.AgentEntity;
 import top.focess.veto.model.AgentInstanceRepository;
@@ -33,7 +33,7 @@ import top.focess.veto.model.AgentInstanceRepository;
  */
 @Component
 public final class SessionAgentRegistry implements AutoCloseable {
-    private final @NonNull SessionInvalidations invalidations;
+    private final @NonNull SessionActions invalidations;
 
     private static final @NonNull Logger log =
             LoggerFactory.getLogger("top.focess.veto.agent.SessionAgentRegistry");
@@ -118,7 +118,7 @@ public final class SessionAgentRegistry implements AutoCloseable {
     public SessionAgentRegistry(
             @NonNull AgentInstanceRepository repository,
             @NonNull TurnRecordRepository turns,
-            @NonNull SessionInvalidations invalidations) {
+            @NonNull SessionActions invalidations) {
         this.repository = repository;
         this.turns = turns;
         this.invalidations = invalidations;

@@ -36,7 +36,7 @@ class TerminalConnectionLifecycleTest {
                         public void onProgress(@NonNull StyledText content) {}
 
                         @Override
-                        public void onPrompt(Frame.@NonNull Interaction prompt) {}
+                        public void onPrompt(Frame.@NonNull ServerFrame prompt) {}
 
                         @Override
                         public void onError(@NonNull StyledText content) {}

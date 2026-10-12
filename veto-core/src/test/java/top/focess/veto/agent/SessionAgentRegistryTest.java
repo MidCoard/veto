@@ -17,7 +17,7 @@ import top.focess.veto.agent.identity.AgentPersona;
 import top.focess.veto.agent.identity.Role;
 import top.focess.veto.api.agent.AgentAction;
 import top.focess.veto.api.agent.AgentState;
-import top.focess.veto.bus.SessionInvalidations;
+import top.focess.veto.bus.SessionActions;
 import top.focess.veto.memory.TurnRecordRepository;
 import top.focess.veto.model.AgentInstanceRepository;
 
@@ -28,7 +28,7 @@ class SessionAgentRegistryTest {
                 new SessionAgentRegistry(
                         Mockito.mock(AgentInstanceRepository.class),
                         Mockito.mock(TurnRecordRepository.class),
-                        Mockito.mock(SessionInvalidations.class))) {
+                        Mockito.mock(SessionActions.class))) {
             UUID session = UUID.randomUUID();
             var primary = persona("primary", Role.STANDALONE);
             AtomicReference<@NonNull AgentState> oldState = new AtomicReference<>(AgentState.IDLE);
@@ -78,7 +78,7 @@ class SessionAgentRegistryTest {
                 new SessionAgentRegistry(
                         Mockito.mock(AgentInstanceRepository.class),
                         Mockito.mock(TurnRecordRepository.class),
-                        Mockito.mock(SessionInvalidations.class))) {
+                        Mockito.mock(SessionActions.class))) {
             UUID session = UUID.randomUUID();
             var primary = persona("primary", Role.STANDALONE);
             var primaryRunner = runner(primary);
@@ -108,7 +108,7 @@ class SessionAgentRegistryTest {
                 new SessionAgentRegistry(
                         Mockito.mock(AgentInstanceRepository.class),
                         Mockito.mock(TurnRecordRepository.class),
-                        Mockito.mock(SessionInvalidations.class));
+                        Mockito.mock(SessionActions.class));
         UUID session = UUID.randomUUID();
         AgentRunner rootRunner = runner(persona("root", Role.STANDALONE));
         registry.register(session, new VetoAgent(persona("root", Role.STANDALONE), rootRunner));
@@ -145,7 +145,7 @@ class SessionAgentRegistryTest {
                 new SessionAgentRegistry(
                         Mockito.mock(AgentInstanceRepository.class),
                         Mockito.mock(TurnRecordRepository.class),
-                        Mockito.mock(SessionInvalidations.class));
+                        Mockito.mock(SessionActions.class));
         UUID session = UUID.randomUUID();
         UUID otherSession = UUID.randomUUID();
         AgentRunner parentRunner = runner(persona("main", Role.STANDALONE));
@@ -226,7 +226,7 @@ class SessionAgentRegistryTest {
                 new SessionAgentRegistry(
                         Mockito.mock(AgentInstanceRepository.class),
                         Mockito.mock(TurnRecordRepository.class),
-                        Mockito.mock(SessionInvalidations.class));
+                        Mockito.mock(SessionActions.class));
         UUID session = UUID.randomUUID();
         AgentRunner parentRunner = runner(persona("parent", Role.STANDALONE));
         registry.register(session, new VetoAgent(persona("parent", Role.STANDALONE), parentRunner));
@@ -253,7 +253,7 @@ class SessionAgentRegistryTest {
                 new SessionAgentRegistry(
                         Mockito.mock(AgentInstanceRepository.class),
                         Mockito.mock(TurnRecordRepository.class),
-                        Mockito.mock(SessionInvalidations.class));
+                        Mockito.mock(SessionActions.class));
         UUID session = UUID.randomUUID();
         AgentRunner parentRunner = runner(persona("parent", Role.STANDALONE));
         VetoAgent parent = new VetoAgent(persona("parent", Role.STANDALONE), parentRunner);
@@ -318,7 +318,7 @@ class SessionAgentRegistryTest {
                 new SessionAgentRegistry(
                         Mockito.mock(AgentInstanceRepository.class),
                         Mockito.mock(TurnRecordRepository.class),
-                        Mockito.mock(SessionInvalidations.class));
+                        Mockito.mock(SessionActions.class));
         UUID session = UUID.randomUUID();
         AgentRunner parentRunner = runner(persona("parent", Role.STANDALONE));
         registry.register(session, new VetoAgent(persona("parent", Role.STANDALONE), parentRunner));

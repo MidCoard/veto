@@ -13,6 +13,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
@@ -34,7 +35,8 @@ import top.focess.veto.api.llm.LlmBinding;
 import top.focess.veto.api.llm.LlmOptions;
 import top.focess.veto.api.llm.ProviderType;
 import top.focess.veto.api.llm.VetoResponse;
-import top.focess.veto.bus.SessionInvalidations;
+import top.focess.veto.bus.SessionActions;
+import top.focess.veto.contract.Frame;
 import top.focess.veto.vault.TestUsers;
 
 class RequestSchedulingTest {
@@ -56,6 +58,29 @@ class RequestSchedulingTest {
         } else {
             assertEquals(AgentState.IDLE, runner.state());
             assertNull(runner.executionWaitReason());
+        }
+    }
+
+    @Test
+    void cancelledQueuedRequestPublishesItsFinalIdleSnapshot() throws Exception {
+        var changes = new LinkedBlockingQueue<Frame.Action>();
+        var runner =
+                runner(
+                        frame -> {
+                            if (frame instanceof Frame.Action action) changes.add(action);
+                        });
+        var request = runner.startTask(null, new AgentAction.UserPromptAction("queued"));
+        assertTrue(changes.poll() != null);
+        request.cancelled = true;
+        var agent = new VetoAgent(runner.personaView(), runner);
+        try {
+            assertFalse(request.await(Duration.ofSeconds(5)).success());
+            assertTrue(request.settled().get(5, TimeUnit.SECONDS));
+            assertTrue(changes.poll(5, TimeUnit.SECONDS) != null);
+            assertFalse(runner.hasPendingWork());
+        } finally {
+            agent.shutdown();
+            assertTrue(agent.awaitTermination(Duration.ofSeconds(5)));
         }
     }
 
@@ -171,6 +196,10 @@ class RequestSchedulingTest {
     }
 
     private static @NonNull AgentRunner runner() {
+        return runner(AgentEventSink.none());
+    }
+
+    private static @NonNull AgentRunner runner(@NonNull AgentEventSink sink) {
         String id = UUID.randomUUID().toString();
         var gateway = mock(Gateway.class);
         when(gateway.readHistory()).thenReturn(new ReadHistory());
@@ -186,7 +215,7 @@ class RequestSchedulingTest {
                         TestUsers.OWNER,
                         tools,
                         gateway,
-                        new HitlRegistry(null, Mockito.mock(SessionInvalidations.class)),
+                        new HitlRegistry(null, Mockito.mock(SessionActions.class)),
                         IngressDefenseTestSupport.inMemory()),
                 List.of(),
                 compiler,
@@ -194,7 +223,7 @@ class RequestSchedulingTest {
                 new ObjectMapper(),
                 50,
                 new LlmBinding(ProviderType.ANTHROPIC, "test", "test", LlmOptions.defaults(), null),
-                AgentEventSink.none(),
+                sink,
                 TestUsers.OWNER,
                 null,
                 UUID.fromString(id));

@@ -23,6 +23,8 @@ import org.springframework.stereotype.Component;
 import org.zeromq.ZContext;
 import top.focess.veto.VetoVersion;
 import top.focess.veto.agent.AgentService;
+import top.focess.veto.api.plugin.Scope;
+import top.focess.veto.bus.DeltaBroker;
 import top.focess.veto.command.CommandRegistry;
 import top.focess.veto.command.VetoCommandSender;
 import top.focess.veto.contract.Frame;
@@ -42,6 +44,7 @@ public class IpcServer {
             LoggerFactory.getLogger("top.focess.veto.terminal.IpcServer");
     private static final long SESSION_TIMEOUT_NANOS = TimeUnit.SECONDS.toNanos(90);
     private static final long SESSION_SCAN_NANOS = TimeUnit.SECONDS.toNanos(30);
+    private final @NonNull DeltaBroker broker;
     private final @NonNull CommandRegistry registry;
     private final @NonNull AgentService agentService;
     private final @NonNull String bindAddress;
@@ -57,7 +60,9 @@ public class IpcServer {
     public IpcServer(
             @NonNull CommandRegistry registry,
             @NonNull AgentService agentService,
+            @NonNull DeltaBroker broker,
             @Value("${veto.terminal.bind-address}") @NonNull String bindAddress) {
+        this.broker = broker;
         this.registry = registry;
         this.agentService = agentService;
         this.bindAddress = bindAddress;
@@ -94,9 +99,12 @@ public class IpcServer {
         }
     }
 
+    @SuppressWarnings(
+            "try") // The subscription is owned here solely for connection-lifetime cleanup.
     private void serve(@NonNull CompletableFuture<Void> ready) {
         try (var context = new ZContext();
-                var transport = ZmqChannel.Server.bindRouter(context, bindAddress)) {
+                var transport = ZmqChannel.Server.bindRouter(context, bindAddress);
+                var subscription = broker.subscribeAll(this::publishAction)) {
             ready.complete(null);
             log.info("Terminal endpoint bound to {}", bindAddress);
             long lastScan = System.nanoTime();
@@ -134,12 +142,29 @@ public class IpcServer {
                     session.post(new Disconnect());
                 }
             }
-        } catch (RuntimeException | Error failure) {
+        } catch (Throwable failure) {
             if (!ready.completeExceptionally(failure))
                 log.warn("Terminal IO failed ({})", failure.getClass().getSimpleName());
         } finally {
             running = false;
             sessionWorkers.shutdownNow();
+        }
+    }
+
+    /** Plugin events are independent of an active command, but remain session-authorized. */
+    private void publishAction(Frame.@NonNull ScopedFrame frame) {
+        var scope =
+                switch (frame) {
+                    case Frame.PluginAction action -> action.scope();
+                    case Frame.Action action -> action.scope();
+                    default -> null;
+                };
+        if (scope == null) return;
+        var event = (Frame.ServerFrame) frame;
+        for (var session : sessions.values()) {
+            if (scope.userId().equals(session.sender.userId())
+                    && scope.session().equals(registry.activeSession(session.identity)))
+                send(session.identity, event);
         }
     }
 
@@ -188,6 +213,9 @@ public class IpcServer {
 
     /** Thread-safe output handoff; only the IO owner touches the socket. */
     public void send(@NonNull String identity, Frame.@NonNull ServerFrame frame) {
+        var owner = sessions.get(identity);
+        if (owner != null && frame instanceof Frame.TurnOutcome outcome)
+            frame = registry.terminalOutcome(owner.sender, outcome);
         if (running && !outbox.offer(new Outgoing(identity, frame))) {
             log.warn("Terminal outbox is full; disconnecting the affected peer");
             var session = sessions.get(identity);
@@ -212,7 +240,7 @@ public class IpcServer {
 
     private record Incoming(Frame.@NonNull ClientFrame frame) implements SessionEvent {}
 
-    private record Finished(@NonNull Thread request, Frame.@NonNull TerminalResponse response)
+    private record Finished(@NonNull Thread request, Frame.@NonNull ServerFrame response)
             implements SessionEvent {}
 
     private record Disconnect() implements SessionEvent {}
@@ -252,7 +280,13 @@ public class IpcServer {
                             send(
                                     identity,
                                     active.cancelled()
-                                            ? new Frame.Done(null, null, null, true, null)
+                                            ? new Frame.Done(
+                                                    new Scope.GlobalScope(),
+                                                    null,
+                                                    -1,
+                                                    true,
+                                                    null,
+                                                    null)
                                             : finished.response());
                             startNext();
                         }
@@ -352,7 +386,7 @@ public class IpcServer {
         }
 
         private void execute(Frame.@NonNull Request request) {
-            Frame.TerminalResponse response;
+            Frame.ServerFrame response;
             // Resolve when execution starts: logout must revoke requests queued behind earlier
             // work.
             var security = ExecutionSecurity.open(sender.userId());

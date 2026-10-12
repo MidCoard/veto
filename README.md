@@ -468,7 +468,7 @@ is generated output and must not be committed.
   while Error ends a failed request. Application output carries the same Scope used by plugin
   operations: null for connection-local output, SessionScope for session resources, AgentScope
   for an agent (including its owning account and session). Terminal deltas also render while idle.
-  Compaction feedback uses the generic Notice renderer. PluginEvent transports custom plugin
+  Compaction feedback uses the generic Notice renderer. PluginAction transports custom plugin
   facts; current clients consume resource invalidations, not custom plugin-event payloads. Client-triggered gateway processing is not part of the wire protocol.
   There is no outbound Java cloud bus or remote task executor. `/api/tasks` is a user-owned
   in-memory task registry; creating a task records it locally without executing it.

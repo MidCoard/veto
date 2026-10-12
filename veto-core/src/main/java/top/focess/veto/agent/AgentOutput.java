@@ -188,6 +188,7 @@ final class AgentOutput {
 
     void recordUsage(int throughTurn, @NonNull UsageMeasurement measurement) {
         journal.recordUsage(throughTurn, measurement);
+        events.usage(throughTurn, measurement);
     }
 
     void appendToolCall(@NonNull ToolCall call, String origin) {
@@ -292,21 +293,20 @@ final class AgentOutput {
         events.completed(
                 task == null ? null : task.episode.id(),
                 turnNumber(),
-                result.success(),
+                result.success() || Boolean.TRUE.equals(result.metadata().get("breakerTrip")),
                 result.message());
     }
 
-    void breaker(@NonNull RequestHandle task) {
+    void breaker() {
         String notice = LoopBreaker.tripNotice(view.get().locale());
-        emitMessage(notice);
-        events.publish(
-                new Delta.BreakerTripped(
-                        notice, task.episode.breaker().maxCallsPerEpisode(), turnNumber()));
+        events.publish(new Delta.Notice(notice, Delta.Level.WARNING));
     }
 
     void compacted(int count) {
         events.publish(
-                new Delta.Notice(Msg.get(view.get().locale(), "error.agent.compactDone", count)));
+                new Delta.Notice(
+                        Msg.get(view.get().locale(), "error.agent.compactDone", count),
+                        Delta.Level.INFO));
     }
 
     @NonNull String failureMessage(@NonNull Throwable e) {

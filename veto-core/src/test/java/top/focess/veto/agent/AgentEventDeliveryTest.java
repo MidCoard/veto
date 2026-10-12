@@ -37,7 +37,7 @@ import top.focess.veto.api.llm.VetoRequest;
 import top.focess.veto.api.llm.VetoResponse;
 import top.focess.veto.api.plugin.contract.StandardContributionPoints;
 import top.focess.veto.api.plugin.contribution.Contribution;
-import top.focess.veto.bus.SessionInvalidations;
+import top.focess.veto.bus.SessionActions;
 import top.focess.veto.integration.plugins.WorkflowPluginFixture;
 import top.focess.veto.llm.core.UniformLLMCaller;
 import top.focess.veto.vault.TestUsers;
@@ -267,7 +267,7 @@ class AgentEventDeliveryTest {
                             },
                             50,
                             engine,
-                            new HitlRegistry(null, Mockito.mock(SessionInvalidations.class)));
+                            new HitlRegistry(null, Mockito.mock(SessionActions.class)));
 
             var agent =
                     service.getOrCreateAgent(

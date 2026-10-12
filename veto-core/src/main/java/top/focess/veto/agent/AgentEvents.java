@@ -79,6 +79,10 @@ final class AgentEvents {
         }
     }
 
+    void executionChanged() {
+        publishFrame(new Frame.Action(scope.sessionScope(), List.of("agents", "execution")));
+    }
+
     void message(@NonNull String text, int turn) {
         messages.emit(text);
         publish(new Delta.Message(text, turn));
@@ -94,16 +98,29 @@ final class AgentEvents {
         publishFrame(new Delta(scope, data));
     }
 
-    void completed(String requestId, int turnNumber, boolean success, @NonNull String message) {
-        if (success) {
-            publishFrame(new Frame.Done(scope, requestId, turnNumber, false, message));
-        } else {
-            publishFrame(new Frame.Error(scope, requestId, turnNumber, message, 0));
-        }
+    void usage(int turnNumber, @NonNull UsageMeasurement measurement) {
+        var callId = measurement.modelCallId();
+        if (callId == null) throw new IllegalArgumentException("Measured calls need an identity");
+        publish(
+                new Delta.TokenUsage(
+                        callId,
+                        measurement.inputTokens(),
+                        measurement.outputTokens(),
+                        measurement.cacheReadInputTokens(),
+                        measurement.cacheCreationInputTokens(),
+                        measurement.contextMaxTokens(),
+                        measurement.model(),
+                        measurement.provider(),
+                        measurement.purpose(),
+                        turnNumber));
     }
 
-    void executionChanged() {
-        publish(new Delta.SessionInvalidated(List.of("agents", "execution")));
+    void completed(String requestId, int turnNumber, boolean success, @NonNull String message) {
+        if (success) {
+            publishFrame(new Frame.Done(scope, requestId, turnNumber, false, message, null));
+        } else {
+            publishFrame(new Frame.Error(scope, requestId, turnNumber, message, 0, null));
+        }
     }
 
     void turn(@NonNull TurnRecord numbered) {
@@ -201,8 +218,8 @@ final class AgentEvents {
                         p.scenario().name(),
                         offered.stream().map(Enum::name).toList(),
                         call.args(),
-                        danger == null ? null : danger.name(),
-                        relevance == null ? null : relevance.name(),
+                        danger,
+                        relevance,
                         seq));
     }
 }

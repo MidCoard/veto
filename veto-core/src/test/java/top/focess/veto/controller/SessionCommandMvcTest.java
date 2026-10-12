@@ -171,6 +171,9 @@ class SessionCommandMvcTest {
     void unknownSlashInputRemainsUnchangedPromptWithGenericTooltip(@NonNull String prompt)
             throws Exception {
         ownedSession();
+        var agent = mock(VetoAgent.class);
+        when(agent.id()).thenReturn("primary");
+        when(agents.agent(SESSION_ID)).thenReturn(agent);
         mvc.perform(
                         post("/api/sessions/private/prompt")
                                 .header("X-Veto-Session-Token", token)
@@ -184,6 +187,7 @@ class SessionCommandMvcTest {
         var frame = ArgumentCaptor.forClass(Delta.class);
         verify(broker).publish(frame.capture());
         assertInstanceOf(Delta.Notice.class, frame.getValue().data());
+        assertEquals("primary", frame.getValue().agentId());
         assertEquals(UUID.fromString(SESSION_ID), frame.getValue().sessionId());
         assertFalse(((Delta.Notice) frame.getValue().data()).text().isBlank());
         assertFalse(((Delta.Notice) frame.getValue().data()).text().contains(prompt.strip()));
@@ -191,7 +195,6 @@ class SessionCommandMvcTest {
                 ((Delta.Notice) frame.getValue().data())
                         .text()
                         .contains("synthetic-private-argument"));
-        assertNull(frame.getValue().agentId());
         assertNull(CurrentUser.id());
     }
 

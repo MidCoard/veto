@@ -100,6 +100,12 @@ public final class WebSearchTool extends NativeTool<WebSearchTool.Args> {
     private static final int DEFAULT_MAX_RESULTS = 10;
     private static final int MAX_OUTPUT_CHARS = 64_000;
 
+    // Explicit Java strip-whitespace ranges also compile in JSON Schema's ECMAScript dialect.
+    private static final String QUERY_CHARACTER =
+            "[^\\u0009-\\u000d\\u001c-\\u0020\\u1680\\u2000-\\u2006\\u2008-\\u200a\\u2028\\u2029\\u205f\\u3000]";
+    private static final String QUERY_PATTERN =
+            "^[\\s\\S]*" + QUERY_CHARACTER + "[\\s\\S]*" + QUERY_CHARACTER + "[\\s\\S]*$";
+
     private final @NonNull SearchProvider provider;
 
     /** Creates an instance searching through the given provider. */
@@ -109,11 +115,7 @@ public final class WebSearchTool extends NativeTool<WebSearchTool.Args> {
 
     /** Model-facing arguments of {@code web_search}. */
     public record Args(
-            @StringConstraint(
-                            minLength = 2,
-                            rejectBlank = true,
-                            pattern =
-                                    "(?s)^\\p{javaWhitespace}*\\P{javaWhitespace}.*\\P{javaWhitespace}\\p{javaWhitespace}*$")
+            @StringConstraint(minLength = 2, rejectBlank = true, pattern = QUERY_PATTERN)
                     @SecurityHint(ParamCategory.GENERIC)
                     @Doc("Search query (at least 2 characters).")
                     @NonNull String query,

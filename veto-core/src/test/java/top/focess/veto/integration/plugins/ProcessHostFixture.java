@@ -33,7 +33,7 @@ import top.focess.veto.api.process.ProcessHost;
 import top.focess.veto.builtin.process.ProcessRuntime;
 import top.focess.veto.builtin.process.TaskEvents;
 import top.focess.veto.builtin.tools.*;
-import top.focess.veto.bus.SessionInvalidations;
+import top.focess.veto.bus.SessionActions;
 import top.focess.veto.event.EventListenerRegistry;
 import top.focess.veto.event.EventManager;
 import top.focess.veto.integration.plugins.storage.ConfigurationStorageFixture;
@@ -246,7 +246,7 @@ public final class ProcessHostFixture implements AutoCloseable {
                                 new SessionAgentRegistry(
                                         Mockito.mock(AgentInstanceRepository.class),
                                         Mockito.mock(TurnRecordRepository.class),
-                                        Mockito.mock(SessionInvalidations.class))),
+                                        Mockito.mock(SessionActions.class))),
                         PluginHost.class,
                         effects));
     }

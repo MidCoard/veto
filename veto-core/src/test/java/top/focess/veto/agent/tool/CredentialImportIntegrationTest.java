@@ -26,7 +26,7 @@ import top.focess.veto.api.llm.ToolResultPresentationMode;
 import top.focess.veto.api.plugin.Scope;
 import top.focess.veto.api.plugin.contract.PluginFailure;
 import top.focess.veto.api.plugin.contract.StandardContributionPoints;
-import top.focess.veto.bus.SessionInvalidations;
+import top.focess.veto.bus.SessionActions;
 import top.focess.veto.integration.plugins.HostResourceConfiguration;
 import top.focess.veto.integration.plugins.PluginHostServices;
 import top.focess.veto.integration.plugins.PluginManager;
@@ -91,7 +91,7 @@ class CredentialImportIntegrationTest {
                             GatewayResult.Screened.class, gateway.screen(call, definition));
             assertInstanceOf(
                     ApprovalDecision.Prompt.class,
-                    new HitlRegistry(null, Mockito.mock(SessionInvalidations.class))
+                    new HitlRegistry(null, Mockito.mock(SessionActions.class))
                             .decide("agent", call, definition, screened));
             assertFalse(engine.execute(call, definition).success());
             verifyNoInteractions(vault);

@@ -6,12 +6,8 @@ import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.support.TransactionSynchronization;
-import org.springframework.transaction.support.TransactionSynchronizationManager;
 import top.focess.veto.agent.TurnRecord;
-import top.focess.veto.api.plugin.Scope;
-import top.focess.veto.bus.DeltaBroker;
-import top.focess.veto.contract.Delta;
+import top.focess.veto.bus.SessionActions;
 
 /**
  * The raw-turn write-through log. Called from the {@code AgentRunner} after each turn is appended;
@@ -20,8 +16,8 @@ import top.focess.veto.contract.Delta;
  * nothing here feeds LTM (long-term memory is agent-written only, via {@code write_memory}).
  *
  * <p>Logging is silent/background and never blocks the loop — a failure is logged and swallowed so
- * the agent loop is unaffected. Turn persistence and committed-update transport are required
- * dependencies; logging can be disabled explicitly through {@link #setEnabled(boolean)}.
+ * the agent loop is unaffected. Turn persistence is a required dependency; logging can be disabled
+ * explicitly through {@link #setEnabled(boolean)}.
  */
 @Component
 public class TurnLogService {
@@ -31,43 +27,17 @@ public class TurnLogService {
 
     private final @NonNull ObjectMapper mapper;
     private final @NonNull TurnRecordRepository turnRecordRepository;
+    private final @NonNull SessionActions actions;
     private volatile boolean enabled = true;
-    private final @NonNull DeltaBroker deltaBroker;
 
-    private void notifyChanged(@NonNull UUID sessionId, @NonNull UUID userId, int turnNumber) {
-        Runnable publish =
-                () -> {
-                    try {
-                        deltaBroker.publish(
-                                new Delta(
-                                        new Scope.SessionScope(userId, sessionId.toString()),
-                                        new Delta.RecordUpdated(turnNumber)));
-                    } catch (RuntimeException error) {
-                        log.warn("Could not publish committed record update", error);
-                    }
-                };
-        if (TransactionSynchronizationManager.isActualTransactionActive()
-                && TransactionSynchronizationManager.isSynchronizationActive()) {
-            TransactionSynchronizationManager.registerSynchronization(
-                    new TransactionSynchronization() {
-                        @Override
-                        public void afterCommit() {
-                            publish.run();
-                        }
-                    });
-        } else {
-            publish.run();
-        }
-    }
-
-    /** Creates the durable turn log and its committed-update transport. */
+    /** Creates the durable turn log. Records are read through the records API. */
     public TurnLogService(
             @NonNull TurnRecordRepository turnRecordRepository,
             @NonNull ObjectMapper mapper,
-            @NonNull DeltaBroker deltaBroker) {
+            @NonNull SessionActions actions) {
         this.turnRecordRepository = turnRecordRepository;
         this.mapper = mapper;
-        this.deltaBroker = deltaBroker;
+        this.actions = actions;
     }
 
     /** Enables or disables turn logging. */
@@ -95,7 +65,8 @@ public class TurnLogService {
                             turn.turnNumber(),
                             mapper.writeValueAsString(turn.payload()),
                             mapper.writeValueAsString(turn.llmUsage()));
-            if (changed > 0) notifyChanged(sessionId, userId, turn.turnNumber());
+            if (changed > 0) actions.changed(sessionId, "records", "history");
+            log.debug("Updated metadata for {} persisted records", changed);
         } catch (Exception e) {
             log.warn("Could not persist record usage for turn {}", turn.turnNumber(), e);
         }
@@ -116,7 +87,7 @@ public class TurnLogService {
         try {
             turnRecordRepository.save(
                     TurnRecordEntity.of(turn, sessionId, userId, agentId, mapper));
-            notifyChanged(sessionId, userId, turn.turnNumber());
+            actions.changed(sessionId, "records", "history");
         } catch (RuntimeException e) {
             log.warn("TurnLogService: raw-turn log failed (turn {})", turn.turnNumber(), e);
         }
@@ -132,6 +103,6 @@ public class TurnLogService {
             throw new IllegalStateException("Durable turn logging is unavailable");
         }
         turnRecordRepository.save(TurnRecordEntity.of(turn, sessionId, userId, agentId, mapper));
-        notifyChanged(sessionId, userId, turn.turnNumber());
+        actions.changed(sessionId, "records", "history");
     }
 }

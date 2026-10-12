@@ -51,7 +51,7 @@ import top.focess.veto.api.plugin.contract.JsonValue;
 import top.focess.veto.builtin.planning.ActionsProgramParser;
 import top.focess.veto.builtin.planning.PlanProgram;
 import top.focess.veto.builtin.planning.ProgramValidator;
-import top.focess.veto.bus.SessionInvalidations;
+import top.focess.veto.bus.SessionActions;
 import top.focess.veto.event.EventManager;
 import top.focess.veto.integration.plugins.SessionPlugins;
 import top.focess.veto.llm.core.ToolResultPresenter;
@@ -94,7 +94,7 @@ class AgentEndToEndTest {
         return AgentServiceTestSupport.create(
                 dependencies,
                 new TestToolEngine(),
-                new HitlRegistry(null, Mockito.mock(SessionInvalidations.class)),
+                new HitlRegistry(null, Mockito.mock(SessionActions.class)),
                 IngressDefenseTestSupport.inMemory(),
                 compiler,
                 caller,
@@ -210,7 +210,7 @@ class AgentEndToEndTest {
         return AgentServiceTestSupport.create(
                 dependencies,
                 engine,
-                new HitlRegistry(null, Mockito.mock(SessionInvalidations.class)),
+                new HitlRegistry(null, Mockito.mock(SessionActions.class)),
                 IngressDefenseTestSupport.inMemory(),
                 compiler,
                 caller,

@@ -9,10 +9,10 @@ import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
-import org.springframework.transaction.support.TransactionSynchronizationManager;
+import org.mockito.Mockito;
 import top.focess.veto.agent.TurnRecord;
 import top.focess.veto.api.llm.ToolCall;
-import top.focess.veto.bus.DeltaBroker;
+import top.focess.veto.bus.SessionActions;
 
 /**
  * Verifies {@link TurnLogService} persists turns to the raw-turn log ({@link TurnRecordRepository})
@@ -22,65 +22,50 @@ import top.focess.veto.bus.DeltaBroker;
 class TurnLogServiceTest {
 
     @Test
-    void publishesOnlyAfterCommitAndNotOnRollback() {
-        TurnRecordRepository repo = mock(TurnRecordRepository.class);
-        DeltaBroker broker = mock(DeltaBroker.class);
-        var service = new TurnLogService(repo, new ObjectMapper(), broker);
-        TransactionSynchronizationManager.initSynchronization();
-        TransactionSynchronizationManager.setActualTransactionActive(true);
-        try {
-            service.log(
-                    TurnRecord.userPrompt(1, "hello"),
-                    UUID.randomUUID(),
-                    UUID.randomUUID(),
-                    "agent");
-            verifyNoInteractions(broker);
-            for (var callback : TransactionSynchronizationManager.getSynchronizations())
-                callback.afterCommit();
-            verify(broker).publish(any());
-        } finally {
-            TransactionSynchronizationManager.clear();
-        }
-        reset(broker);
-        TransactionSynchronizationManager.initSynchronization();
-        TransactionSynchronizationManager.setActualTransactionActive(true);
-        try {
-            service.logRequired(
-                    TurnRecord.userPrompt(2, "notice"),
-                    UUID.randomUUID(),
-                    UUID.randomUUID(),
-                    "agent");
-            for (var callback : TransactionSynchronizationManager.getSynchronizations())
-                callback.afterCompletion(1);
-            verifyNoInteractions(broker);
-        } finally {
-            TransactionSynchronizationManager.clear();
-        }
-    }
-
-    @Test
-    void failedWritesAndUnchangedMetadataDoNotNotify() {
-        TurnRecordRepository repo = mock(TurnRecordRepository.class);
-        DeltaBroker broker = mock(DeltaBroker.class);
-        var service = new TurnLogService(repo, new ObjectMapper(), broker);
+    void publishesResourceChangesOnlyAfterSuccessfulPersistence() {
+        var repo = mock(TurnRecordRepository.class);
+        var actions = mock(SessionActions.class);
+        var service = new TurnLogService(repo, new ObjectMapper(), actions);
+        var session = UUID.randomUUID();
+        var owner = UUID.randomUUID();
+        service.log(TurnRecord.userPrompt(1, "hello"), session, owner, "agent");
+        var order = inOrder(repo, actions);
+        order.verify(repo).save(any());
+        order.verify(actions).changed(session, "records", "history");
+        clearInvocations(actions);
         when(repo.save(any())).thenThrow(new IllegalStateException("offline"));
-        service.log(
-                TurnRecord.userPrompt(1, "hello"), UUID.randomUUID(), UUID.randomUUID(), "agent");
-        service.updateMetadata(
-                TurnRecord.userPrompt(1, "hello"), UUID.randomUUID(), UUID.randomUUID(), "agent");
-        verifyNoInteractions(broker);
+        service.log(TurnRecord.userPrompt(2, "later"), session, owner, "agent");
+        verifyNoInteractions(actions);
         when(repo.updateRecordMetadata(
                         anyString(), any(), anyString(), anyInt(), anyString(), anyString()))
                 .thenReturn(1);
-        service.updateMetadata(
-                TurnRecord.userPrompt(1, "hello"), UUID.randomUUID(), UUID.randomUUID(), "agent");
-        verify(broker).publish(any());
+        service.updateMetadata(TurnRecord.userPrompt(1, "hello"), session, owner, "agent");
+        verify(actions).changed(session, "records", "history");
+    }
+
+    @Test
+    void metadataUpdatesRemainPersistenceOperations() {
+        var repo = mock(TurnRecordRepository.class);
+        var service =
+                new TurnLogService(repo, new ObjectMapper(), Mockito.mock(SessionActions.class));
+        var session = UUID.randomUUID();
+        var owner = UUID.randomUUID();
+        service.updateMetadata(TurnRecord.userPrompt(1, "hello"), session, owner, "agent");
+        verify(repo)
+                .updateRecordMetadata(
+                        eq(session.toString()),
+                        eq(owner),
+                        eq("agent"),
+                        eq(1),
+                        anyString(),
+                        anyString());
     }
 
     @Test
     void requiredLoggingPropagatesStorageFailure() {
         TurnRecordRepository repo = mock(TurnRecordRepository.class);
-        var service = new TurnLogService(repo, new ObjectMapper(), new DeltaBroker());
+        var service =
+                new TurnLogService(repo, new ObjectMapper(), Mockito.mock(SessionActions.class));
         when(repo.save(any())).thenThrow(new IllegalStateException("database unavailable"));
         assertThrows(
                 IllegalStateException.class,
@@ -95,7 +80,8 @@ class TurnLogServiceTest {
     @Test
     void rawTurnLogCarriesTenantAndPayload() {
         TurnRecordRepository repo = mock(TurnRecordRepository.class);
-        TurnLogService service = new TurnLogService(repo, new ObjectMapper(), new DeltaBroker());
+        TurnLogService service =
+                new TurnLogService(repo, new ObjectMapper(), Mockito.mock(SessionActions.class));
 
         UUID session = UUID.randomUUID();
         UUID user = UUID.randomUUID();
@@ -116,7 +102,8 @@ class TurnLogServiceTest {
     @Test
     void toolCallIsLoggedForCoherentReplay() {
         TurnRecordRepository repo = mock(TurnRecordRepository.class);
-        TurnLogService service = new TurnLogService(repo, new ObjectMapper(), new DeltaBroker());
+        TurnLogService service =
+                new TurnLogService(repo, new ObjectMapper(), Mockito.mock(SessionActions.class));
 
         UUID session = UUID.randomUUID();
         UUID user = UUID.randomUUID();
@@ -131,8 +118,8 @@ class TurnLogServiceTest {
     @Test
     void disabledLoggingSkipsOptionalWritesAndRejectsRequiredWrites() {
         var repo = mock(TurnRecordRepository.class);
-        var broker = mock(DeltaBroker.class);
-        TurnLogService service = new TurnLogService(repo, new ObjectMapper(), broker);
+        TurnLogService service =
+                new TurnLogService(repo, new ObjectMapper(), Mockito.mock(SessionActions.class));
         service.setEnabled(false);
         service.log(
                 TurnRecord.userPrompt(1, "hello"),
@@ -147,7 +134,7 @@ class TurnLogServiceTest {
                                 UUID.randomUUID(),
                                 UUID.randomUUID(),
                                 UUID.randomUUID().toString()));
-        verifyNoInteractions(repo, broker);
+        verifyNoInteractions(repo);
     }
 
     private static <T extends @NonNull Object> @NonNull T requireValue(T value, String message) {

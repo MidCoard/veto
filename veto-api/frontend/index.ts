@@ -9,6 +9,8 @@ export interface PluginContext {
   connected: boolean;
   /** Available in host surfaces that support opening a session Agent. */
   openAgent?: (agentId: string) => Promise<void>;
+  /** Live session event with a plugin-local topic (as passed to PluginHost.publish); not a turn outcome. */
+  subscribeAction(topic: string, listener: (data: Record<string, Json>) => void): () => void;
   subscribe(resource: string, listener: () => void): () => void;
   /** Requests are also cancelled when the session's frontend plugin is disposed. */
   invoke<T extends Json = Json>(action: string, arguments_: Record<string, Json>, signal?: AbortSignal): Promise<T>;

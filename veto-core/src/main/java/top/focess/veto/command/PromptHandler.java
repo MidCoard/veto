@@ -106,7 +106,7 @@ public class PromptHandler {
      * returned as an {@link Frame.Error}).
      */
     @SuppressWarnings("try") // Subscription is owned here solely for guaranteed scope cleanup.
-    public Frame.@NonNull TerminalResponse handle(
+    public Frame.@NonNull TurnOutcome handle(
             @NonNull String prompt, @NonNull String terminalId, @NonNull VetoCommandSender sender) {
         UUID user = sender.userId();
         if (user != null && !vault.isUnlocked(user)) user = null;
@@ -155,16 +155,15 @@ public class PromptHandler {
                             user);
 
             var scope = new Scope.SessionScope(owner, sessionId);
-            sender.terminalState(scope, turnsOf(result));
 
-            if (result.success()) {
+            if (result.success() || Boolean.TRUE.equals(result.metadata().get("breakerTrip"))) {
                 // Content was already streamed; this completes the terminal request.
-                return new Frame.Done(scope, null, turnsOf(result), false, null);
+                return new Frame.Done(scope, null, turnsOf(result), false, null, null);
             }
-            // Failure (breaker trip / error): the reason was not streamed, so surface it in Error.
+            // Execution failures surface in Error; a breaker already emitted its notice.
             String resultMessage = result.message();
             String reason = resultMessage.isBlank() ? "Agent failed." : resultMessage;
-            return new Frame.Error(scope, null, turnsOf(result), reason, 0);
+            return new Frame.Error(scope, null, turnsOf(result), reason, 0, null);
         } catch (TimeoutException e) {
             log.warn("Agent episode timed out for session {}", sessionId);
             return Frame.Error.ofError("Agent timed out.");

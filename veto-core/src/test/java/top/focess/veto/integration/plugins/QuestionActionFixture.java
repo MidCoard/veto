@@ -22,7 +22,6 @@ import top.focess.veto.api.plugin.Scope;
 import top.focess.veto.api.plugin.contract.StandardContributionPoints;
 import top.focess.veto.api.plugin.storage.PluginStorage;
 import top.focess.veto.builtin.questions.Question;
-import top.focess.veto.bus.DeltaBroker;
 import top.focess.veto.controller.AuthorizationTestSupport;
 import top.focess.veto.controller.PluginFrontendController;
 import top.focess.veto.integration.plugins.storage.ConfigurationStorageFixture;
@@ -56,7 +55,7 @@ public final class QuestionActionFixture implements AutoCloseable {
     }
 
     public QuestionActionFixture() throws IOException {
-        var config = new PluginHostConfiguration(new DeltaBroker());
+        var config = new PluginHostConfiguration();
         var services =
                 config.runtimeHostServices(
                         PluginTestSupport.providerOf(null),

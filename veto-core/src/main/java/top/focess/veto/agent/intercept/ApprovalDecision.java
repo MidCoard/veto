@@ -2,8 +2,8 @@ package top.focess.veto.agent.intercept;
 
 import java.util.List;
 import org.jspecify.annotations.NonNull;
-import top.focess.veto.agent.screening.Relevance;
 import top.focess.veto.api.agent.screening.Danger;
+import top.focess.veto.api.agent.screening.Relevance;
 
 /**
  * The {@link HitlRegistry}'s decision for one tool call, computed from the {@link GatewayResult}

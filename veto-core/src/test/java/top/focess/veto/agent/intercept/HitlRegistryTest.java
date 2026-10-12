@@ -12,7 +12,7 @@ import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 import top.focess.veto.agent.tool.ToolDefinition;
 import top.focess.veto.api.llm.ToolCall;
-import top.focess.veto.bus.SessionInvalidations;
+import top.focess.veto.bus.SessionActions;
 
 /**
  * Tests for {@link HitlRegistry}'s park/resolve path after the structural stash fix: {@code
@@ -31,7 +31,7 @@ class HitlRegistryTest {
 
     @Test
     void pendingSnapshotRetainsSequenceAndRejectsStaleReplies() throws Exception {
-        var registry = new HitlRegistry(null, Mockito.mock(SessionInvalidations.class));
+        var registry = new HitlRegistry(null, Mockito.mock(SessionActions.class));
         var call = new ToolCall("run_command", Map.of("command", "echo hi"), "call");
         var future = registry.register("agent", "call", call, null, E2_OPTIONS, null);
         long seq = registry.sequence("agent", "call");
@@ -50,7 +50,7 @@ class HitlRegistryTest {
 
     @Test
     void lifecycleCancellationIsNotAttributedToAUserClick() throws Exception {
-        HitlRegistry registry = new HitlRegistry(null, Mockito.mock(SessionInvalidations.class));
+        HitlRegistry registry = new HitlRegistry(null, Mockito.mock(SessionActions.class));
         var future = registry.register("agent", "cancel", call(), null, E2_OPTIONS, null);
         registry.declineAll("agent");
         var resolution = future.get(1, TimeUnit.SECONDS);
@@ -64,7 +64,7 @@ class HitlRegistryTest {
 
     @Test
     void resolveOptionAcceptsAValidOptionName() throws Exception {
-        HitlRegistry registry = new HitlRegistry(null, Mockito.mock(SessionInvalidations.class));
+        HitlRegistry registry = new HitlRegistry(null, Mockito.mock(SessionActions.class));
         CompletableFuture<InterceptResolution> future =
                 registry.register("agent-1", "call-1", call(), null, E2_OPTIONS, null);
 
@@ -78,7 +78,7 @@ class HitlRegistryTest {
 
     @Test
     void resolveOptionIsCaseInsensitive() throws Exception {
-        HitlRegistry registry = new HitlRegistry(null, Mockito.mock(SessionInvalidations.class));
+        HitlRegistry registry = new HitlRegistry(null, Mockito.mock(SessionActions.class));
         CompletableFuture<InterceptResolution> future =
                 registry.register("agent-1", "call-2", call(), null, E2_OPTIONS, null);
 
@@ -88,7 +88,7 @@ class HitlRegistryTest {
 
     @Test
     void resolveOptionFailsSafeOnAnInvalidName() throws Exception {
-        HitlRegistry registry = new HitlRegistry(null, Mockito.mock(SessionInvalidations.class));
+        HitlRegistry registry = new HitlRegistry(null, Mockito.mock(SessionActions.class));
         CompletableFuture<InterceptResolution> future =
                 registry.register("agent-1", "call-3", call(), null, E2_OPTIONS, null);
 
@@ -102,7 +102,7 @@ class HitlRegistryTest {
 
     @Test
     void declineOptionResolvesWithTheFirstRefusal() throws Exception {
-        HitlRegistry registry = new HitlRegistry(null, Mockito.mock(SessionInvalidations.class));
+        HitlRegistry registry = new HitlRegistry(null, Mockito.mock(SessionActions.class));
         CompletableFuture<InterceptResolution> future =
                 registry.register("agent-1", "call-4", call(), null, E2_OPTIONS, null);
 
@@ -114,7 +114,7 @@ class HitlRegistryTest {
 
     @Test
     void declineAndContinueIsAvailableForEveryPendingCall() throws Exception {
-        HitlRegistry registry = new HitlRegistry(null, Mockito.mock(SessionInvalidations.class));
+        HitlRegistry registry = new HitlRegistry(null, Mockito.mock(SessionActions.class));
         CompletableFuture<InterceptResolution> future =
                 registry.register("agent-1", "call-continue", call(), null, E2_OPTIONS, null);
 
@@ -127,7 +127,7 @@ class HitlRegistryTest {
 
     @Test
     void resolveOptionReturnsFalseWhenNoVetoPending() {
-        HitlRegistry registry = new HitlRegistry(null, Mockito.mock(SessionInvalidations.class));
+        HitlRegistry registry = new HitlRegistry(null, Mockito.mock(SessionActions.class));
         assertFalse(
                 registry.resolveOption("agent-1", "call-5", "ACCEPT_COMMAND"),
                 "resolveOption should return false when no veto is pending");
@@ -135,7 +135,7 @@ class HitlRegistryTest {
 
     @Test
     void declineOptionReturnsFalseWhenNoVetoPending() {
-        HitlRegistry registry = new HitlRegistry(null, Mockito.mock(SessionInvalidations.class));
+        HitlRegistry registry = new HitlRegistry(null, Mockito.mock(SessionActions.class));
         assertFalse(
                 registry.declineOption("agent-1", "call-6"),
                 "declineOption should return false when no veto is pending");
@@ -143,7 +143,7 @@ class HitlRegistryTest {
 
     @Test
     void resolveReturnsFalseWhenNoVetoPending() {
-        HitlRegistry registry = new HitlRegistry(null, Mockito.mock(SessionInvalidations.class));
+        HitlRegistry registry = new HitlRegistry(null, Mockito.mock(SessionActions.class));
         assertFalse(
                 registry.resolve(
                         "agent-1",

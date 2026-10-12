@@ -105,7 +105,8 @@ public class PromptController {
                         .body(new PromptStartedResponse("started", sessionId));
             }
             agentService.submitNow(cfg.sessionId(), prompt, binding, userId);
-            commands.notice(userId, cfg.sessionId(), null, prompt);
+            var agent = agentService.agent(cfg.sessionId());
+            if (agent != null) commands.notice(userId, cfg.sessionId(), agent.id(), prompt);
             log.info("Prompt accepted for session {} (agent {})", name, cfg.sessionId());
             return ResponseEntity.status(HttpStatus.ACCEPTED)
                     .body(new PromptStartedResponse("started", cfg.sessionId()));

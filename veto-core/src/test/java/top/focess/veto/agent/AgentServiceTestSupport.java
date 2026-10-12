@@ -19,7 +19,7 @@ import top.focess.veto.agent.screening.SlmScreeningProvider;
 import top.focess.veto.agent.tool.ToolEngine;
 import top.focess.veto.agent.workspace.Workspace;
 import top.focess.veto.bus.DeltaBroker;
-import top.focess.veto.bus.SessionInvalidations;
+import top.focess.veto.bus.SessionActions;
 import top.focess.veto.event.EventManager;
 import top.focess.veto.integration.plugins.SessionPlugins;
 import top.focess.veto.llm.core.UniformLLMCaller;
@@ -176,7 +176,7 @@ public final class AgentServiceTestSupport {
                         ? new SessionAgentRegistry(
                                 Mockito.mock(AgentInstanceRepository.class),
                                 Mockito.mock(TurnRecordRepository.class),
-                                Mockito.mock(SessionInvalidations.class))
+                                Mockito.mock(SessionActions.class))
                         : selectedRegistry,
                 selectedWorkspace == null
                         ? Workspace.fromConfig("", "", pathMode)

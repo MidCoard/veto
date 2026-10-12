@@ -688,6 +688,7 @@ public final class AgentRunner {
             else if (!rejected && queued.action() instanceof AgentAction.WorkAction)
                 control = control.withRequest(queued.handle());
         }
+        output.events.executionChanged();
         if (rejected) {
             settleUnadmitted(
                     queued.handle(),
@@ -713,8 +714,8 @@ public final class AgentRunner {
             // Exclude cancellation's one interrupt before clearing the old request's signal.
             clearTaskInterrupt();
         }
-        if (!parked) request.settled.complete(true);
         output.events.executionChanged();
+        if (!parked) request.settled.complete(true);
     }
 
     private void checkCancelledParked(@NonNull RequestHandle request) {
@@ -734,7 +735,9 @@ public final class AgentRunner {
                         : current instanceof ExecutionControl.Suspended suspended
                                 ? suspended.activity()
                                 : ExecutionControl.Activity.MODEL;
-        control = new ExecutionControl.Suspended(current.request(), activity, reason);
+        var next = new ExecutionControl.Suspended(current.request(), activity, reason);
+        if (next.equals(current)) return;
+        control = next;
         output.events.executionChanged();
     }
 
@@ -781,7 +784,7 @@ public final class AgentRunner {
 
     void tripBreaker() {
         beginWait(Wait.BREAKER);
-        output.breaker(currentRequest());
+        output.breaker();
     }
 
     void completeFailure(String message) {
@@ -818,7 +821,9 @@ public final class AgentRunner {
     void setActivity(ExecutionControl.@NonNull Activity activity) {
         var current = control;
         if (!current.open() || current instanceof ExecutionControl.Suspended) return;
-        control = new ExecutionControl.Executing(current.request(), activity);
+        var next = new ExecutionControl.Executing(current.request(), activity);
+        if (next.equals(current)) return;
+        control = next;
         output.events.executionChanged();
     }
 
@@ -891,6 +896,7 @@ public final class AgentRunner {
             var thread = executionThread;
             if (thread != null && thread != Thread.currentThread()) thread.interrupt();
         }
+        output.events.executionChanged();
         if (stopped != null) {
             // Unblock a waiting parent even when its child provider ignores interruption.
             // This announces rejection, not execution exit; only the userId releases waits/settles.
@@ -912,6 +918,7 @@ public final class AgentRunner {
             active = control.request();
             control = new ExecutionControl.Closed(reason);
         }
+        output.events.executionChanged();
         String message = Msg.get(closingLocale, "error.agent.interrupted");
         if (active != null) {
             active.releaseWaits();
@@ -927,7 +934,6 @@ public final class AgentRunner {
             if (command instanceof QueuedRequest queued) settleUnadmitted(queued.handle(), message);
         }
         toolBoundary.clear();
-        output.events.executionChanged();
     }
 
     private void settleUnadmitted(@NonNull RequestHandle request, @NonNull String message) {
@@ -937,6 +943,7 @@ public final class AgentRunner {
         }
         request.result.complete(AgentResult.failure(message, Map.of()));
         request.settled.complete(true);
+        output.events.executionChanged();
     }
 
     private void handoff(@NonNull RunnerCommand command) {

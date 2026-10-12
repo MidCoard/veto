@@ -3,10 +3,12 @@ package top.focess.veto.terminal;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
+import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import java.net.ServerSocket;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import org.jspecify.annotations.NonNull;
@@ -17,6 +19,8 @@ import org.zeromq.SocketType;
 import org.zeromq.ZContext;
 import org.zeromq.ZMQ;
 import top.focess.veto.agent.AgentService;
+import top.focess.veto.api.plugin.Scope;
+import top.focess.veto.bus.DeltaBroker;
 import top.focess.veto.command.CommandRegistry;
 import top.focess.veto.command.PromptHandler;
 import top.focess.veto.command.VetoCommandSender;
@@ -33,6 +37,68 @@ import top.focess.veto.vault.TestUsers;
 class IpcPeerIsolationTest {
     @Test
     @Timeout(20)
+    void idleTerminalReceivesOnlyItsSelectedSessionsPluginActions() throws Exception {
+        int port;
+        try (var reservation = new ServerSocket(0)) {
+            port = reservation.getLocalPort();
+        }
+        var registry = mock(CommandRegistry.class);
+        doCallRealMethod().when(registry).terminalOutcome(any(), any());
+        var alice = TestUsers.registry().findByUserId(TestUsers.ALICE).orElseThrow();
+        var selected = UUID.randomUUID().toString();
+        when(registry.activeSession("plugin-peer")).thenReturn(selected);
+        when(registry.dispatch(any(), anyString()))
+                .thenAnswer(
+                        invocation -> {
+                            VetoCommandSender sender = invocation.getArgument(0);
+                            if (sender == null) throw new AssertionError("Missing sender");
+                            sender.setUser(alice);
+                            return new Frame.Done("logged in");
+                        });
+        var broker = new DeltaBroker();
+        var address = "tcp://127.0.0.1:" + port;
+        var server = new IpcServer(registry, mock(AgentService.class), broker, address);
+        server.start();
+        try (var context = new ZContext()) {
+            var terminal = connect(context, address, "plugin-peer");
+            request(terminal, "login");
+            var data = JsonNodeFactory.instance.objectNode().put("status", "ready");
+            broker.publish(
+                    new Frame.PluginAction(
+                            new Scope.SessionScope(TestUsers.BOB, selected), "other-owner", data));
+            broker.publish(
+                    new Frame.PluginAction(
+                            new Scope.SessionScope(TestUsers.ALICE, UUID.randomUUID().toString()),
+                            "other-session",
+                            data));
+            var expected =
+                    new Frame.PluginAction(
+                            new Scope.SessionScope(TestUsers.ALICE, selected), "task", data);
+            broker.publish(expected);
+            assertEquals(expected, receive(terminal));
+            broker.publish(
+                    new Frame.Action(
+                            new Scope.SessionScope(TestUsers.BOB, selected), List.of("agents")));
+            broker.publish(
+                    new Frame.Action(
+                            new Scope.SessionScope(TestUsers.ALICE, UUID.randomUUID().toString()),
+                            List.of("agents")));
+            var action =
+                    new Frame.Action(
+                            new Scope.SessionScope(TestUsers.ALICE, selected), List.of("agents"));
+            broker.publish(action);
+            assertEquals(action, receive(terminal));
+            server.revokeUser(TestUsers.ALICE);
+            broker.publish(expected);
+            assertTrue(terminal.send(FrameCodec.encode(new Frame.Heartbeat())));
+            assertInstanceOf(Frame.HeartbeatAck.class, receive(terminal));
+        } finally {
+            server.stop();
+        }
+    }
+
+    @Test
+    @Timeout(20)
     void revocationCancelsPendingInputAndTerminalCanLoginAgain() throws Exception {
         int port;
         try (var reservation = new ServerSocket(0)) {
@@ -41,6 +107,7 @@ class IpcPeerIsolationTest {
         String address = "tcp://127.0.0.1:" + port;
         var alice = TestUsers.registry().findByUserId(TestUsers.ALICE).orElseThrow();
         var registry = mock(CommandRegistry.class);
+        doCallRealMethod().when(registry).terminalOutcome(any(), any());
         when(registry.dispatch(any(), anyString()))
                 .thenAnswer(
                         invocation -> {
@@ -52,7 +119,7 @@ class IpcPeerIsolationTest {
                                 assertNull(sender.input("Confirm action", false));
                             return new Frame.Done(Boolean.toString(sender.isLoggedIn()));
                         });
-        var server = new IpcServer(registry, mock(AgentService.class), address);
+        var server = new IpcServer(registry, mock(AgentService.class), new DeltaBroker(), address);
         server.start();
         try (var context = new ZContext()) {
             var terminal = connect(context, address, "pending-input");
@@ -81,6 +148,7 @@ class IpcPeerIsolationTest {
         var entered = new CountDownLatch(1);
         var release = new CountDownLatch(1);
         var registry = mock(CommandRegistry.class);
+        doCallRealMethod().when(registry).terminalOutcome(any(), any());
         when(registry.dispatch(any(), anyString()))
                 .thenAnswer(
                         invocation -> {
@@ -99,7 +167,7 @@ class IpcPeerIsolationTest {
                             return new Frame.Done(Boolean.toString(sender.isLoggedIn()));
                         });
         when(registry.complete(any(), anyString())).thenReturn(List.of());
-        var server = new IpcServer(registry, mock(AgentService.class), address);
+        var server = new IpcServer(registry, mock(AgentService.class), new DeltaBroker(), address);
         var beans = new StaticListableBeanFactory(Map.of("ipcServer", server));
         var lifecycle =
                 new AuthLifecycleManager(
@@ -164,10 +232,11 @@ class IpcPeerIsolationTest {
         }
         String address = "tcp://127.0.0.1:" + port;
         var registry = mock(CommandRegistry.class);
+        doCallRealMethod().when(registry).terminalOutcome(any(), any());
         when(registry.complete(any(), eq("explode")))
                 .thenThrow(new IllegalArgumentException("invalid completion syntax"));
         when(registry.complete(any(), eq("healthy"))).thenReturn(List.of());
-        var server = new IpcServer(registry, mock(AgentService.class), address);
+        var server = new IpcServer(registry, mock(AgentService.class), new DeltaBroker(), address);
         server.start();
         try (var context = new ZContext()) {
             var dealer = context.createSocket(SocketType.DEALER);
@@ -207,7 +276,8 @@ class IpcPeerIsolationTest {
         }
         String address = "tcp://127.0.0.1:" + port;
         var registry = mock(CommandRegistry.class);
-        var server = new IpcServer(registry, mock(AgentService.class), address);
+        doCallRealMethod().when(registry).terminalOutcome(any(), any());
+        var server = new IpcServer(registry, mock(AgentService.class), new DeltaBroker(), address);
         server.start();
         try (var context = new ZContext()) {
             var terminal = connect(context, address, "shutdown-peer");
@@ -219,7 +289,8 @@ class IpcPeerIsolationTest {
             server.stop();
             assertInstanceOf(Frame.Terminate.class, receive(terminal));
             assertFalse(worker.isAlive(), "shutdown must leave no IO worker or bound socket");
-            var replacement = new IpcServer(registry, mock(AgentService.class), address);
+            var replacement =
+                    new IpcServer(registry, mock(AgentService.class), new DeltaBroker(), address);
             replacement.start();
             replacement.stop();
         } finally {
@@ -240,6 +311,7 @@ class IpcPeerIsolationTest {
         var release = new CountDownLatch(1);
         var nextEntered = new CountDownLatch(1);
         var registry = mock(CommandRegistry.class);
+        doCallRealMethod().when(registry).terminalOutcome(any(), any());
         when(registry.dispatch(any(), anyString()))
                 .thenAnswer(
                         invocation -> {
@@ -261,7 +333,7 @@ class IpcPeerIsolationTest {
                             return new Frame.Done(raw);
                         });
         when(registry.complete(any(), anyString())).thenReturn(List.of());
-        var server = new IpcServer(registry, mock(AgentService.class), address);
+        var server = new IpcServer(registry, mock(AgentService.class), new DeltaBroker(), address);
         server.start();
         try (var context = new ZContext()) {
             var terminal = connect(context, address, "cancellation-peer");

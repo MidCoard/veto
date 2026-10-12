@@ -29,7 +29,6 @@ import top.focess.veto.api.plugin.PluginScope;
 import top.focess.veto.api.plugin.Scope;
 import top.focess.veto.api.plugin.contract.JsonValue;
 import top.focess.veto.api.plugin.storage.PluginStorage;
-import top.focess.veto.bus.DeltaBroker;
 
 class BoundPluginHostTest {
     @Test
@@ -62,7 +61,15 @@ class BoundPluginHostTest {
             host.publish(valid, "changed", facts);
             host.invalidate(valid, "groups");
             verify(delegate).publish(valid, "test.plugin:changed", facts);
-            verify(delegate).invalidate(fixture.session.getId(), "groups");
+            verify(delegate)
+                    .publish(
+                            any(Scope.SessionScope.class),
+                            eq("test.plugin:resource_changed"),
+                            eq(
+                                    new JsonValue.ObjectValue(
+                                            Map.of(
+                                                    "resource",
+                                                    new JsonValue.StringValue("groups")))));
             assertEquals(valid.userId(), grant.scope().userId());
             host.invalidate(grant.scope(), "groups");
         }
@@ -72,7 +79,7 @@ class BoundPluginHostTest {
     void invocationAndAwaitResolveLocalNamesWithoutExpandingThePermit() throws Exception {
         for (String name : List.of("plugin_test_plugin__operation", "custom_operation")) {
             try (var fixture = new PluginAgentHostsTest.Fixture()) {
-                var configuration = new PluginHostConfiguration(new DeltaBroker());
+                var configuration = new PluginHostConfiguration();
                 var services =
                         configuration.runtimeHostServices(
                                 PluginTestSupport.providerOf(null),
@@ -176,7 +183,15 @@ class BoundPluginHostTest {
                     UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"),
                     fixture.session.getId(),
                     fixture.childId);
-            verify(delegate).invalidate(fixture.session.getId(), "groups");
+            verify(delegate)
+                    .publish(
+                            any(Scope.SessionScope.class),
+                            eq("test.plugin:resource_changed"),
+                            eq(
+                                    new JsonValue.ObjectValue(
+                                            Map.of(
+                                                    "resource",
+                                                    new JsonValue.StringValue("groups")))));
             verify(delegate)
                     .wake(
                             UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"),
@@ -209,7 +224,7 @@ class BoundPluginHostTest {
     @Test
     void readinessWaitsForApplicationAndRunsOnceWhilePluginIsActive() throws Exception {
         try (var fixture = new PluginAgentHostsTest.Fixture()) {
-            var configuration = new PluginHostConfiguration(new DeltaBroker());
+            var configuration = new PluginHostConfiguration();
             var services =
                     configuration.runtimeHostServices(
                             PluginTestSupport.providerOf(null),
@@ -241,7 +256,7 @@ class BoundPluginHostTest {
     @Test
     void stopBeforeApplicationReadyRevokesPendingCallback() throws Exception {
         try (var fixture = new PluginAgentHostsTest.Fixture()) {
-            var configuration = new PluginHostConfiguration(new DeltaBroker());
+            var configuration = new PluginHostConfiguration();
             var services =
                     configuration.runtimeHostServices(
                             PluginTestSupport.providerOf(null),

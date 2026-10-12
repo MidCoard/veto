@@ -60,7 +60,7 @@ import top.focess.veto.builtin.monitor.MonitorService;
 import top.focess.veto.builtin.questions.QuestionRuntime;
 import top.focess.veto.builtin.tools.AskUserTool;
 import top.focess.veto.builtin.tools.RunTaskTool;
-import top.focess.veto.bus.SessionInvalidations;
+import top.focess.veto.bus.SessionActions;
 import top.focess.veto.event.EventManager;
 import top.focess.veto.integration.plugins.QuestionTestSupport;
 import top.focess.veto.integration.plugins.SessionPlugins;
@@ -140,7 +140,7 @@ class AgentRunnerTest {
                         },
                         5,
                         questionEngine(questions),
-                        new HitlRegistry(null, Mockito.mock(SessionInvalidations.class)));
+                        new HitlRegistry(null, Mockito.mock(SessionActions.class)));
 
         var questionRequest =
                 service.submitNow(
@@ -826,7 +826,7 @@ class AgentRunnerTest {
                         },
                         50,
                         engine,
-                        new HitlRegistry(null, Mockito.mock(SessionInvalidations.class)));
+                        new HitlRegistry(null, Mockito.mock(SessionActions.class)));
         try {
             service.submit(
                     "active-wait-failure",
@@ -1351,7 +1351,7 @@ class AgentRunnerTest {
                 caller,
                 maxCallsPerEpisode,
                 new TestToolEngine(),
-                new HitlRegistry(null, Mockito.mock(SessionInvalidations.class)));
+                new HitlRegistry(null, Mockito.mock(SessionActions.class)));
     }
 
     static @NonNull AgentService serviceWith(
@@ -1638,7 +1638,7 @@ class AgentRunnerTest {
                         Map.of());
         Mockito.when(engine.getActiveTools(Mockito.any())).thenReturn(List.of(definition));
         Mockito.when(engine.resolveDefinition("run_task")).thenReturn(definition);
-        var hitl = new HitlRegistry(null, Mockito.mock(SessionInvalidations.class));
+        var hitl = new HitlRegistry(null, Mockito.mock(SessionActions.class));
         AtomicInteger attempts = new AtomicInteger();
         var service =
                 serviceWith(

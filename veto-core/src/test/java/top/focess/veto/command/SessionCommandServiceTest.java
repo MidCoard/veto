@@ -97,7 +97,7 @@ class SessionCommandServiceTest {
     }
 
     @Test
-    void backendNoticeNeedsNoAgentAndNeverEchoesPotentialCredentials() throws Exception {
+    void backendNoticeUsesTheAgentAndNeverEchoesPotentialCredentials() throws Exception {
         var broker = new DeltaBroker();
         var sessions = mock(SessionService.class);
         var agents = mock(AgentService.class);
@@ -112,7 +112,7 @@ class SessionCommandServiceTest {
                         });
         try {
             service.notice(TestUsers.OWNER, id.toString(), "child", "/signup secret-password");
-            service.notice(TestUsers.OWNER, id.toString(), null, "ordinary prompt");
+            service.notice(TestUsers.OWNER, id.toString(), "child", "ordinary prompt");
             assertEquals(1, frames.size());
             var frame = frames.getFirst();
             assertInstanceOf(Delta.Notice.class, frame.data());

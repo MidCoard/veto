@@ -20,15 +20,15 @@ import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
-import top.focess.veto.agent.screening.Relevance;
 import top.focess.veto.agent.screening.Screening;
 import top.focess.veto.agent.tool.NativeToolDefinition;
 import top.focess.veto.agent.workspace.PathMode;
 import top.focess.veto.agent.workspace.Workspace;
 import top.focess.veto.api.agent.screening.Danger;
+import top.focess.veto.api.agent.screening.Relevance;
 import top.focess.veto.api.agent.tool.ToolCapability;
 import top.focess.veto.api.llm.ToolCall;
-import top.focess.veto.bus.SessionInvalidations;
+import top.focess.veto.bus.SessionActions;
 import top.focess.veto.model.RetiredAgentControls;
 import top.focess.veto.util.Nullness;
 
@@ -69,7 +69,7 @@ class HitlHistoryTest {
                                 false,
                                 VetoScenario.EXEC_FIRST_TIME,
                                 "test"));
-        var initial = new HitlRegistry(history, Mockito.mock(SessionInvalidations.class));
+        var initial = new HitlRegistry(history, Mockito.mock(SessionActions.class));
         initial.setSession(agent, session);
         try {
             var pending =
@@ -82,7 +82,7 @@ class HitlHistoryTest {
                             Danger.DANGEROUS);
             assertTrue(initial.resolveOption(agent, "first", "ACCEPT_COMMAND_AS_SESSION_RULE"));
             assertTrue(pending.isDone());
-            var restored = new HitlRegistry(history, Mockito.mock(SessionInvalidations.class));
+            var restored = new HitlRegistry(history, Mockito.mock(SessionActions.class));
             restored.setSession(agent, session);
             restored.setWorkspace(agent, Workspace.single(tmp, PathMode.REAL));
             assertInstanceOf(
@@ -97,7 +97,7 @@ class HitlHistoryTest {
                     ApprovalDecision.Prompt.class,
                     restored.decide(agent, other, definition, screening));
             assertTrue(restored.revokeGrant(agent, restored.grantLog(agent).getFirst()));
-            var afterRevoke = new HitlRegistry(history, Mockito.mock(SessionInvalidations.class));
+            var afterRevoke = new HitlRegistry(history, Mockito.mock(SessionActions.class));
             afterRevoke.setSession(agent, session);
             afterRevoke.setWorkspace(agent, Workspace.single(tmp, PathMode.REAL));
             assertInstanceOf(
@@ -154,8 +154,7 @@ class HitlHistoryTest {
             assertTrue(history.grants(session, "other").isEmpty());
             history.append(session, agent, "", "REVOKED", "", "CLIENT_RESPONSE", grants.get(0));
             assertFalse(history.grants(session, agent).contains(grants.get(0)));
-            HitlRegistry restored =
-                    new HitlRegistry(history, Mockito.mock(SessionInvalidations.class));
+            HitlRegistry restored = new HitlRegistry(history, Mockito.mock(SessionActions.class));
             restored.setSession(agent, session);
             assertEquals(3, restored.grantLog(agent).size());
             assertTrue(restored.pendingFor(agent).isEmpty());
@@ -168,8 +167,7 @@ class HitlHistoryTest {
     @Test
     void failedDecisionWriteDoesNotReleasePendingCall() {
         HitlHistory unavailable = mock(HitlHistory.class);
-        HitlRegistry registry =
-                new HitlRegistry(unavailable, Mockito.mock(SessionInvalidations.class));
+        HitlRegistry registry = new HitlRegistry(unavailable, Mockito.mock(SessionActions.class));
         UUID session = UUID.randomUUID();
         when(unavailable.grants(session, "agent")).thenReturn(Set.of());
         registry.setSession("agent", session);

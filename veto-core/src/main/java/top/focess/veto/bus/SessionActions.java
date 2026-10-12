@@ -12,7 +12,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import top.focess.veto.api.plugin.Scope;
-import top.focess.veto.contract.Delta;
+import top.focess.veto.contract.Frame;
 import top.focess.veto.model.AgentInstanceRepository;
 import top.focess.veto.model.SessionRepository;
 
@@ -20,7 +20,7 @@ import top.focess.veto.model.SessionRepository;
  * Best-effort invalidations after readable state changes; never sends sockets under registry locks.
  */
 @Component
-public class SessionInvalidations {
+public class SessionActions {
     private final @NonNull DeltaBroker broker;
     private final @NonNull SessionRepository sessions;
     private final @NonNull AgentInstanceRepository agents;
@@ -31,10 +31,10 @@ public class SessionInvalidations {
                     0,
                     TimeUnit.SECONDS,
                     new ArrayBlockingQueue<>(512),
-                    Thread.ofPlatform().daemon().name("session-invalidations").factory());
+                    Thread.ofPlatform().daemon().name("session-actions").factory());
 
-    /** Creates the invalidator on top of the frame broker and agent registry. */
-    public SessionInvalidations(
+    /** Creates the resource publisher on top of the frame broker and agent registry. */
+    public SessionActions(
             @NonNull DeltaBroker broker,
             @NonNull AgentInstanceRepository agents,
             @NonNull SessionRepository sessions) {
@@ -71,10 +71,15 @@ public class SessionInvalidations {
                 .ifPresent(
                         session ->
                                 broker.publish(
-                                        new Delta(
+                                        new Frame.Action(
                                                 new Scope.SessionScope(
                                                         session.getUserId(), sessionId.toString()),
-                                                new Delta.SessionInvalidated(List.of(resources)))));
+                                                List.of(resources))));
+    }
+
+    /** Queues a scoped publication after commit, without sending under caller locks. */
+    public void publish(Frame.@NonNull ScopedFrame frame) {
+        afterCommit(() -> broker.publish(frame));
     }
 
     private void afterCommit(@NonNull Runnable action) {
@@ -85,7 +90,7 @@ public class SessionInvalidations {
                                 () -> {
                                     try {
                                         action.run();
-                                    } catch (RuntimeException error) {
+                                    } catch (Throwable error) {
                                         report(error);
                                     }
                                 });
@@ -105,11 +110,9 @@ public class SessionInvalidations {
         } else enqueue.run();
     }
 
-    private static void report(@NonNull RuntimeException error) {
-        LoggerFactory.getLogger("top.focess.veto.bus.SessionInvalidations")
-                .warn(
-                        "Session invalidation delivery failed; clients recover from snapshots",
-                        error);
+    private static void report(@NonNull Throwable error) {
+        LoggerFactory.getLogger("top.focess.veto.bus.SessionActions")
+                .warn("Resource action delivery failed; clients recover from snapshots", error);
     }
 
     /** Stops the delivery executor. */

@@ -35,8 +35,7 @@ import top.focess.veto.builtin.group.GroupRegistry;
 import top.focess.veto.builtin.group.GroupRuntime;
 import top.focess.veto.builtin.group.GroupState;
 import top.focess.veto.builtin.group.GroupTools;
-import top.focess.veto.bus.DeltaBroker;
-import top.focess.veto.bus.SessionInvalidations;
+import top.focess.veto.bus.SessionActions;
 
 class GroupToolAdmissionTest {
     @Test
@@ -53,7 +52,7 @@ class GroupToolAdmissionTest {
                         .thenReturn(new PluginStorage.Page<>(List.of(grant), null));
                 when(fixture.scopes.authorizeSession(fixture.storage, grant))
                         .thenReturn(UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"));
-                var configuration = new PluginHostConfiguration(new DeltaBroker());
+                var configuration = new PluginHostConfiguration();
                 var delegate =
                         (PluginHost)
                                 configuration
@@ -62,7 +61,7 @@ class GroupToolAdmissionTest {
                                                         PluginTestSupport.providerOf(null),
                                                 PluginTestSupport.providerOf(null),
                                                         PluginTestSupport.providerOf(
-                                                                mock(SessionInvalidations.class)))
+                                                                mock(SessionActions.class)))
                                         .services()
                                         .get(PluginHost.class);
                 if (delegate == null) throw new AssertionError("Missing host");

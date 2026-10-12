@@ -94,9 +94,10 @@ class ZmqChannelRoundTripTest {
         // 3. ROUTER sends Delta then Done to that identity.
         var event =
                 new Delta(
-                        new Scope.SessionScope(
+                        new Scope.AgentScope(
                                 UUID.fromString("00000000-0000-0000-0000-000000000010"),
-                                (UUID.randomUUID()).toString()),
+                                (UUID.randomUUID()).toString(),
+                                "agent"),
                         17,
                         Instant.now(),
                         new Delta.ToolCall(null, usage, JsonNodeFactory.instance.objectNode(), 0));

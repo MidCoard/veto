@@ -53,7 +53,7 @@ import top.focess.veto.api.plugin.agent.AgentHost;
 import top.focess.veto.api.plugin.agent.AgentProfile;
 import top.focess.veto.api.plugin.agent.IsolatedAgent;
 import top.focess.veto.api.plugin.contract.JsonValues;
-import top.focess.veto.bus.SessionInvalidations;
+import top.focess.veto.bus.SessionActions;
 import top.focess.veto.event.EventManager;
 import top.focess.veto.llm.config.LlmJacksonConfig;
 import top.focess.veto.llm.core.UniformLLMCaller;
@@ -114,7 +114,7 @@ public final class IsolatedExecutions {
     private final @NonNull IngressDefense ingress;
     private final @NonNull SessionPlugins sessionPlugins;
     private final @NonNull EventManager events;
-    private final @NonNull SessionInvalidations invalidations;
+    private final @NonNull SessionActions invalidations;
     private final int callCeiling;
     private final int secondsCeiling;
     private final int inputCeiling;
@@ -135,7 +135,7 @@ public final class IsolatedExecutions {
             @Value("${veto.isolated.max-output-tokens:65536}") int outputCeiling,
             @NonNull SessionPlugins sessionPlugins,
             @NonNull EventManager events,
-            @NonNull SessionInvalidations invalidations) {
+            @NonNull SessionActions invalidations) {
         this.mapper = mapper;
         this.caller = caller;
         this.models = models;

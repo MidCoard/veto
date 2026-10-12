@@ -50,8 +50,7 @@ import top.focess.veto.builtin.web.ReaderConfig;
 import top.focess.veto.builtin.web.WebFetchTool;
 import top.focess.veto.builtin.web.WebReadSession;
 import top.focess.veto.builtin.workspace.WriteToFileTool;
-import top.focess.veto.bus.DeltaBroker;
-import top.focess.veto.bus.SessionInvalidations;
+import top.focess.veto.bus.SessionActions;
 import top.focess.veto.event.EventManager;
 import top.focess.veto.integration.plugins.IsolatedExecutions;
 import top.focess.veto.integration.plugins.SessionPlugins;
@@ -144,7 +143,7 @@ class WebReadChildAuthorityTest {
                     new SessionAgentRegistry(
                             Mockito.mock(AgentInstanceRepository.class),
                             Mockito.mock(TurnRecordRepository.class),
-                            Mockito.mock(SessionInvalidations.class));
+                            Mockito.mock(SessionActions.class));
             var reader =
                     ReaderTestHarness.create(
                             mapper,
@@ -155,7 +154,7 @@ class WebReadChildAuthorityTest {
                             new TurnLogService(
                                     Mockito.mock(TurnRecordRepository.class),
                                     mapper,
-                                    new DeltaBroker()),
+                                    Mockito.mock(SessionActions.class)),
                             6,
                             15,
                             32000,
@@ -264,7 +263,7 @@ class WebReadChildAuthorityTest {
                 new SessionAgentRegistry(
                         Mockito.mock(AgentInstanceRepository.class),
                         Mockito.mock(TurnRecordRepository.class),
-                        Mockito.mock(SessionInvalidations.class));
+                        Mockito.mock(SessionActions.class));
         var parentAgent = mock(VetoAgent.class);
         when(parentAgent.id()).thenReturn("parent");
         when(parentAgent.name()).thenReturn("parent");
@@ -289,7 +288,7 @@ class WebReadChildAuthorityTest {
                         new TurnLogService(
                                 Mockito.mock(TurnRecordRepository.class),
                                 mapper,
-                                new DeltaBroker()),
+                                Mockito.mock(SessionActions.class)),
                         IngressDefenseTestSupport.inMemory(),
                         128,
                         600,
@@ -297,7 +296,7 @@ class WebReadChildAuthorityTest {
                         65536,
                         Mockito.mock(SessionPlugins.class),
                         Mockito.mock(EventManager.class),
-                        Mockito.mock(SessionInvalidations.class));
+                        Mockito.mock(SessionActions.class));
         assertThrows(
                 SecurityException.class,
                 () -> access.bind(mock(IsolatedAgent.Runtime.class), "fetch_page"));
@@ -405,11 +404,11 @@ class WebReadChildAuthorityTest {
                         new SessionAgentRegistry(
                                 Mockito.mock(AgentInstanceRepository.class),
                                 Mockito.mock(TurnRecordRepository.class),
-                                Mockito.mock(SessionInvalidations.class)),
+                                Mockito.mock(SessionActions.class)),
                         new TurnLogService(
                                 Mockito.mock(TurnRecordRepository.class),
                                 mapper,
-                                new DeltaBroker()),
+                                Mockito.mock(SessionActions.class)),
                         IngressDefenseTestSupport.inMemory(),
                         128,
                         600,
@@ -417,7 +416,7 @@ class WebReadChildAuthorityTest {
                         65536,
                         Mockito.mock(SessionPlugins.class),
                         Mockito.mock(EventManager.class),
-                        Mockito.mock(SessionInvalidations.class));
+                        Mockito.mock(SessionActions.class));
         try (var grant =
                 new HttpDestinationGrant(
                         deadline -> {
@@ -500,7 +499,7 @@ class WebReadChildAuthorityTest {
                 new SessionAgentRegistry(
                         Mockito.mock(AgentInstanceRepository.class),
                         Mockito.mock(TurnRecordRepository.class),
-                        Mockito.mock(SessionInvalidations.class));
+                        Mockito.mock(SessionActions.class));
         var executions =
                 new IsolatedExecutions(
                         mapper,
@@ -513,7 +512,7 @@ class WebReadChildAuthorityTest {
                         new TurnLogService(
                                 Mockito.mock(TurnRecordRepository.class),
                                 mapper,
-                                new DeltaBroker()),
+                                Mockito.mock(SessionActions.class)),
                         IngressDefenseTestSupport.inMemory(),
                         128,
                         600,
@@ -521,7 +520,7 @@ class WebReadChildAuthorityTest {
                         65536,
                         Mockito.mock(SessionPlugins.class),
                         Mockito.mock(EventManager.class),
-                        Mockito.mock(SessionInvalidations.class));
+                        Mockito.mock(SessionActions.class));
         assertThrows(
                 SecurityException.class,
                 () ->

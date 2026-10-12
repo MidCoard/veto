@@ -14,7 +14,17 @@ import top.focess.veto.api.llm.ChatMessage;
  * missing-source or Java-text fallback is permitted.
  */
 public final class PromptLibrary {
-    private static final @NonNull Map<String, String> SOURCES = load();
+    private static final @NonNull Map<String, String> SOURCES =
+            load(new PathMatchingResourcePatternResolver());
+
+    // ClassValue keeps plugin sources with their declaring class and releases them on unload.
+    private static final @NonNull ClassValue<@NonNull Map<String, String>> TOOL_SOURCES =
+            new ClassValue<>() {
+                @Override
+                protected @NonNull Map<String, String> computeValue(@NonNull Class<?> type) {
+                    return load(new PathMatchingResourcePatternResolver(type.getClassLoader()));
+                }
+            };
 
     private PromptLibrary() {}
 
@@ -22,6 +32,12 @@ public final class PromptLibrary {
     public static PromptDocument.@NonNull Result compile(
             @NonNull String entry, @NonNull Map<String, ?> data) {
         return PromptDocument.compile(entry, data, SOURCES);
+    }
+
+    /** Compiles an installed tool's own resources using its defining classloader. */
+    public static PromptDocument.@NonNull Result compileTool(
+            @NonNull Class<?> owner, @NonNull String entry, @NonNull Map<String, ?> data) {
+        return PromptDocument.compile(entry, data, TOOL_SOURCES.get(owner));
     }
 
     /** The entry's compiled text, stripped. */
@@ -50,12 +66,13 @@ public final class PromptLibrary {
         return value;
     }
 
-    private static @NonNull Map<String, String> load() {
+    private static @NonNull Map<String, String> load(
+            @NonNull PathMatchingResourcePatternResolver resolver) {
+        // Prompt text is cached above; do not retain JAR handles beyond plugin unload.
+        resolver.setUseCaches(false);
         Map<String, String> result = new TreeMap<>();
         try {
-            for (var resource :
-                    new PathMatchingResourcePatternResolver()
-                            .getResources("classpath*:prompts/**/*.mdc")) {
+            for (var resource : resolver.getResources("classpath*:prompts/**/*.mdc")) {
                 String filename = resource.getFilename();
                 if (filename == null) throw new IllegalStateException("Unnamed prompt source");
                 String key = filename.substring(0, filename.length() - 4);

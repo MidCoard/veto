@@ -15,7 +15,7 @@ import top.focess.veto.api.plugin.contract.JsonValue;
 import top.focess.veto.api.plugin.storage.PluginStorage;
 import top.focess.veto.builtin.web.ReaderConfig;
 import top.focess.veto.builtin.web.WebReader;
-import top.focess.veto.bus.SessionInvalidations;
+import top.focess.veto.bus.SessionActions;
 import top.focess.veto.event.EventManager;
 import top.focess.veto.integration.plugins.IsolatedExecutions;
 import top.focess.veto.integration.plugins.SessionPlugins;
@@ -54,7 +54,7 @@ public final class ReaderTestHarness {
                         65536,
                         Mockito.mock(SessionPlugins.class),
                         Mockito.mock(EventManager.class),
-                        Mockito.mock(SessionInvalidations.class));
+                        Mockito.mock(SessionActions.class));
         AgentHost host =
                 new AgentHost() {
                     public @NonNull Session session(

@@ -6,11 +6,15 @@ import com.fasterxml.jackson.annotation.JsonSetter;
 import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import com.fasterxml.jackson.annotation.Nulls;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 import org.jspecify.annotations.NonNull;
+import top.focess.veto.api.agent.screening.Danger;
+import top.focess.veto.api.agent.screening.Relevance;
 import top.focess.veto.api.plugin.Scope;
 
 /**
@@ -48,6 +52,8 @@ import top.focess.veto.api.plugin.Scope;
     @JsonSubTypes.Type(value = Frame.Done.class, name = "done"),
     @JsonSubTypes.Type(value = Frame.Error.class, name = "error"),
     @JsonSubTypes.Type(value = Delta.class, name = "delta"),
+    @JsonSubTypes.Type(value = Frame.Action.class, name = "action"),
+    @JsonSubTypes.Type(value = Frame.PluginAction.class, name = "plugin_action"),
     @JsonSubTypes.Type(value = Frame.Prompt.class, name = "prompt"),
     @JsonSubTypes.Type(value = Frame.Veto.class, name = "veto"),
     @JsonSubTypes.Type(value = Frame.VetoResult.class, name = "veto_result"),
@@ -59,8 +65,7 @@ public sealed interface Frame
                 Frame.ServerFrame,
                 Frame.SeqRequest,
                 Frame.SeqResponse,
-                Frame.ScopedFrame,
-                Frame.Interaction {
+                Frame.ScopedFrame {
 
     /** Frames sent by a client: both client requests and replies to server requests. */
     sealed interface ClientFrame extends Frame
@@ -71,14 +76,17 @@ public sealed interface Frame
             permits Welcome,
                     CompleteResult,
                     HintResult,
-                    TerminalResponse,
+                    TurnOutcome,
+                    Terminate,
                     Prompt,
                     Veto,
                     Delta,
+                    Action,
+                    PluginAction,
                     HeartbeatAck {}
 
     /** Current protocol version. Increment when frame types or semantics change incompatibly. */
-    int PROTOCOL_VERSION = 7;
+    int PROTOCOL_VERSION = 12;
 
     /** A request initiated by either peer. */
     sealed interface SeqRequest extends Frame permits Hello, Complete, Hint, Veto {
@@ -116,7 +124,12 @@ public sealed interface Frame
                     @NonNull Version productVersion,
             @JsonProperty(value = "cwd", required = true) @JsonSetter(nulls = Nulls.FAIL)
                     @NonNull String cwd)
-            implements ClientFrame, SeqRequest {}
+            implements ClientFrame, SeqRequest {
+        public Hello {
+            if (seq <= 0)
+                throw new IllegalArgumentException("Sequence must be positive; 0 is uncorrelated");
+        }
+    }
 
     /**
      * User typed a command or plain-text prompt.
@@ -140,7 +153,12 @@ public sealed interface Frame
             @JsonProperty(value = "raw", required = true) @JsonSetter(nulls = Nulls.FAIL)
                     @NonNull String raw,
             @JsonProperty(value = "seq", required = true) @JsonSetter(nulls = Nulls.FAIL) long seq)
-            implements ClientFrame, SeqRequest {}
+            implements ClientFrame, SeqRequest {
+        public Complete {
+            if (seq <= 0)
+                throw new IllegalArgumentException("Sequence must be positive; 0 is uncorrelated");
+        }
+    }
 
     /**
      * Requests a placeholder hint for the next expected argument. The backend responds with exactly
@@ -153,7 +171,12 @@ public sealed interface Frame
             @JsonProperty(value = "raw", required = true) @JsonSetter(nulls = Nulls.FAIL)
                     @NonNull String raw,
             @JsonProperty(value = "seq", required = true) @JsonSetter(nulls = Nulls.FAIL) long seq)
-            implements ClientFrame, SeqRequest {}
+            implements ClientFrame, SeqRequest {
+        public Hint {
+            if (seq <= 0)
+                throw new IllegalArgumentException("Sequence must be positive; 0 is uncorrelated");
+        }
+    }
 
     /** User replied to a backend-issued {@link Prompt}. Fire-and-forget. */
     record Input(
@@ -176,21 +199,22 @@ public sealed interface Frame
     /** Periodic keep-alive; only one acknowledgement is outstanding per connection. */
     record Heartbeat() implements ClientFrame {}
 
-    /** Application output whose scope is absent only for connection-local output. */
-    sealed interface ScopedFrame extends Frame permits Delta, Done, Error, Veto, VetoResult {
-        Scope scope();
+    /** Application output with an explicit scope; connection-local output uses GlobalScope. */
+    sealed interface ScopedFrame extends Frame
+            permits Delta, Action, PluginAction, TurnOutcome, Veto, VetoResult {
+        @NonNull Scope scope();
 
         @JsonIgnore
         default UUID sessionId() {
             var scope = scope();
-            var session = scope == null ? null : scope.session();
+            var session = scope.session();
             return session == null ? null : UUID.fromString(session);
         }
 
         @JsonIgnore
         default String agentId() {
             var scope = scope();
-            return scope == null ? null : scope.agent();
+            return scope.agent();
         }
     }
 
@@ -206,8 +230,15 @@ public sealed interface Frame
         long seq();
     }
 
-    /** Sealed interface for all terminal/final responses to request frames. */
-    sealed interface TerminalResponse extends ServerFrame permits Done, Error, Terminate {}
+    /** Ends an agent turn or command; -1 identifies an outcome without an agent turn. */
+    sealed interface TurnOutcome extends ServerFrame, ScopedFrame permits Done, Error {
+        int turnNumber();
+
+        /**
+         * Current login name in terminal command results; null when signed out or not applicable.
+         */
+        String username();
+    }
 
     /**
      * Backend handshake response. Carries the negotiated protocol version and echoes the {@code
@@ -223,7 +254,12 @@ public sealed interface Frame
             @JsonProperty(value = "seq", required = true) @JsonSetter(nulls = Nulls.FAIL) long seq,
             @JsonProperty(value = "productVersion", required = true) @JsonSetter(nulls = Nulls.FAIL)
                     @NonNull Version productVersion)
-            implements ServerFrame, SeqResponse {}
+            implements ServerFrame, SeqResponse {
+        public Welcome {
+            if (seq <= 0)
+                throw new IllegalArgumentException("Sequence must be positive; 0 is uncorrelated");
+        }
+    }
 
     /**
      * An autocomplete candidate returned in a {@link CompleteResult}.
@@ -248,7 +284,12 @@ public sealed interface Frame
             @JsonProperty(value = "candidates", required = true) @JsonSetter(nulls = Nulls.FAIL)
                     @NonNull List<Completion> candidates,
             @JsonProperty(value = "seq", required = true) @JsonSetter(nulls = Nulls.FAIL) long seq)
-            implements ServerFrame, SeqResponse {}
+            implements ServerFrame, SeqResponse {
+        public CompleteResult {
+            if (seq <= 0)
+                throw new IllegalArgumentException("Sequence must be positive; 0 is uncorrelated");
+        }
+    }
 
     /**
      * Information about the autocomplete hint for the next expected argument.
@@ -284,19 +325,31 @@ public sealed interface Frame
             @JsonProperty(value = "hint", required = true) @JsonSetter(nulls = Nulls.FAIL)
                     @NonNull HintInfo hint,
             @JsonProperty(value = "seq", required = true) @JsonSetter(nulls = Nulls.FAIL) long seq)
-            implements ServerFrame, SeqResponse {}
+            implements ServerFrame, SeqResponse {
+        public HintResult {
+            if (seq <= 0)
+                throw new IllegalArgumentException("Sequence must be positive; 0 is uncorrelated");
+        }
+    }
 
     /** Completes a command or agent turn. Scope identifies its owner, not terminal login state. */
     record Done(
-            Scope scope,
+            @JsonProperty(value = "scope", required = true) @JsonSetter(nulls = Nulls.FAIL)
+                    @NonNull Scope scope,
             String requestId,
-            Integer turnNumber,
+            @JsonProperty(value = "turnNumber", required = true) @JsonSetter(nulls = Nulls.FAIL)
+                    int turnNumber,
             @JsonProperty(value = "cancelled", required = true) @JsonSetter(nulls = Nulls.FAIL)
                     boolean cancelled,
-            String content)
-            implements TerminalResponse, ScopedFrame {
+            String content,
+            String username)
+            implements TurnOutcome {
+        public Done {
+            Objects.requireNonNull(scope, "scope");
+        }
+
         public Done(String content) {
-            this(null, null, null, false, content);
+            this(new Scope.GlobalScope(), null, -1, false, content, null);
         }
     }
 
@@ -310,15 +363,22 @@ public sealed interface Frame
      * @param seq echoed from the initiating frame; 0 when not correlated to a sequenced request
      */
     record Error(
-            Scope scope,
+            @JsonProperty(value = "scope", required = true) @JsonSetter(nulls = Nulls.FAIL)
+                    @NonNull Scope scope,
             String requestId,
-            Integer turnNumber,
+            @JsonProperty(value = "turnNumber", required = true) @JsonSetter(nulls = Nulls.FAIL)
+                    int turnNumber,
             @JsonProperty(value = "content", required = true) @JsonSetter(nulls = Nulls.FAIL)
                     @NonNull String content,
-            @JsonProperty(value = "seq", required = true) @JsonSetter(nulls = Nulls.FAIL) long seq)
-            implements SeqResponse, TerminalResponse, ScopedFrame {
+            @JsonProperty(value = "seq", required = true) @JsonSetter(nulls = Nulls.FAIL) long seq,
+            String username)
+            implements SeqResponse, TurnOutcome {
+        public Error {
+            Objects.requireNonNull(scope, "scope");
+        }
+
         public Error(@NonNull String content, long seq) {
-            this(null, null, null, content, seq);
+            this(new Scope.GlobalScope(), null, -1, content, seq, null);
         }
 
         /**
@@ -333,16 +393,13 @@ public sealed interface Frame
         }
     }
 
-    /** A user interaction rendered by the terminal: text input or an approval picker. */
-    sealed interface Interaction extends Frame permits Prompt, Veto {}
-
     /** Terminal-only text input; the client answers with Input. */
     record Prompt(
             @JsonProperty(value = "content", required = true) @JsonSetter(nulls = Nulls.FAIL)
                     @NonNull String content,
             @JsonProperty(value = "mask", required = true) @JsonSetter(nulls = Nulls.FAIL)
                     boolean mask)
-            implements ServerFrame, Interaction {}
+            implements ServerFrame {}
 
     /** Approval request shared by browser and terminal; both clients use the actual agent scope. */
     record Veto(
@@ -358,10 +415,34 @@ public sealed interface Frame
                     @NonNull List<String> options,
             @JsonProperty(value = "args", required = true) @JsonSetter(nulls = Nulls.FAIL)
                     @NonNull Map<String, Object> args,
-            String danger,
-            String relevance,
+            Danger danger,
+            Relevance relevance,
             @JsonProperty(value = "seq", required = true) @JsonSetter(nulls = Nulls.FAIL) long seq)
-            implements ServerFrame, SeqRequest, Interaction, ScopedFrame {}
+            implements ServerFrame, SeqRequest, ScopedFrame {
+        // Explicit parameters preserve nullable screening levels across Checker module boundaries.
+        public Veto(
+                Scope.@NonNull AgentScope scope,
+                @NonNull String callId,
+                @NonNull String tool,
+                @NonNull String scenario,
+                @NonNull List<String> options,
+                @NonNull Map<String, Object> args,
+                Danger danger,
+                Relevance relevance,
+                long seq) {
+            if (seq <= 0)
+                throw new IllegalArgumentException("Sequence must be positive; 0 is uncorrelated");
+            this.scope = scope;
+            this.callId = callId;
+            this.tool = tool;
+            this.scenario = scenario;
+            this.options = options;
+            this.args = args;
+            this.danger = danger;
+            this.relevance = relevance;
+            this.seq = seq;
+        }
+    }
 
     /**
      * Reply to a Veto request. Echoes its sequence; execution or refusal is reported through
@@ -375,14 +456,43 @@ public sealed interface Frame
             @JsonProperty(value = "option", required = true) @JsonSetter(nulls = Nulls.FAIL)
                     @NonNull String option,
             @JsonProperty(value = "seq", required = true) @JsonSetter(nulls = Nulls.FAIL) long seq)
-            implements ClientFrame, SeqResponse, ScopedFrame {}
+            implements ClientFrame, SeqResponse, ScopedFrame {
+        public VetoResult {
+            if (seq <= 0)
+                throw new IllegalArgumentException("Sequence must be positive; 0 is uncorrelated");
+        }
+    }
+
+    /** Core resource refresh hints, independent of conversation turns and Done. */
+    record Action(
+            @JsonProperty(value = "scope", required = true) @JsonSetter(nulls = Nulls.FAIL)
+                    Scope.@NonNull SessionScope scope,
+            @JsonProperty(value = "resources", required = true) @JsonSetter(nulls = Nulls.FAIL)
+                    @NonNull List<@NonNull String> resources)
+            implements ServerFrame, ScopedFrame {
+        public Action {
+            resources = List.copyOf(resources);
+            if (resources.isEmpty())
+                throw new IllegalArgumentException("An action needs resources");
+        }
+    }
+
+    /** Independent plugin publication. Does not complete a command or require a Done frame. */
+    record PluginAction(
+            @JsonProperty(value = "scope", required = true) @JsonSetter(nulls = Nulls.FAIL)
+                    Scope.@NonNull SessionScope scope,
+            @JsonProperty(value = "topic", required = true) @JsonSetter(nulls = Nulls.FAIL)
+                    @NonNull String topic,
+            @JsonProperty(value = "data", required = true) @JsonSetter(nulls = Nulls.FAIL)
+                    @NonNull ObjectNode data)
+            implements ServerFrame, ScopedFrame {}
 
     /**
      * Sent by the server to forcefully terminate the terminal connection session.
      *
      * @param reason the reason for termination
      */
-    record Terminate(String reason) implements TerminalResponse {}
+    record Terminate(String reason) implements ServerFrame {}
 
     /** Acknowledges the outstanding heartbeat on this connection. */
     record HeartbeatAck(

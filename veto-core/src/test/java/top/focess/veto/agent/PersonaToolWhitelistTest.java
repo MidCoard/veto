@@ -30,7 +30,7 @@ import top.focess.veto.api.llm.ProviderType;
 import top.focess.veto.api.llm.ToolCall;
 import top.focess.veto.api.llm.VetoRequest;
 import top.focess.veto.api.llm.VetoResponse;
-import top.focess.veto.bus.SessionInvalidations;
+import top.focess.veto.bus.SessionActions;
 import top.focess.veto.llm.core.ToolResultPresenter;
 import top.focess.veto.llm.core.UniformLLMCaller;
 import top.focess.veto.vault.TestUsers;
@@ -92,7 +92,7 @@ class PersonaToolWhitelistTest {
         return AgentServiceTestSupport.create(
                 new AgentServiceTestSupport.Dependencies(),
                 engine,
-                new HitlRegistry(null, Mockito.mock(SessionInvalidations.class)),
+                new HitlRegistry(null, Mockito.mock(SessionActions.class)),
                 IngressDefenseTestSupport.inMemory(),
                 compiler,
                 caller,

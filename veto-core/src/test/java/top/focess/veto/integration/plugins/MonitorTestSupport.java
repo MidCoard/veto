@@ -2,11 +2,14 @@ package top.focess.veto.integration.plugins;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doCallRealMethod;
+import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockingDetails;
+import static org.mockito.Mockito.spy;
 
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
@@ -19,8 +22,7 @@ import top.focess.veto.builtin.group.GroupObservations;
 import top.focess.veto.builtin.group.GroupRegistry;
 import top.focess.veto.builtin.monitor.MonitorRecord;
 import top.focess.veto.builtin.monitor.MonitorService;
-import top.focess.veto.bus.DeltaBroker;
-import top.focess.veto.bus.SessionInvalidations;
+import top.focess.veto.bus.SessionActions;
 import top.focess.veto.session.SessionService;
 import top.focess.veto.util.Nullness;
 import top.focess.veto.vault.KeysteadVault;
@@ -100,17 +102,22 @@ public final class MonitorTestSupport {
         factory.addBean("sessions", sessions);
         factory.addBean("agents", agents);
         factory.addBean("vault", vault);
-        SessionInvalidations invalidations = mock(SessionInvalidations.class);
+        SessionActions invalidations = mock(SessionActions.class);
         factory.addBean("invalidations", invalidations);
-        return (PluginHost)
-                Nullness.requireNonNull(
-                        new PluginHostConfiguration(new DeltaBroker())
-                                .runtimeHostServices(
-                                        factory.getBeanProvider(SessionAgentRegistry.class),
-                                        factory.getBeanProvider(SessionService.class),
-                                        factory.getBeanProvider(KeysteadVault.class),
-                                        factory.getBeanProvider(SessionInvalidations.class))
-                                .services()
-                                .get(PluginHost.class));
+        var host =
+                (PluginHost)
+                        Nullness.requireNonNull(
+                                new PluginHostConfiguration()
+                                        .runtimeHostServices(
+                                                factory.getBeanProvider(SessionAgentRegistry.class),
+                                                factory.getBeanProvider(SessionService.class),
+                                                factory.getBeanProvider(KeysteadVault.class),
+                                                factory.getBeanProvider(SessionActions.class))
+                                        .services()
+                                        .get(PluginHost.class));
+        // This fixture exercises wake/recovery; bound publication is tested in BoundPluginHostTest.
+        var fixture = spy(host);
+        doNothing().when(fixture).publish(anyString(), anyString(), any());
+        return fixture;
     }
 }

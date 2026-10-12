@@ -19,7 +19,7 @@ import top.focess.veto.api.agent.tool.ToolCapability;
 import top.focess.veto.api.agent.tool.ToolResult;
 import top.focess.veto.api.event.BeforeToolEvent;
 import top.focess.veto.api.llm.ToolCall;
-import top.focess.veto.bus.SessionInvalidations;
+import top.focess.veto.bus.SessionActions;
 import top.focess.veto.integration.plugins.PluginManager;
 import top.focess.veto.vault.TestUsers;
 
@@ -29,7 +29,7 @@ class ToolApprovalMaskTest {
         var plugins = mock(PluginManager.class);
         when(plugins.applyObservationMiddleware("sensitive contents")).thenReturn("redacted");
         var ingress = new IngressDefense(null, plugins);
-        var hitl = new HitlRegistry(null, mock(SessionInvalidations.class));
+        var hitl = new HitlRegistry(null, mock(SessionActions.class));
         var gateway = mock(Gateway.class);
         when(gateway.readHistory()).thenReturn(new ReadHistory());
         when(gateway.screen(any(), any(), any(), any(), any(), any(), any()))

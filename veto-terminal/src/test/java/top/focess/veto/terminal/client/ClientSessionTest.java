@@ -57,7 +57,7 @@ class ClientSessionTest {
         }
 
         @Override
-        public void onPrompt(Frame.@NonNull Interaction prompt) {
+        public void onPrompt(Frame.@NonNull ServerFrame prompt) {
             events.add("prompt:" + (prompt instanceof Frame.Prompt text ? text.content() : "veto"));
         }
 
@@ -100,6 +100,44 @@ class ClientSessionTest {
     // ═══ outbound: submit ════════════════════════════════════════════
 
     @Test
+    void tokenUsageRendersWithoutFinishingTheCommand() {
+        var view = new RecordingView();
+        var client = new ClientSession(view);
+        client.submit("first");
+        client.submit("second");
+        client.onFrame(
+                new Delta(
+                        new Scope.AgentScope(
+                                UUID.randomUUID(), UUID.randomUUID().toString(), "agent"),
+                        new Delta.TokenUsage(
+                                "call", 100, 20, null, null, 8192, null, null, null, 1)));
+        assertTrue(view.events.contains("progress:Tokens: 100 input, 20 output"));
+        assertFalse(view.events.contains("dispatched:second"));
+        client.onFrame(new Frame.Done("finished"));
+        assertTrue(view.events.contains("dispatched:second"));
+    }
+
+    @Test
+    void pluginEventsRenderWhileIdleAndDoNotAdvanceQueuedCommands() {
+        var view = new RecordingView();
+        var session = new ClientSession(view);
+        var event =
+                new Frame.PluginAction(
+                        new Scope.SessionScope(UUID.randomUUID(), UUID.randomUUID().toString()),
+                        "task.updated",
+                        JsonNodeFactory.instance.objectNode().put("status", "ready"));
+        session.onFrame(event);
+        assertTrue(view.events.stream().anyMatch(value -> value.startsWith("delta:task.updated")));
+        session.submit("first");
+        session.submit("second");
+        view.events.clear();
+        assertNull(session.onFrame(event));
+        assertFalse(view.events.contains("dispatched:second"));
+        session.onFrame(new Frame.Done("finished"));
+        assertTrue(view.events.contains("dispatched:second"));
+    }
+
+    @Test
     void commonEventsKeepToolAndNoticeRendering() {
         var view = new RecordingView();
         var session = new ClientSession(view);
@@ -109,18 +147,28 @@ class ClientSessionTest {
         assertNull(
                 session.onFrame(
                         new Delta(
-                                null,
+                                new Scope.AgentScope(
+                                        UUID.randomUUID(), UUID.randomUUID().toString(), "agent"),
                                 new Delta.ToolCall(
                                         null,
                                         "read_file",
                                         JsonNodeFactory.instance.objectNode(),
                                         0))));
         assertNull(
-                session.onFrame(new Delta(null, new Delta.ToolResult(null, "contents", true, 0))));
-        assertNull(session.onFrame(new Delta(null, new Delta.Notice("Server guidance"))));
+                session.onFrame(
+                        new Delta(
+                                new Scope.AgentScope(
+                                        UUID.randomUUID(), UUID.randomUUID().toString(), "agent"),
+                                new Delta.ToolResult(null, "contents", true, 0))));
+        assertNull(
+                session.onFrame(
+                        new Delta(
+                                new Scope.AgentScope(
+                                        UUID.randomUUID(), UUID.randomUUID().toString(), "agent"),
+                                new Delta.Notice("Server guidance", Delta.Level.INFO))));
         assertTrue(view.events.contains("tool-call:read_file"));
         assertTrue(view.events.contains("tool-result:contents"));
-        assertTrue(view.events.contains("delta:Server guidance"));
+        assertTrue(view.events.contains("progress:Server guidance"));
         assertEquals(ClientSession.State.RUNNING, session.state());
     }
 
@@ -291,9 +339,14 @@ class ClientSessionTest {
     void idleDisplaysGenericNoticeWithoutDispatch() {
         var view = new RecordingView();
         var session = new ClientSession(view);
-        assertNull(session.onFrame(new Delta(null, new Delta.Notice("Context compacted"))));
+        assertNull(
+                session.onFrame(
+                        new Delta(
+                                new Scope.AgentScope(
+                                        UUID.randomUUID(), UUID.randomUUID().toString(), "agent"),
+                                new Delta.Notice("Context compacted", Delta.Level.INFO))));
         assertEquals(ClientSession.State.IDLE, session.state());
-        assertEquals(List.of("delta:Context compacted"), view.events);
+        assertEquals(List.of("progress:Context compacted"), view.events);
     }
 
     @Test
@@ -301,7 +354,7 @@ class ClientSessionTest {
         RecordingView v = new RecordingView();
         ClientSession s = new ClientSession(v);
 
-        Frame f = s.onFrame(new Delta(null, new Delta.Progress("loading", 50)));
+        Frame f = s.onFrame(new Delta(new Scope.GlobalScope(), new Delta.Progress("loading", 50)));
 
         assertNull(f);
         assertEquals(ClientSession.State.IDLE, s.state());
@@ -328,8 +381,8 @@ class ClientSessionTest {
         RecordingView v = new RecordingView();
         ClientSession s = new ClientSession(v);
 
-        s.onFrame(new Delta(null, new Delta.TerminalState("alice", 0)));
-        Frame f = s.onFrame(new Frame.Done(null));
+        Frame f =
+                s.onFrame(new Frame.Done(new Scope.GlobalScope(), null, -1, false, null, "alice"));
 
         assertNull(f);
         assertEquals(ClientSession.State.IDLE, s.state());
@@ -371,7 +424,11 @@ class ClientSessionTest {
         ClientSession s = new ClientSession(v);
         s.submit("first"); // RUNNING
 
-        s.onFrame(new Delta(null, new Delta.Thought("reasoning chunk", 0)));
+        s.onFrame(
+                new Delta(
+                        new Scope.AgentScope(
+                                UUID.randomUUID(), UUID.randomUUID().toString(), "agent"),
+                        new Delta.Thought("reasoning chunk", 0)));
 
         assertTrue(v.events.contains("thought:reasoning chunk"));
         assertFalse(
@@ -385,7 +442,7 @@ class ClientSessionTest {
         ClientSession s = new ClientSession(v);
         s.submit("first"); // RUNNING
 
-        s.onFrame(new Delta(null, new Delta.Progress("loading", 50)));
+        s.onFrame(new Delta(new Scope.GlobalScope(), new Delta.Progress("loading", 50)));
 
         assertTrue(v.events.stream().anyMatch(e -> e.equals("progress:  ⏳ loading")));
     }
@@ -413,8 +470,11 @@ class ClientSessionTest {
         s.submit("second"); // enqueued
 
         v.events.clear();
-        s.onFrame(new Delta(null, new Delta.TerminalState("alice", 0)));
-        Frame f = requireFrame(s.onFrame(new Frame.Done(null)));
+        Frame f =
+                requireFrame(
+                        s.onFrame(
+                                new Frame.Done(
+                                        new Scope.GlobalScope(), null, -1, false, null, "alice")));
 
         Frame.Request request = assertInstanceOf(Objects.requireNonNull(Frame.Request.class), f);
         assertEquals("second", request.raw());
@@ -533,8 +593,11 @@ class ClientSessionTest {
         requirePrompt(s.promptView().activePrompt());
 
         v.events.clear();
-        s.onFrame(new Delta(null, new Delta.TerminalState("alice", 0)));
-        Frame f = requireFrame(s.onFrame(new Frame.Done(null)));
+        Frame f =
+                requireFrame(
+                        s.onFrame(
+                                new Frame.Done(
+                                        new Scope.GlobalScope(), null, -1, false, null, "alice")));
 
         Frame.Request request = assertInstanceOf(Objects.requireNonNull(Frame.Request.class), f);
         assertEquals("second", request.raw());
@@ -597,44 +660,29 @@ class ClientSessionTest {
     // ═══ meta application ═════════════════════════════════════════════════
 
     @Test
-    void terminalStateUpdatesDisplayWithoutCompletingTheCommand() {
-        RecordingView v = new RecordingView();
-        ClientSession s = new ClientSession(v);
-        s.submit("first");
-
-        s.onFrame(
-                new Delta(
-                        new Scope.SessionScope(UUID.randomUUID(), "sess1"),
-                        new Delta.TerminalState("alice", 5)));
-        assertEquals(ClientSession.State.RUNNING, s.state());
-        s.onFrame(new Frame.Done(null));
-
-        ClientSession.SessionMeta m = s.snapshot();
-        assertEquals("alice", m.username());
-        assertEquals(5, m.turnCount());
-        assertEquals("sess1", m.sessionId());
-        assertTrue(v.events.contains("meta:alice/5/sess1"));
-    }
-
-    @Test
-    void clearSessionResetsMeta() {
-        RecordingView v = new RecordingView();
-        ClientSession s = new ClientSession(v);
-        s.submit("first");
-        s.onFrame(
-                new Delta(
-                        new Scope.SessionScope(UUID.randomUUID(), "s1"),
-                        new Delta.TerminalState("alice", 5)));
-        assertEquals(ClientSession.State.RUNNING, s.state());
-        s.onFrame(new Frame.Done(null));
-
-        s.onFrame(new Delta(null, new Delta.TerminalState(null, 0)));
-        s.onFrame(new Frame.Done(null));
-
-        ClientSession.SessionMeta m = s.snapshot();
-        assertNull(m.username());
-        assertEquals(0, m.turnCount());
-        assertNull(m.sessionId());
+    void outcomesUpdateIdentityAndTurnCountAndLogoutClearsThem() {
+        var view = new RecordingView();
+        var session = new ClientSession(view);
+        var scope = new Scope.SessionScope(UUID.randomUUID(), "session");
+        session.submit("/login");
+        session.onFrame(new Frame.Done(scope, null, -1, false, null, "alice"));
+        assertEquals("alice", session.snapshot().username());
+        assertEquals("session", session.snapshot().sessionId());
+        session.submit("first");
+        session.onFrame(new Frame.Done(scope, "first", 5, false, null, "alice"));
+        assertEquals(5, session.snapshot().turnCount());
+        session.submit("second");
+        session.onFrame(new Frame.Error(scope, "second", 6, "failed", 0, "alice"));
+        assertEquals(6, session.snapshot().turnCount());
+        session.submit("/help");
+        session.onFrame(new Frame.Done(scope, null, -1, false, null, "alice"));
+        session.onFrame(new Frame.Error(scope, null, -1, "command failed", 0, "alice"));
+        assertEquals(6, session.snapshot().turnCount());
+        session.submit("/logout");
+        session.onFrame(new Frame.Done(null));
+        assertNull(session.snapshot().username());
+        assertNull(session.snapshot().sessionId());
+        assertEquals(0, session.snapshot().turnCount());
     }
 
     @Test
@@ -642,12 +690,12 @@ class ClientSessionTest {
         RecordingView v = new RecordingView();
         ClientSession s = new ClientSession(v);
         s.submit("first");
-        s.onFrame(new Delta(null, new Delta.TerminalState("alice", 0)));
-        s.onFrame(new Frame.Done(null));
+        s.onFrame(new Frame.Done(new Scope.GlobalScope(), null, -1, false, null, "alice"));
         v.events.clear();
 
-        s.onFrame(new Delta(null, new Delta.TerminalState("alice", 0)));
-        s.onFrame(new Frame.Done(null)); // same username
+        s.onFrame(
+                new Frame.Done(
+                        new Scope.GlobalScope(), null, -1, false, null, "alice")); // same username
 
         assertFalse(v.events.stream().anyMatch(e -> e.startsWith("meta:")));
     }
@@ -696,8 +744,7 @@ class ClientSessionTest {
         s.submit("third"); // enqueued → queue = [second, third]
         // The Done sets the username AND dispatches the next queued request ("second") — both in
         // one transition. statusView must reflect both effects from the same moment.
-        s.onFrame(new Delta(null, new Delta.TerminalState("alice", 0)));
-        s.onFrame(new Frame.Done(null));
+        s.onFrame(new Frame.Done(new Scope.GlobalScope(), null, -1, false, null, "alice"));
 
         ClientSession.StatusView view = s.statusView();
         assertEquals("alice", view.username()); // username just set by the Done
@@ -747,7 +794,7 @@ class ClientSessionTest {
         return frame;
     }
 
-    private static Frame.@NonNull Prompt requirePrompt(Frame.Interaction prompt) {
+    private static Frame.@NonNull Prompt requirePrompt(Frame.ServerFrame prompt) {
         if (!(prompt instanceof Frame.Prompt text))
             throw new AssertionError("Expected an active text prompt");
         return text;
@@ -760,7 +807,7 @@ class ClientSessionTest {
         return cancel;
     }
 
-    private static Frame.@NonNull Veto requireVeto(Frame.Interaction payload) {
+    private static Frame.@NonNull Veto requireVeto(Frame.ServerFrame payload) {
         if (!(payload instanceof Frame.Veto veto)) throw new AssertionError("Expected an approval");
         return veto;
     }

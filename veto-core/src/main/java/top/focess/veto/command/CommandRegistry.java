@@ -78,10 +78,10 @@ public class CommandRegistry {
      *
      * @param sender the command sender for the active terminal session
      * @param raw the raw input string; may be {@code null} or empty
-     * @return a {@link Frame.TerminalResponse} ({@link Frame.Done}, {@link Frame.Error}, or {@link
+     * @return a {@link Frame.ServerFrame} ({@link Frame.Done}, {@link Frame.Error}, or {@link
      *     Frame.Terminate}); never {@code null}
      */
-    public Frame.@NonNull TerminalResponse dispatch(@NonNull VetoCommandSender sender, String raw) {
+    public Frame.@NonNull ServerFrame dispatch(@NonNull VetoCommandSender sender, String raw) {
         if (raw == null || raw.isEmpty()) {
             return new Frame.Done(null);
         }
@@ -98,7 +98,7 @@ public class CommandRegistry {
         }
     }
 
-    private Frame.@NonNull TerminalResponse dispatchAgentPrompt(
+    private Frame.@NonNull ServerFrame dispatchAgentPrompt(
             @NonNull VetoCommandSender sender, @NonNull String prompt) {
         if (promptHandler == null) {
             return Frame.Error.ofError("Agent not available.");
@@ -106,7 +106,7 @@ public class CommandRegistry {
         return promptHandler.handle(prompt, sender.terminalId(), sender);
     }
 
-    private Frame.@NonNull TerminalResponse dispatchSlashCommand(
+    private Frame.@NonNull ServerFrame dispatchSlashCommand(
             @NonNull VetoCommandSender sender, @NonNull String commandLine) {
 
         String input = commandLine.substring(1);
@@ -127,7 +127,6 @@ public class CommandRegistry {
                     return new Frame.Terminate(((TerminateException) exc).getReason());
                 }
                 if (exc instanceof LogoutException) {
-                    publishTerminalState(sender);
                     return new Frame.Done(null);
                 }
                 String msg = result.getMessage().orElse("Command failed.");
@@ -135,7 +134,6 @@ public class CommandRegistry {
             }
 
             // Success case
-            publishTerminalState(sender);
             return new Frame.Done(null);
         } catch (Exception e) {
             // Exception messages and causes can echo command arguments, including secrets.
@@ -150,18 +148,40 @@ public class CommandRegistry {
         }
     }
 
-    private void publishTerminalState(@NonNull VetoCommandSender sender) {
+    /** Current selected conversation; absent before selection or after logout. */
+    public String activeSession(@NonNull String terminalId) {
+        return promptHandler == null ? null : promptHandler.activeSession(terminalId);
+    }
+
+    /** Attaches the current terminal identity to every completion, including failures. */
+    public Frame.@NonNull TurnOutcome terminalOutcome(
+            @NonNull VetoCommandSender sender, Frame.@NonNull TurnOutcome outcome) {
         var owner = sender.userId();
-        var session =
-                promptHandler == null ? null : promptHandler.activeSession(sender.terminalId());
-        var agent = promptHandler == null ? null : promptHandler.activeAgent(sender.terminalId());
+        var session = activeSession(sender.terminalId());
         Scope scope =
                 owner == null
-                        ? null
+                        ? new Scope.GlobalScope()
                         : session == null
                                 ? new Scope.UserScope(owner)
                                 : new Scope.SessionScope(owner, session);
-        sender.terminalState(scope, agent == null ? 0 : agent.history().size());
+        return switch (outcome) {
+            case Frame.Done done ->
+                    new Frame.Done(
+                            scope,
+                            done.requestId(),
+                            done.turnNumber(),
+                            done.cancelled(),
+                            done.content(),
+                            sender.username());
+            case Frame.Error error ->
+                    new Frame.Error(
+                            scope,
+                            error.requestId(),
+                            error.turnNumber(),
+                            error.content(),
+                            error.seq(),
+                            sender.username());
+        };
     }
 
     // ── hint ─────────────────────────────────────────────────────────────

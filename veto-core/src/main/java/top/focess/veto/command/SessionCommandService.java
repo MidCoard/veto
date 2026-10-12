@@ -83,7 +83,7 @@ public class SessionCommandService {
                 agentId == null
                         ? new Scope.SessionScope(userId, sessionId)
                         : new Scope.AgentScope(userId, sessionId, agentId);
-        broker.publish(new Delta(scope, new Delta.Notice(text)));
+        broker.publish(new Delta(scope, new Delta.Notice(text, Delta.Level.INFO)));
     }
 
     /** Terminal compaction wait; web input returns as soon as execution is queued. */

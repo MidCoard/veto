@@ -12,13 +12,13 @@ import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import top.focess.veto.api.llm.ToolCall;
-import top.focess.veto.bus.SessionInvalidations;
+import top.focess.veto.bus.SessionActions;
 
 class HitlCancellationRaceTest {
     @Test
     @Timeout(10)
     void approvalRegisteredAfterCancellationCannotParkTheExecutionThread() throws Exception {
-        var invalidations = mock(SessionInvalidations.class);
+        var invalidations = mock(SessionActions.class);
         var registry = new HitlRegistry(null, invalidations);
         var entering = new CountDownLatch(1);
         var cancelled = new CountDownLatch(1);

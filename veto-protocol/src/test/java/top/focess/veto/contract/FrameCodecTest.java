@@ -16,13 +16,44 @@ import top.focess.veto.api.plugin.Scope;
 class FrameCodecTest {
 
     @Test
+    void pluginActionIsAnIndependentServerFrameOnBothEncodings() {
+        var scope = new Scope.SessionScope(UUID.randomUUID(), UUID.randomUUID().toString());
+        var event =
+                new Frame.PluginAction(
+                        scope,
+                        "task.updated",
+                        JsonNodeFactory.instance.objectNode().put("value", 1));
+        assertInstanceOf(Frame.ServerFrame.class, event);
+        assertEquals(event, FrameCodec.decode(FrameCodec.encode(event)));
+        assertEquals(event, FrameCodec.decode(FrameCodec.encodeString(event)));
+        assertNull(
+                FrameCodec.decode(
+                        "{\"type\":\"hello\",\"version\":9,\"seq\":0,\"productVersion\":\"1.0.100\",\"cwd\":\"\"}"));
+        assertTrue(
+                FrameCodec.decode(
+                                "{\"type\":\"error\",\"scope\":{\"type\":\"global\"},\"turnNumber\":-1,\"content\":\"failed\",\"seq\":0}")
+                        instanceof Frame.Error);
+    }
+
+    @Test
+    void actionIsIndependentAndRequiresSessionResources() {
+        var scope = new Scope.SessionScope(UUID.randomUUID(), UUID.randomUUID().toString());
+        var action = new Frame.Action(scope, List.of("agents", "execution"));
+        assertEquals(action, FrameCodec.decode(FrameCodec.encode(action)));
+        assertEquals(action, FrameCodec.decode(FrameCodec.encodeString(action)));
+        assertThrows(IllegalArgumentException.class, () -> new Frame.Action(scope, List.of()));
+    }
+
+    @Test
     void errorUsesTheSameScopeValuesAsPluginOperations() throws Exception {
         var owner = UUID.randomUUID();
         var session = UUID.randomUUID().toString();
         var unscoped = Frame.Error.ofError("connection");
         var unscopedJson = FrameCodec.encodeString(unscoped);
         assertEquals(unscoped, FrameCodec.decode(unscopedJson));
-        assertTrue(new ObjectMapper().readTree(unscopedJson).path("scope").isNull());
+        assertEquals(
+                "global",
+                new ObjectMapper().readTree(unscopedJson).path("scope").path("type").asText());
         Scope[] scopes = {
             new Scope.GlobalScope(),
             new Scope.UserScope(owner),
@@ -30,7 +61,7 @@ class FrameCodecTest {
             new Scope.AgentScope(owner, session, "agent")
         };
         for (var scope : scopes) {
-            var frame = new Frame.Error(scope, null, null, "failed", 0);
+            var frame = new Frame.Error(scope, null, -1, "failed", 0, null);
             String json = FrameCodec.encodeString(frame);
             assertEquals(frame, FrameCodec.decode(json));
             var tree = new ObjectMapper().readTree(json);
@@ -52,7 +83,7 @@ class FrameCodecTest {
                 FrameCodec.decode(
                         "{\"type\":\"error\",\"scope\":"
                                 + scope
-                                + ",\"content\":\"failed\",\"seq\":0}"));
+                                + ",\"turnNumber\":-1,\"content\":\"failed\",\"seq\":0}"));
     }
 
     @Test
@@ -61,16 +92,13 @@ class FrameCodecTest {
         args.put("中文", "提示");
         args.putArray("items").add(1).add(true).addNull();
         Delta.Data[] updates = {
-            new Delta.Message("command", null),
-            new Delta.Notice("notice"),
+            new Delta.TokenUsage("call", 100, 20, null, null, 8192, "model", "provider", null, 1),
+            new Delta.Message("command", -1),
+            new Delta.Notice("notice", Delta.Level.INFO),
             new Delta.Thought("thought", 1),
             new Delta.Message("message", 2),
             new Delta.ToolCall("call", "tool", args, 3),
             new Delta.ToolResult("call", "result", true, 4),
-            new Delta.RecordUpdated(5),
-            new Delta.SessionInvalidated(List.of("execution")),
-            new Delta.PluginEvent("topic", args),
-            new Delta.BreakerTripped("limit", 20, 6),
         };
         for (var update : updates) {
             var original =

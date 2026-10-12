@@ -11,6 +11,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import java.io.IOException;
 import java.net.URI;
 import java.util.HashMap;
@@ -33,6 +34,7 @@ import org.springframework.web.socket.WebSocketSession;
 import top.focess.veto.VetoVersion;
 import top.focess.veto.agent.AgentService;
 import top.focess.veto.agent.intercept.HitlRegistry;
+import top.focess.veto.api.agent.screening.Danger;
 import top.focess.veto.api.plugin.Scope;
 import top.focess.veto.contract.Delta;
 import top.focess.veto.contract.Frame;
@@ -105,6 +107,16 @@ class VetoWebSocketSecurityTest {
         assertEquals(UUID.fromString(session.getId()), decoded.sessionId());
         assertEquals(new Delta.Message("private", 0), decoded.data());
         clearInvocations(alice);
+        var publication =
+                new Frame.PluginAction(
+                        new Scope.SessionScope(session.getUserId(), session.getId()),
+                        "task.updated",
+                        JsonNodeFactory.instance.objectNode().put("ready", true));
+        handler.sendFrame(publication);
+        verify(alice).sendMessage(sent.capture());
+        assertEquals(publication, FrameCodec.decode(sent.getValue().getPayload()));
+        verify(bob, never()).sendMessage(ArgumentMatchers.any(TextMessage.class));
+        clearInvocations(alice);
         var broker = new DeltaBroker();
         var bridge = new DeltaBusBridge(broker, handler);
         bridge.start();
@@ -114,6 +126,7 @@ class VetoWebSocketSecurityTest {
                         "request",
                         2,
                         false,
+                        null,
                         null);
         try {
             broker.publish(done);
@@ -126,7 +139,8 @@ class VetoWebSocketSecurityTest {
                             "failed-request",
                             3,
                             "failed",
-                            0);
+                            0,
+                            null);
             broker.publish(error);
             verify(alice).sendMessage(sent.capture());
             assertEquals(error, FrameCodec.decode(sent.getValue().getPayload()));
@@ -260,7 +274,7 @@ class VetoWebSocketSecurityTest {
                 new TextMessage(
                         FrameCodec.encodeString(
                                 new Frame.Welcome(
-                                        Frame.PROTOCOL_VERSION, 0, VetoVersion.VERSION))));
+                                        Frame.PROTOCOL_VERSION, 1, VetoVersion.VERSION))));
         handler.handleTextMessage(
                 socket,
                 new TextMessage(
@@ -274,7 +288,7 @@ class VetoWebSocketSecurityTest {
     }
 
     @Test
-    void clientCannotInjectPluginEvents() throws Exception {
+    void clientCannotInjectPluginActions() throws Exception {
         var tokens = new LoginSessionManager();
         var handler =
                 new VetoWebSocketHandler(
@@ -481,7 +495,7 @@ class VetoWebSocketSecurityTest {
                         "EXEC_NETWORK",
                         List.of("EXEC_DECLINE"),
                         Map.of(),
-                        "DANGEROUS",
+                        Danger.DANGEROUS,
                         null,
                         42));
         handler.sendFrame(
@@ -492,7 +506,7 @@ class VetoWebSocketSecurityTest {
         verify(socket, times(2)).sendMessage(sent.capture());
         var first = FrameCodec.decode(sent.getAllValues().getFirst().getPayload());
         if (!(first instanceof Frame.Veto veto)) throw new AssertionError("Expected approval");
-        assertEquals("DANGEROUS", veto.danger());
+        assertEquals(Danger.DANGEROUS, veto.danger());
         assertEquals("call", veto.callId());
         var second = FrameCodec.decode(sent.getAllValues().get(1).getPayload());
         if (!(second instanceof Delta delta) || !(delta.data() instanceof Delta.ToolResult result))

@@ -78,7 +78,7 @@ public final class ClientSession {
      * {@code state} and an {@code activePrompt} that never coexisted.
      */
     public record PromptView(
-            @NonNull State state, Frame.Interaction activePrompt, String username) {}
+            @NonNull State state, Frame.ServerFrame activePrompt, String username) {}
 
     /**
      * Immutable snapshot of everything the status bar renders at one instant: session metadata and
@@ -97,7 +97,7 @@ public final class ClientSession {
     private final @NonNull Deque<@NonNull String> pendingRequests = new ArrayDeque<>();
 
     private @NonNull State state = State.IDLE;
-    private Frame.Interaction activePrompt;
+    private Frame.ServerFrame activePrompt;
     private String username;
     private int turnCount;
     private String sessionId;
@@ -211,15 +211,14 @@ public final class ClientSession {
         List<Runnable> events = new ArrayList<>();
         Frame.ClientFrame reply = null;
         synchronized (lock) {
+            if (frame instanceof Frame.TurnOutcome outcome) {
+                var snapshot = applyOutcome(outcome);
+                if (snapshot != null) events.add(() -> view.onMetaChanged(snapshot));
+            }
             switch (frame) {
                 // ── streaming ───────────────────────────────────────────────────
                 case Delta event -> {
                     switch (event.data()) {
-                        case Delta.TerminalState status -> {
-                            var scope = event.scope();
-                            var snap = applyState(status, scope == null ? null : scope.session());
-                            if (snap != null) events.add(() -> view.onMetaChanged(snap));
-                        }
                         case Delta.Progress progress ->
                                 events.add(
                                         () ->
@@ -230,27 +229,59 @@ public final class ClientSession {
                                 events.add(() -> view.onThought(thought.text()));
                         case Delta.Message message ->
                                 events.add(() -> view.onDelta(message.text()));
-                        case Delta.Notice notice -> events.add(() -> view.onDelta(notice.text()));
+                        case Delta.Notice notice ->
+                                events.add(
+                                        () ->
+                                                view.onProgress(
+                                                        switch (notice.level()) {
+                                                            case INFO ->
+                                                                    StyledText.muted(notice.text());
+                                                            case WARNING ->
+                                                                    StyledText.warning(
+                                                                            notice.text());
+                                                            case ERROR ->
+                                                                    StyledText.error(notice.text());
+                                                        }));
+                        case Delta.TokenUsage usage ->
+                                events.add(
+                                        () ->
+                                                view.onProgress(
+                                                        StyledText.muted(
+                                                                "Tokens: "
+                                                                        + usage.inputTokens()
+                                                                        + " input, "
+                                                                        + usage.outputTokens()
+                                                                        + " output"
+                                                                        + (usage
+                                                                                                .cacheReadInputTokens()
+                                                                                        == null
+                                                                                ? ""
+                                                                                : ", "
+                                                                                        + usage
+                                                                                                .cacheReadInputTokens()
+                                                                                        + " cached")
+                                                                        + (usage.purpose() == null
+                                                                                ? ""
+                                                                                : " ("
+                                                                                        + usage
+                                                                                                .purpose()
+                                                                                        + ")"))));
                         case Delta.ToolCall call -> events.add(() -> view.onToolCall(call));
                         case Delta.ToolResult result -> events.add(() -> view.onToolResult(result));
                         default -> {}
                     }
                 }
-                case Frame.Interaction pr -> {
-                    switch (state) {
-                        case IDLE -> rejectOrphan(pr, "Prompt");
-                        case RUNNING -> {
-                            activePrompt = pr;
-                            state = State.PROMPTED;
-                            events.add(view::onPrompted);
-                            events.add(() -> view.onPrompt(pr));
-                        }
-                        case PROMPTED -> {
-                            activePrompt = pr; // replace the outstanding prompt
-                            events.add(() -> view.onPrompt(pr));
-                        }
-                    }
-                }
+                // Resource snapshots are fetched by commands; a hint never completes one.
+                case Frame.Action ignored -> {}
+                case Frame.PluginAction event ->
+                        events.add(
+                                () ->
+                                        view.onDelta(
+                                                event.topic()
+                                                        + ": "
+                                                        + event.data().toPrettyString()));
+                case Frame.Prompt prompt -> awaitInput(prompt, events);
+                case Frame.Veto veto -> awaitInput(veto, events);
 
                 // ── terminal ────────────────────────────────────────────────────
                 case Frame.Done done -> {
@@ -292,6 +323,22 @@ public final class ClientSession {
         return reply;
     }
 
+    private void awaitInput(Frame.@NonNull ServerFrame pr, @NonNull List<Runnable> events) {
+        switch (state) {
+            case IDLE -> rejectOrphan(pr, "Prompt");
+            case RUNNING -> {
+                activePrompt = pr;
+                state = State.PROMPTED;
+                events.add(view::onPrompted);
+                events.add(() -> view.onPrompt(pr));
+            }
+            case PROMPTED -> {
+                activePrompt = pr; // replace the outstanding prompt
+                events.add(() -> view.onPrompt(pr));
+            }
+        }
+    }
+
     /**
      * Logs an orphan streaming frame that arrived at {@code IDLE} (a protocol violation under 1:1)
      * and drops it — never displayed. Must hold {@link #lock}.
@@ -322,14 +369,22 @@ public final class ClientSession {
         return null;
     }
 
-    /** Replaces terminal display state; a null username/session explicitly clears it. */
-    private SessionMeta applyState(Delta.@NonNull TerminalState status, String session) {
-        if (Objects.equals(username, status.username())
-                && turnCount == status.turnNumber()
-                && Objects.equals(sessionId, session)) return null;
-        username = status.username();
-        turnCount = status.turnNumber();
+    /** Each command outcome carries the current login and session; -1 preserves the turn count. */
+    private SessionMeta applyOutcome(Frame.@NonNull TurnOutcome outcome) {
+        var scope = outcome.scope();
+        var session = scope.session();
+        int turns =
+                outcome.turnNumber() >= 0
+                        ? outcome.turnNumber()
+                        : Objects.equals(sessionId, session) && outcome.username() != null
+                                ? turnCount
+                                : 0;
+        if (Objects.equals(username, outcome.username())
+                && Objects.equals(sessionId, session)
+                && turnCount == turns) return null;
+        username = outcome.username();
         sessionId = session;
+        turnCount = turns;
         return new SessionMeta(username, turnCount, sessionId);
     }
 

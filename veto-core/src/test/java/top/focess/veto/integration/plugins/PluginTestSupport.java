@@ -32,7 +32,7 @@ import top.focess.veto.api.plugin.agent.AgentProfile;
 import top.focess.veto.api.plugin.contract.JsonValue;
 import top.focess.veto.api.plugin.contract.PluginFailure;
 import top.focess.veto.api.plugin.contract.StandardContributionPoints;
-import top.focess.veto.bus.SessionInvalidations;
+import top.focess.veto.bus.SessionActions;
 import top.focess.veto.event.EventManager;
 import top.focess.veto.integration.plugins.storage.ConfigurationStorageFixture;
 import top.focess.veto.integration.plugins.storage.PluginStorageFactory;
@@ -147,7 +147,7 @@ public final class PluginTestSupport {
                 activationStore,
                 providerOf(mock(SessionPlugins.class)),
                 providerOf(mock(SessionRepository.class)),
-                providerOf(mock(SessionInvalidations.class)),
+                providerOf(mock(SessionActions.class)),
                 providerOf(mock(ToolEngineImpl.class)),
                 providerOf(mock(PluginLlmProviders.class)));
     }

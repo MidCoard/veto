@@ -57,8 +57,7 @@ import top.focess.veto.api.plugin.contract.JsonValue;
 import top.focess.veto.api.plugin.storage.PluginStorage;
 import top.focess.veto.builtin.web.ReaderConfig;
 import top.focess.veto.builtin.web.WebReadSession;
-import top.focess.veto.bus.DeltaBroker;
-import top.focess.veto.bus.SessionInvalidations;
+import top.focess.veto.bus.SessionActions;
 import top.focess.veto.event.EventManager;
 import top.focess.veto.integration.plugins.storage.PluginStorageFactory;
 import top.focess.veto.memory.TurnLogService;
@@ -130,7 +129,7 @@ class PluginAgentHostsTest {
                                 new TurnLogService(
                                         Mockito.mock(TurnRecordRepository.class),
                                         mapper,
-                                        new DeltaBroker()),
+                                        Mockito.mock(SessionActions.class)),
                                 IngressDefenseTestSupport.inMemory(),
                                 128,
                                 600,
@@ -138,7 +137,7 @@ class PluginAgentHostsTest {
                                 65536,
                                 Mockito.mock(SessionPlugins.class),
                                 Mockito.mock(EventManager.class),
-                                Mockito.mock(SessionInvalidations.class));
+                                Mockito.mock(SessionActions.class));
                 when(fixture.isolated.getObject()).thenReturn(executions);
                 var base = ToolExecutionPermit.empty();
                 var call = new ToolCall("reader_alias", Map.of(), "parent-call");
@@ -264,7 +263,7 @@ class PluginAgentHostsTest {
                 new SessionAgentRegistry(
                         Mockito.mock(AgentInstanceRepository.class),
                         Mockito.mock(TurnRecordRepository.class),
-                        Mockito.mock(SessionInvalidations.class));
+                        Mockito.mock(SessionActions.class));
         final @NonNull KeysteadVault vault = mock(KeysteadVault.class);
         final @NonNull AgentService service = mock(AgentService.class);
         final @NonNull SessionHistoryLoader history = mock(SessionHistoryLoader.class);

@@ -46,7 +46,7 @@ import top.focess.veto.api.llm.ToolCall;
 import top.focess.veto.api.llm.VetoResponse;
 import top.focess.veto.api.llm.exceptions.LlmException;
 import top.focess.veto.api.process.Command;
-import top.focess.veto.bus.SessionInvalidations;
+import top.focess.veto.bus.SessionActions;
 import top.focess.veto.llm.core.ToolResultPresenter;
 import top.focess.veto.llm.core.UniformLLMCaller;
 import top.focess.veto.vault.TestUsers;
@@ -133,8 +133,7 @@ class NewRequirementsTest {
         mcpEngine.register(readDef());
 
         AtomicReference<String> streamedMessage = new AtomicReference<>();
-        HitlRegistry hitlRegistry =
-                new HitlRegistry(null, Mockito.mock(SessionInvalidations.class));
+        HitlRegistry hitlRegistry = new HitlRegistry(null, Mockito.mock(SessionActions.class));
 
         ToolCall ncCall =
                 new ToolCall(
@@ -245,7 +244,7 @@ class NewRequirementsTest {
         var pending = hitlRegistry.pendingFor(agent.id());
         assertEquals(1, pending.size());
         assertEquals("call-nc", pending.getFirst().callId());
-        assertEquals("CRITICAL", pending.getFirst().danger());
+        assertEquals(Danger.CRITICAL, pending.getFirst().danger());
         assertEquals(List.of("EXEC_DECLINE"), pending.getFirst().options());
         // An unoffered approval must only end the hold as refusal, never authorize execution.
         assertTrue(hitlRegistry.resolveOption(agent.id(), "call-nc", "ACCEPT_COMMAND"));
@@ -308,7 +307,7 @@ class NewRequirementsTest {
                 AgentServiceTestSupport.create(
                         new AgentServiceTestSupport.Dependencies(),
                         mcpEngine,
-                        new HitlRegistry(null, Mockito.mock(SessionInvalidations.class)),
+                        new HitlRegistry(null, Mockito.mock(SessionActions.class)),
                         IngressDefenseTestSupport.inMemory(),
                         compiler,
                         caller,

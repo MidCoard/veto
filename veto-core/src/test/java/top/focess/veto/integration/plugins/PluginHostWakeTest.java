@@ -16,7 +16,7 @@ import top.focess.veto.agent.VetoAgent;
 import top.focess.veto.agent.identity.AgentPersona;
 import top.focess.veto.api.agent.AgentState;
 import top.focess.veto.builtin.monitor.MonitorRecord;
-import top.focess.veto.bus.SessionInvalidations;
+import top.focess.veto.bus.SessionActions;
 import top.focess.veto.memory.TurnRecordRepository;
 import top.focess.veto.model.AgentInstanceRepository;
 import top.focess.veto.session.SessionService;
@@ -33,7 +33,7 @@ class PluginHostWakeTest {
                 new SessionAgentRegistry(
                         Mockito.mock(AgentInstanceRepository.class),
                         Mockito.mock(TurnRecordRepository.class),
-                        Mockito.mock(SessionInvalidations.class));
+                        Mockito.mock(SessionActions.class));
         var activator = MonitorTestSupport.host(sessions, registry, vault);
         UUID session = UUID.randomUUID();
         var record =

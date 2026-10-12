@@ -13,6 +13,7 @@ import org.springframework.stereotype.Component;
 import top.focess.veto.agent.loop.PromptCompiler;
 import top.focess.veto.agent.tool.ToolDefinition;
 import top.focess.veto.api.agent.screening.Danger;
+import top.focess.veto.api.agent.screening.Relevance;
 import top.focess.veto.api.llm.ToolCall;
 import top.focess.veto.veto.LlamaCppBridge;
 

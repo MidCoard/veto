@@ -1,4 +1,4 @@
-package top.focess.veto.agent.screening;
+package top.focess.veto.api.agent.screening;
 
 /** Semantic relevance classification for a proposed tool call. */
 public enum Relevance {

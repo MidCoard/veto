@@ -39,7 +39,7 @@ import top.focess.veto.api.llm.ToolCall;
 import top.focess.veto.api.llm.ToolResultPresentationMode;
 import top.focess.veto.api.llm.VetoResponse;
 import top.focess.veto.builtin.tools.ReadGitHubRepositoryTool;
-import top.focess.veto.bus.SessionInvalidations;
+import top.focess.veto.bus.SessionActions;
 import top.focess.veto.integration.plugins.HostResourceConfiguration;
 import top.focess.veto.integration.plugins.PluginConfigurations;
 import top.focess.veto.integration.plugins.PluginManager;
@@ -251,7 +251,7 @@ class CredentialJourneyTest {
                     return message("Private repository read successfully");
                 };
         var sandbox = new SandboxManager(TestSandboxFactory.uncontainedSubprocesses());
-        var hitl = new HitlRegistry(null, Mockito.mock(SessionInvalidations.class));
+        var hitl = new HitlRegistry(null, Mockito.mock(SessionActions.class));
         var approvals = new ArrayList<String>();
         AtomicInteger protectedFileObservations = new AtomicInteger();
         AtomicInteger protectedNetworkObservations = new AtomicInteger();

@@ -29,7 +29,7 @@ import top.focess.veto.api.plugin.contribution.ContributionId;
 import top.focess.veto.api.plugin.contribution.ContributionPoint;
 import top.focess.veto.api.plugin.contribution.PluginContributionsDirectory;
 import top.focess.veto.api.plugin.service.ServiceException;
-import top.focess.veto.bus.SessionInvalidations;
+import top.focess.veto.bus.SessionActions;
 import top.focess.veto.integration.plugins.storage.PluginInvocationContext;
 import top.focess.veto.model.SessionRepository;
 import top.focess.veto.plugin.runtime.PluginClassLoader;
@@ -51,7 +51,7 @@ class InstalledPluginIntegrationTest {
                         PluginTestSupport.activationStore(root.toString()),
                         PluginTestSupport.providerOf(selections),
                         PluginTestSupport.providerOf(mock(SessionRepository.class)),
-                        PluginTestSupport.providerOf(mock(SessionInvalidations.class)),
+                        PluginTestSupport.providerOf(mock(SessionActions.class)),
                         PluginTestSupport.providerOf(mock(ToolEngineImpl.class)),
                         PluginTestSupport.providerOf(mock(PluginLlmProviders.class)))) {
             var services = manager.services();

@@ -61,7 +61,7 @@ public interface ClientView {
     void onProgress(@NonNull StyledText content);
 
     /** Backend requests input. The view should swap its prompt to the prompted shape. */
-    void onPrompt(Frame.@NonNull Interaction prompt);
+    void onPrompt(Frame.@NonNull ServerFrame prompt);
 
     /**
      * Fatal error, already wrapped in a {@link StyledText} (typically {@link StyleToken#ERROR}).

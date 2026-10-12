@@ -18,7 +18,7 @@ import top.focess.veto.agent.intercept.HitlRegistry;
 import top.focess.veto.agent.intercept.VetoOption;
 import top.focess.veto.api.agent.screening.Danger;
 import top.focess.veto.api.llm.ToolCall;
-import top.focess.veto.bus.SessionInvalidations;
+import top.focess.veto.bus.SessionActions;
 import top.focess.veto.session.SessionService;
 import top.focess.veto.vault.KeysteadVault;
 import top.focess.veto.vault.TestUsers;
@@ -26,7 +26,7 @@ import top.focess.veto.vault.TestUsers;
 class HitlControllerTest {
     @Test
     void parentSessionCanListResolveAndCancelMateVetoesWithoutCrossingSessions() throws Exception {
-        var registry = new HitlRegistry(null, Mockito.mock(SessionInvalidations.class));
+        var registry = new HitlRegistry(null, Mockito.mock(SessionActions.class));
         var sessions = mock(SessionService.class);
         var service = mock(AgentService.class);
         var vault = mock(KeysteadVault.class);

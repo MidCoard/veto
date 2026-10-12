@@ -6,7 +6,10 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Duration;
 import java.util.ArrayDeque;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
@@ -19,10 +22,12 @@ import top.focess.veto.agent.translation.VetoCapabilityTranslator;
 import top.focess.veto.api.agent.AgentResult;
 import top.focess.veto.api.llm.LlmBinding;
 import top.focess.veto.api.llm.LlmOptions;
+import top.focess.veto.api.llm.LlmSystemUsage;
 import top.focess.veto.api.llm.ProviderType;
+import top.focess.veto.api.llm.ToolCall;
 import top.focess.veto.api.llm.VetoResponse;
 import top.focess.veto.bus.DeltaBroker;
-import top.focess.veto.bus.SessionInvalidations;
+import top.focess.veto.bus.SessionActions;
 import top.focess.veto.contract.Delta;
 import top.focess.veto.contract.Frame;
 import top.focess.veto.llm.core.ToolResultPresenter;
@@ -41,6 +46,11 @@ class DeltaBrokerWiringTest {
 
     private static @NonNull AgentService serviceWithBroker(
             @NonNull UniformLLMCaller caller, @NonNull DeltaBroker broker) {
+        return serviceWithBroker(caller, broker, 50L);
+    }
+
+    private static @NonNull AgentService serviceWithBroker(
+            @NonNull UniformLLMCaller caller, @NonNull DeltaBroker broker, long budget) {
         ObjectMapper mapper = new ObjectMapper();
         PromptCompiler compiler =
                 new PromptCompiler(
@@ -55,14 +65,14 @@ class DeltaBrokerWiringTest {
         return AgentServiceTestSupport.create(
                 new AgentServiceTestSupport.Dependencies(),
                 new TestToolEngine(),
-                new HitlRegistry(null, Mockito.mock(SessionInvalidations.class)),
+                new HitlRegistry(null, Mockito.mock(SessionActions.class)),
                 IngressDefenseTestSupport.inMemory(),
                 compiler,
                 caller,
                 mapper,
                 List.of(),
                 "REAL",
-                50L,
+                budget,
                 "FULL_ACCESS",
                 "STRICT",
                 broker,
@@ -91,6 +101,149 @@ class DeltaBrokerWiringTest {
     }
 
     @Test
+    void executionActionsArriveBeforeModelWorkAndAfterCompletion() throws Exception {
+        var broker = new DeltaBroker();
+        var frames = new CopyOnWriteArrayList<Frame.ScopedFrame>();
+        var idleUpdate = new CountDownLatch(1);
+        broker.subscribeAll(
+                frame -> {
+                    frames.add(frame);
+                    if (frame instanceof Frame.Action
+                            && frames.stream().anyMatch(Frame.Done.class::isInstance))
+                        idleUpdate.countDown();
+                });
+        var service =
+                serviceWithBroker(
+                        (request, session) -> {
+                            assertTrue(frames.stream().anyMatch(Frame.Action.class::isInstance));
+                            return thoughtOn(null, "done");
+                        },
+                        broker);
+        try {
+            assertTrue(
+                    service.submit(
+                                    "action-wire",
+                                    "hello",
+                                    binding(""),
+                                    EPISODE_TIMEOUT,
+                                    TestUsers.OWNER)
+                            .success());
+            assertTrue(
+                    idleUpdate.await(5, TimeUnit.SECONDS),
+                    "Idle state must refresh after the turn result");
+            var done =
+                    frames.stream().filter(Frame.Done.class::isInstance).findFirst().orElseThrow();
+            for (var frame : frames) {
+                if (frame instanceof Frame.Action action) {
+                    assertEquals(done.sessionId(), action.sessionId());
+                    assertEquals(TestUsers.OWNER, action.scope().userId());
+                    assertEquals(List.of("agents", "execution"), action.resources());
+                }
+            }
+        } finally {
+            service.remove("action-wire");
+        }
+    }
+
+    @Test
+    void measuredModelCallsPublishUsageBeforeCompletion() throws Exception {
+        var broker = new DeltaBroker();
+        var frames = new CopyOnWriteArrayList<Frame.ScopedFrame>();
+        broker.subscribeAll(frames::add);
+        var service =
+                serviceWithBroker(
+                        (request, session) -> {
+                            LlmSystemUsage.set(100, 20, 30L, null);
+                            LlmSystemUsage.set(140, 25);
+                            return thoughtOn(null, "answer");
+                        },
+                        broker);
+        try {
+            assertTrue(
+                    service.submit(
+                                    "usage-wire",
+                                    "hello",
+                                    binding(""),
+                                    EPISODE_TIMEOUT,
+                                    TestUsers.OWNER)
+                            .success());
+            var updates =
+                    frames.stream()
+                            .filter(
+                                    frame ->
+                                            frame instanceof Delta delta
+                                                    && delta.data() instanceof Delta.TokenUsage)
+                            .toList();
+            assertEquals(2, updates.size());
+            var first =
+                    assertInstanceOf(Delta.TokenUsage.class, ((Delta) updates.getFirst()).data());
+            var second =
+                    assertInstanceOf(Delta.TokenUsage.class, ((Delta) updates.getLast()).data());
+            assertEquals(100, first.inputTokens());
+            assertEquals(20, first.outputTokens());
+            var cached = first.cacheReadInputTokens();
+            assertTrue(cached != null && cached == 30L);
+            assertNull(second.cacheReadInputTokens());
+            assertNotEquals(first.modelCallId(), second.modelCallId());
+            assertTrue(
+                    frames.indexOf(updates.getLast())
+                            < frames.indexOf(
+                                    frames.stream()
+                                            .filter(Frame.Done.class::isInstance)
+                                            .findFirst()
+                                            .orElseThrow()));
+        } finally {
+            service.remove("usage-wire");
+        }
+    }
+
+    @Test
+    void breakerPublishesNoticeThenDoneAndWaitsForTheNextUserRequest() throws Exception {
+        var broker = new DeltaBroker();
+        var frames = new CopyOnWriteArrayList<Frame.ScopedFrame>();
+        broker.subscribeAll(frames::add);
+        var service =
+                serviceWithBroker(
+                        scripted(
+                                new VetoResponse(
+                                        null,
+                                        List.of(new ToolCall("missing", Map.of(), "call")),
+                                        null),
+                                thoughtOn(null, "resumed")),
+                        broker,
+                        1L);
+        var result =
+                service.submit(
+                        "breaker-wire", "start", binding(""), EPISODE_TIMEOUT, TestUsers.OWNER);
+        assertEquals(Boolean.TRUE, result.metadata().get("breakerTrip"));
+        var notice =
+                frames.stream()
+                        .filter(
+                                frame ->
+                                        frame instanceof Delta delta
+                                                && delta.data() instanceof Delta.Notice)
+                        .findFirst()
+                        .orElseThrow();
+        var outcome =
+                frames.stream()
+                        .filter(Frame.TurnOutcome.class::isInstance)
+                        .findFirst()
+                        .orElseThrow();
+        assertInstanceOf(Frame.Done.class, outcome);
+        assertTrue(frames.indexOf(notice) < frames.indexOf(outcome));
+        assertFalse(frames.stream().anyMatch(Frame.Error.class::isInstance));
+        assertTrue(
+                service.submit(
+                                "breaker-wire",
+                                "continue",
+                                binding(""),
+                                EPISODE_TIMEOUT,
+                                TestUsers.OWNER)
+                        .success());
+        service.remove("breaker-wire");
+    }
+
+    @Test
     void failedEpisodePublishesErrorWithoutDone() throws Exception {
         var broker = new DeltaBroker();
         var frames = new CopyOnWriteArrayList<Frame.ScopedFrame>();
@@ -104,7 +257,7 @@ class DeltaBrokerWiringTest {
         var result =
                 service.submit("failed-wire", "Hi", binding(""), EPISODE_TIMEOUT, TestUsers.OWNER);
         assertFalse(result.success());
-        var terminal = frames.stream().filter(Frame.TerminalResponse.class::isInstance).toList();
+        var terminal = frames.stream().filter(Frame.TurnOutcome.class::isInstance).toList();
         assertEquals(1, terminal.size());
         var error = assertInstanceOf(Frame.Error.class, terminal.getFirst());
         assertTrue(error.sessionId() != null);
@@ -131,14 +284,7 @@ class DeltaBrokerWiringTest {
 
         assertTrue(result.success(), "episode should finish successfully");
         assertFalse(frames.isEmpty(), "a Delta should be published on emitMessage");
-        var content =
-                frames.stream()
-                        .filter(
-                                frame ->
-                                        !(frame instanceof Delta delta
-                                                && delta.data()
-                                                        instanceof Delta.SessionInvalidated))
-                        .toList();
+        var content = frames.stream().filter(frame -> !(frame instanceof Frame.Action)).toList();
         assertEquals(3, content.size(), "thought, message and completion remain distinct");
         var thought = assertInstanceOf(Delta.class, content.get(0));
         var message = assertInstanceOf(Delta.class, content.get(1));
@@ -150,15 +296,5 @@ class DeltaBrokerWiringTest {
         assertEquals(message.sessionId(), done.sessionId());
         assertEquals(message.agentId(), done.agentId());
         assertTrue(done.requestId() != null);
-        assertTrue(
-                frames.stream()
-                        .anyMatch(
-                                frame ->
-                                        frame instanceof Delta delta
-                                                && delta.data()
-                                                        instanceof
-                                                        Delta.SessionInvalidated invalidation
-                                                && invalidation.resources().contains("execution")),
-                "execution changes must reach clients independently of conversation content");
     }
 }

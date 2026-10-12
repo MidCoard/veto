@@ -8,13 +8,14 @@ import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import com.fasterxml.jackson.annotation.Nulls;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.time.Instant;
-import java.util.List;
+import java.util.Objects;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.api.plugin.Scope;
 
 /** One incremental backend update. Completion and user approval have their own frames. */
 public record Delta(
-        Scope scope,
+        @JsonProperty(value = "scope", required = true) @JsonSetter(nulls = Nulls.FAIL)
+                @NonNull Scope scope,
         @JsonProperty(value = "sequence", required = true) @JsonSetter(nulls = Nulls.FAIL)
                 long sequence,
         @JsonProperty(value = "emittedAt", required = true) @JsonSetter(nulls = Nulls.FAIL)
@@ -22,50 +23,36 @@ public record Delta(
         @JsonProperty(value = "data", required = true) @JsonSetter(nulls = Nulls.FAIL)
                 @NonNull Data data)
         implements Frame.ServerFrame, Frame.ScopedFrame {
+    public Delta {
+        Objects.requireNonNull(scope, "scope");
+        if (data instanceof AgentData && !(scope instanceof Scope.AgentScope))
+            throw new IllegalArgumentException("Agent output requires AgentScope");
+    }
+
     /** Creates an update before its session broker assigns a sequence. */
-    public Delta(Scope scope, @NonNull Data data) {
+    public Delta(@NonNull Scope scope, @NonNull Data data) {
         this(scope, 0, Instant.now(), data);
     }
 
     public static @NonNull Delta message(@NonNull String text) {
-        return new Delta(null, new Message(text, null));
+        return new Delta(new Scope.GlobalScope(), new Message(text, -1));
     }
 
     @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, property = "type")
     @JsonSubTypes({
-        @JsonSubTypes.Type(value = TerminalState.class, name = "terminal_state"),
         @JsonSubTypes.Type(value = Progress.class, name = "progress"),
         @JsonSubTypes.Type(value = Notice.class, name = "notice"),
+        @JsonSubTypes.Type(value = TokenUsage.class, name = "token_usage"),
         @JsonSubTypes.Type(value = Thought.class, name = "thought"),
         @JsonSubTypes.Type(value = Message.class, name = "message"),
         @JsonSubTypes.Type(value = ToolCall.class, name = "tool_call"),
         @JsonSubTypes.Type(value = ToolResult.class, name = "tool_result"),
-        @JsonSubTypes.Type(value = RecordUpdated.class, name = "record_updated"),
-        @JsonSubTypes.Type(value = SessionInvalidated.class, name = "session_invalidated"),
-        @JsonSubTypes.Type(value = PluginEvent.class, name = "plugin_event"),
-        @JsonSubTypes.Type(value = BreakerTripped.class, name = "breaker_tripped"),
     })
-    public sealed interface Data
-            permits TerminalState,
-                    Progress,
-                    Notice,
-                    Thought,
-                    Message,
-                    ToolCall,
-                    ToolResult,
-                    RecordUpdated,
-                    SessionInvalidated,
-                    PluginEvent,
-                    BreakerTripped {}
+    public sealed interface Data permits Progress, AgentData, Message {}
 
-    /**
-     * Full terminal display snapshot; active session/agent identity is the enclosing Delta scope.
-     */
-    public record TerminalState(
-            String username,
-            @JsonProperty(value = "turnNumber", required = true) @JsonSetter(nulls = Nulls.FAIL)
-                    int turnNumber)
-            implements Data {}
+    /** Output tied to an actual agent; Delta rejects any other enclosing scope. */
+    public sealed interface AgentData extends Data
+            permits Notice, Thought, ToolCall, ToolResult, TokenUsage {}
 
     /** A rendering hint; percent is 0–100, or -1 when completion is indeterminate. */
     public record Progress(
@@ -82,22 +69,51 @@ public record Delta(
         }
     }
 
+    public enum Level {
+        INFO,
+        WARNING,
+        ERROR
+    }
+
     public record Notice(
             @JsonProperty(value = "text", required = true) @JsonSetter(nulls = Nulls.FAIL)
-                    @NonNull String text)
-            implements Data {}
+                    @NonNull String text,
+            @JsonProperty(value = "level", required = true) @JsonSetter(nulls = Nulls.FAIL)
+                    @NonNull Level level)
+            implements AgentData {}
+
+    /** One measured model call, not a cumulative total. Nullable cache counts mean unreported. */
+    public record TokenUsage(
+            @JsonProperty(value = "modelCallId", required = true) @JsonSetter(nulls = Nulls.FAIL)
+                    @NonNull String modelCallId,
+            @JsonProperty(value = "inputTokens", required = true) @JsonSetter(nulls = Nulls.FAIL)
+                    long inputTokens,
+            @JsonProperty(value = "outputTokens", required = true) @JsonSetter(nulls = Nulls.FAIL)
+                    long outputTokens,
+            Long cacheReadInputTokens,
+            Long cacheCreationInputTokens,
+            @JsonProperty(value = "contextMaxTokens", required = true)
+                    @JsonSetter(nulls = Nulls.FAIL)
+                    long contextMaxTokens,
+            String model,
+            String provider,
+            String purpose,
+            @JsonProperty(value = "turnNumber", required = true) @JsonSetter(nulls = Nulls.FAIL)
+                    int turnNumber)
+            implements AgentData {}
 
     public record Thought(
             @JsonProperty(value = "text", required = true) @JsonSetter(nulls = Nulls.FAIL)
                     @NonNull String text,
             @JsonProperty(value = "turnNumber", required = true) @JsonSetter(nulls = Nulls.FAIL)
                     int turnNumber)
-            implements Data {}
+            implements AgentData {}
 
     public record Message(
             @JsonProperty(value = "text", required = true) @JsonSetter(nulls = Nulls.FAIL)
                     @NonNull String text,
-            Integer turnNumber)
+            @JsonProperty(value = "turnNumber", required = true) @JsonSetter(nulls = Nulls.FAIL)
+                    int turnNumber)
             implements Data {}
 
     public record ToolCall(
@@ -108,7 +124,7 @@ public record Delta(
                     @NonNull ObjectNode args,
             @JsonProperty(value = "turnNumber", required = true) @JsonSetter(nulls = Nulls.FAIL)
                     int turnNumber)
-            implements Data {}
+            implements AgentData {}
 
     public record ToolResult(
             String callId,
@@ -118,36 +134,5 @@ public record Delta(
                     boolean success,
             @JsonProperty(value = "turnNumber", required = true) @JsonSetter(nulls = Nulls.FAIL)
                     int turnNumber)
-            implements Data {}
-
-    public record RecordUpdated(
-            @JsonProperty(value = "turnNumber", required = true) @JsonSetter(nulls = Nulls.FAIL)
-                    int turnNumber)
-            implements Data {}
-
-    public record SessionInvalidated(
-            @JsonProperty(value = "resources", required = true) @JsonSetter(nulls = Nulls.FAIL)
-                    @NonNull List<@NonNull String> resources)
-            implements Data {
-        public SessionInvalidated {
-            resources = List.copyOf(resources);
-        }
-    }
-
-    public record PluginEvent(
-            @JsonProperty(value = "topic", required = true) @JsonSetter(nulls = Nulls.FAIL)
-                    @NonNull String topic,
-            @JsonProperty(value = "data", required = true) @JsonSetter(nulls = Nulls.FAIL)
-                    @NonNull ObjectNode data)
-            implements Data {}
-
-    public record BreakerTripped(
-            @JsonProperty(value = "text", required = true) @JsonSetter(nulls = Nulls.FAIL)
-                    @NonNull String text,
-            @JsonProperty(value = "maxCallsPerEpisode", required = true)
-                    @JsonSetter(nulls = Nulls.FAIL)
-                    long maxCallsPerEpisode,
-            @JsonProperty(value = "turnNumber", required = true) @JsonSetter(nulls = Nulls.FAIL)
-                    int turnNumber)
-            implements Data {}
+            implements AgentData {}
 }
