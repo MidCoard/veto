@@ -45,11 +45,10 @@ import top.focess.veto.contract.ProtocolClient;
  *
  * <h3>Routing on the authoritative atomic op </h3>
  *
- * <p>{@link #submit} routes a line on its own return — it checks state and acts under one lock, so
- * the returned frame is the source of truth (Input / Request / null=discard). A snapshot captured
- * before a blocking read is for rendering only; a line typed for a {@code Prompt} that already
- * resolved (a terminal frame raced the reply) is discarded by {@link #submit} returning {@code
- * null} — never repurposed as a new command (the stale-reply rule).
+ * <p>{@link #submit} checks the exact interaction shown before the blocking read and acts under one
+ * lock. A reply to an interaction that has resolved or been replaced is discarded without echoing
+ * or queuing it. Input entered at the ordinary command prompt remains a command even when an
+ * interaction arrives during the read.
  */
 public final class ClientSession {
 
@@ -112,32 +111,23 @@ public final class ClientSession {
     }
 
     /**
-     * User submitted a line ( outbound). Routes on the live state under one lock and returns the
-     * frame to send:
-     *
-     * <ul>
-     *   <li>{@code PROMPTED} → send {@link Frame.Input} (prompt reply); → {@code RUNNING}.
-     *   <li>{@code IDLE} → dispatch the first request, returning a {@link Frame.Request}; → {@code
-     *       RUNNING}.
-     *   <li>{@code RUNNING} → enqueue; return {@code null} (dispatched when the in-flight request
-     *       completes).
-     * </ul>
-     *
-     * <p><b>Stale-reply rule :</b> a line is only an {@code Input} while the state is {@code
-     * PROMPTED} at the moment of this call. If a terminal frame resolved the prompt between the
-     * render snapshot and this call, the state is no longer {@code PROMPTED} and the line is
-     * treated as a new command (or enqueued) — it is never silently sent as a stale {@code Input}.
+     * Submits input for the exact interaction displayed before reading the line. An unchanged
+     * interaction produces Input or VetoResult; a resolved or replaced interaction discards the
+     * reply. Ordinary commands dispatch while idle and otherwise queue without answering a newly
+     * arrived interaction.
      *
      * @param line the submitted line
-     * @return the client frame to send, or {@code null} if only enqueued
+     * @param displayedInteraction the captured PromptView activePrompt, or null for command input
+     * @return the client frame to send, or null when queued or discarded
      */
-    public Frame.ClientFrame submit(@NonNull String line) {
+    public Frame.ClientFrame submit(@NonNull String line, Frame.ServerFrame displayedInteraction) {
         List<Runnable> events = new ArrayList<>();
         Frame.ClientFrame frame;
         synchronized (lock) {
-            if (state == State.PROMPTED) {
+            if (displayedInteraction != null) {
+                if (state != State.PROMPTED || activePrompt != displayedInteraction) return null;
                 frame =
-                        activePrompt instanceof Frame.Veto veto
+                        displayedInteraction instanceof Frame.Veto veto
                                 ? new Frame.VetoResult(
                                         veto.scope(), veto.callId(), line, veto.seq())
                                 : new Frame.Input(line);
@@ -162,26 +152,24 @@ public final class ClientSession {
     }
 
     /**
-     * Cancels the in-flight command. Returns a {@link Frame.Cancel}; the state stays {@code
-     * RUNNING} awaiting the command's terminal frame (the real {@link Frame.Done}/{@link
-     * Frame.Error}, or {@code Done{cancelled}} if the cancel produced one), after which
-     * dispatch-next-or-idle runs the next queued request or goes {@code IDLE}.
+     * Prepares cancellation of the in-flight command. The state stays {@code RUNNING} awaiting the
+     * command's terminal {@link Frame.Done}/{@link Frame.Error}, after which dispatch-next-or-idle
+     * runs the next queued request or goes {@code IDLE}.
      *
      * <p>The pending-request queue is <b>preserved</b> (: dispatch-next-or-idle may still dispatch
      * a queued request after the cancelled command's terminal frame) — cancelling one command does
      * not drop the rest of the queue. A {@code PROMPTED} prompt is cleared.
      *
-     * <p>Returns {@code null} when idle with an empty queue — a shutdown signal ( IDLE × cancel =
+     * <p>Returns {@code false} when idle with an empty queue — a shutdown signal ( IDLE × cancel =
      * shutdown); the caller exits / enqueues a shutdown event.
      *
-     * @return the Cancel frame, or {@code null} to signal shutdown
+     * @return whether the caller should send Cancel; false signals shutdown
      */
-    public Frame.Cancel cancel() {
+    public boolean cancel() {
         List<Runnable> events = new ArrayList<>();
-        Frame.Cancel frame;
         synchronized (lock) {
             if (state == State.IDLE) {
-                return null; // nothing to cancel — signal the caller to shut down
+                return false; // nothing to cancel — signal the caller to shut down
             }
             boolean wasPrompted = state == State.PROMPTED;
             activePrompt = null;
@@ -189,10 +177,9 @@ public final class ClientSession {
             if (wasPrompted) {
                 events.add(view::onRunning);
             }
-            frame = new Frame.Cancel();
         }
         fire(events);
-        return frame;
+        return true;
     }
 
     /**
@@ -211,7 +198,8 @@ public final class ClientSession {
         List<Runnable> events = new ArrayList<>();
         Frame.ClientFrame reply = null;
         synchronized (lock) {
-            if (frame instanceof Frame.TurnOutcome outcome) {
+            if (frame instanceof Frame.TurnOutcome outcome
+                    && !(frame instanceof Frame.Error error && error.seq() != 0)) {
                 var snapshot = applyOutcome(outcome);
                 if (snapshot != null) events.add(() -> view.onMetaChanged(snapshot));
             }
@@ -273,6 +261,8 @@ public final class ClientSession {
                 }
                 // Resource snapshots are fetched by commands; a hint never completes one.
                 case Frame.Action ignored -> {}
+                // Admission acknowledgement never settles a command or a replacement prompt.
+                case Frame.CancelResult ignored -> {}
                 case Frame.PluginAction event ->
                         events.add(
                                 () ->
@@ -295,6 +285,8 @@ public final class ClientSession {
                 }
                 case Frame.Error e -> {
                     events.add(() -> view.onError(StyledText.error("Error: " + e.content())));
+                    // Query failures, including late replies, never complete a command.
+                    if (e.seq() != 0) break;
                     // An IDLE client only displays the late error; active requests also advance.
                     if (state != State.IDLE) {
                         if (state == State.PROMPTED) {

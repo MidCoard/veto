@@ -155,6 +155,13 @@ public final class PluginProcessHosts implements PluginProcessHostFactory {
                 throw new SecurityException("A background process requires one admitted command");
             prepared.consume();
             var grant = storage.currentSession();
+            var invocation =
+                    new PluginHost.Invocation(
+                            scopes.authorizeSession(storage, grant),
+                            grant.scope().session(),
+                            context.agentId(),
+                            context.requestId(),
+                            context.executionPermit().callId());
             var id = UUID.randomUUID();
             var sandboxId = "execution-" + id;
             var handle =
@@ -172,13 +179,6 @@ public final class PluginProcessHosts implements PluginProcessHostFactory {
                                         handle,
                                         intent.commands().getFirst(),
                                         context.executionPermit().requireExecutionRoot());
-                var invocation =
-                        new PluginHost.Invocation(
-                                scopes.authorizeSession(storage, grant),
-                                grant.scope().session(),
-                                context.agentId(),
-                                context.requestId(),
-                                context.executionPermit().callId());
                 var running =
                         new RunningProcess(
                                 this,
@@ -191,14 +191,25 @@ public final class PluginProcessHosts implements PluginProcessHostFactory {
                                 sandboxId);
                 try {
                     plugin.ownStoppingResource(running, running::stop);
+                    running.admitted();
                     running.startDeadline(handle);
                     return running;
-                } catch (RuntimeException failure) {
-                    running.stop();
+                } catch (Throwable failure) {
+                    try {
+                        running.stop();
+                    } catch (Throwable cleanup) {
+                        failure.addSuppressed(cleanup);
+                    } finally {
+                        plugin.releaseResource(running);
+                    }
                     throw failure;
                 }
-            } catch (RuntimeException failure) {
-                sandbox.deprovision(sandboxId);
+            } catch (Throwable failure) {
+                try {
+                    sandbox.deprovision(sandboxId);
+                } catch (Throwable cleanup) {
+                    failure.addSuppressed(cleanup);
+                }
                 throw failure;
             }
         }
@@ -303,33 +314,40 @@ public final class PluginProcessHosts implements PluginProcessHostFactory {
                                     .daemon(true)
                                     .name("process-deadline-" + id)
                                     .factory());
-            deadline =
-                    timer.schedule(
-                            () -> {
-                                if (process.isAlive()) {
-                                    timedOut = true;
-                                    stop();
-                                }
-                            },
-                            intent.timeout().toMillis(),
-                            TimeUnit.MILLISECONDS);
-            sandbox.substrate()
-                    .onExit(handle, process)
-                    .whenComplete(
-                            (ignored, failure) -> {
-                                var scheduled = deadline;
-                                if (scheduled != null) scheduled.cancel(false);
-                                timer.shutdown();
-                                try {
-                                    if (failure == null) sandbox.deprovision(sandboxId);
-                                    else
-                                        log.error(
-                                                "Native process-tree retirement failed; workspace masks retained",
-                                                failure);
-                                } finally {
-                                    owner.plugin.releaseResource(this);
-                                }
-                            });
+            try {
+                deadline =
+                        timer.schedule(
+                                () -> {
+                                    if (process.isAlive()) {
+                                        timedOut = true;
+                                        stop();
+                                    }
+                                },
+                                intent.timeout().toMillis(),
+                                TimeUnit.MILLISECONDS);
+                sandbox.substrate()
+                        .onExit(handle, process)
+                        .whenComplete(
+                                (ignored, failure) -> {
+                                    var scheduled = deadline;
+                                    if (scheduled != null) scheduled.cancel(false);
+                                    timer.shutdown();
+                                    try {
+                                        if (failure == null) sandbox.deprovision(sandboxId);
+                                        else
+                                            log.error(
+                                                    "Native process-tree retirement failed; workspace masks retained",
+                                                    failure);
+                                    } finally {
+                                        owner.plugin.releaseResource(this);
+                                    }
+                                });
+            } catch (Throwable failure) {
+                var scheduled = deadline;
+                if (scheduled != null) scheduled.cancel(false);
+                timer.shutdown();
+                throw failure;
+            }
         }
 
         private void admitted() {

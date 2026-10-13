@@ -9,18 +9,28 @@ import org.zeromq.ZMsg;
 import top.focess.veto.contract.ClientTransport;
 import top.focess.veto.contract.Frame;
 import top.focess.veto.contract.FrameCodec;
+import top.focess.veto.contract.ProtocolClient;
 import top.focess.veto.contract.ServerTransport;
 
-/** ZeroMQ framing and resources. One IO owner serializes all socket operations. */
+/**
+ * ZeroMQ framing and resources.
+ *
+ * <p><b>Thread safety:</b> channel instances are not thread-safe. One exclusive owner must perform
+ * every send, recv and close; neither the socket, poller nor closed flag is protected for
+ * concurrent access. In particular, another thread must not close a channel to interrupt recv.
+ *
+ * <p>Ownership may move between threads using safe publication and no overlapping operations, such
+ * as initialization before thread start and cleanup after a completed thread join. Independent
+ * channel instances may run on different owner threads. A shared context does not make its channels
+ * thread-safe. Repeated close is supported only under this ownership contract.
+ */
 public abstract class ZmqChannel {
     protected final ZMQ.@NonNull Socket socket;
     private final ZMQ.@NonNull Poller poller;
-    private final ZContext ownedContext;
     private boolean closed;
 
-    private ZmqChannel(ZMQ.@NonNull Socket socket, @NonNull ZContext context, boolean owned) {
+    private ZmqChannel(ZMQ.@NonNull Socket socket, @NonNull ZContext context) {
         this.socket = socket;
-        ownedContext = owned ? context : null;
         var created = context.createPoller(1);
         try {
             if (created.register(socket, ZMQ.Poller.POLLIN) < 0)
@@ -54,11 +64,7 @@ public abstract class ZmqChannel {
         try {
             poller.close();
         } finally {
-            try {
-                socket.close();
-            } finally {
-                if (ownedContext != null) ownedContext.close();
-            }
+            socket.close();
         }
     }
 
@@ -69,8 +75,12 @@ public abstract class ZmqChannel {
             String identity) {
         var socket = context.createSocket(type);
         try {
-            if (!socket.setSendTimeOut(1_000) || !socket.setLinger(1_000))
+            // A slow ROUTER peer must fail admission, not drop frames or block every other peer.
+            if (!socket.setSendTimeOut(type == SocketType.ROUTER ? 0 : 1_000)
+                    || !socket.setLinger(1_000))
                 throw new IllegalStateException("Cannot configure ZeroMQ timeouts");
+            if (type == SocketType.ROUTER && !socket.setRouterMandatory(true))
+                throw new IllegalStateException("Cannot configure ZeroMQ routing failures");
             if (identity != null && !socket.setIdentity(identity.getBytes(ZMQ.CHARSET)))
                 throw new IllegalStateException("Cannot configure ZeroMQ identity");
             if (!(type == SocketType.ROUTER ? socket.bind(address) : socket.connect(address)))
@@ -86,32 +96,16 @@ public abstract class ZmqChannel {
         }
     }
 
+    /**
+     * Not thread-safe; follows {@link ZmqChannel}'s exclusive-owner contract. Always owns and
+     * closes its context. Use {@link ProtocolClient} for concurrent application callers.
+     */
     public static final class Client extends ZmqChannel implements ClientTransport {
-        private Client(ZMQ.@NonNull Socket socket, @NonNull ZContext context, boolean owned) {
-            super(socket, context, owned);
-        }
+        private final @NonNull ZContext context;
 
-        private static @NonNull Client connect(
-                @NonNull ZContext context,
-                @NonNull String address,
-                @NonNull String identity,
-                boolean owned) {
-            var socket = open(context, SocketType.DEALER, address, identity);
-            try {
-                return new Client(socket, context, owned);
-            } catch (Throwable failure) {
-                try {
-                    socket.close();
-                } catch (Throwable cleanup) {
-                    failure.addSuppressed(cleanup);
-                }
-                throw failure;
-            }
-        }
-
-        public static @NonNull Client connectDealer(
-                @NonNull ZContext context, @NonNull String address, @NonNull String identity) {
-            return connect(context, address, identity, false);
+        private Client(ZMQ.@NonNull Socket socket, @NonNull ZContext context) {
+            super(socket, context);
+            this.context = context;
         }
 
         /**
@@ -122,7 +116,9 @@ public abstract class ZmqChannel {
         public static @NonNull Client connect(@NonNull String address) {
             var context = new ZContext();
             try {
-                return connect(context, address, UUID.randomUUID().toString(), true);
+                var socket =
+                        open(context, SocketType.DEALER, address, UUID.randomUUID().toString());
+                return new Client(socket, context);
             } catch (Throwable failure) {
                 try {
                     context.close();
@@ -130,6 +126,15 @@ public abstract class ZmqChannel {
                     failure.addSuppressed(cleanup);
                 }
                 throw failure;
+            }
+        }
+
+        @Override
+        public void close() {
+            try {
+                super.close();
+            } finally {
+                context.close();
             }
         }
 
@@ -152,9 +157,13 @@ public abstract class ZmqChannel {
         }
     }
 
+    /**
+     * Not thread-safe; follows {@link ZmqChannel}'s exclusive-owner contract. Borrows its context;
+     * the context owner must close this channel before closing the context.
+     */
     public static final class Server extends ZmqChannel implements ServerTransport {
         private Server(ZMQ.@NonNull Socket socket, @NonNull ZContext context) {
-            super(socket, context, false);
+            super(socket, context);
         }
 
         public static @NonNull Server bindRouter(

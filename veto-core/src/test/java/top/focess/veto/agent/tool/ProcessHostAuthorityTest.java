@@ -1,6 +1,7 @@
 package top.focess.veto.agent.tool;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -9,9 +10,12 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Stream;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import top.focess.veto.agent.intercept.ToolExecutionPermit;
 import top.focess.veto.agent.workspace.PathMode;
 import top.focess.veto.agent.workspace.Workspace;
@@ -22,9 +26,72 @@ import top.focess.veto.api.llm.ToolResultPresentationMode;
 import top.focess.veto.api.plugin.PluginHost;
 import top.focess.veto.api.plugin.contract.JsonValue;
 import top.focess.veto.integration.plugins.ProcessHostFixture;
+import top.focess.veto.sandbox.ConstrainedSubprocessSubstrate;
+import top.focess.veto.sandbox.SandboxHandle;
+import top.focess.veto.sandbox.SandboxProfile;
 import top.focess.veto.sandbox.TestSandboxFactory;
 
 class ProcessHostAuthorityTest {
+    @ParameterizedTest
+    @ValueSource(booleans = {true, false})
+    void failedLaunchStopsChildBeforeRetirementAndPreservesFailure(
+            boolean revokeGrant, @TempDir @NonNull Path directory) {
+        var substrate = mock(ConstrainedSubprocessSubstrate.class);
+        var process = mock(Process.class);
+        when(process.descendants()).thenAnswer(ignored -> Stream.empty());
+        when(substrate.provision(any(SandboxProfile.class)))
+                .thenAnswer(
+                        call ->
+                                new SandboxHandle(
+                                        "launch", new Object(), directory, call.getArgument(0)));
+        var callbackFailure = new AssertionError("Exit callback installation failed");
+        var retirementFailure = new IllegalStateException("Retirement failed");
+        when(substrate.onExit(any(), same(process))).thenThrow(callbackFailure);
+        doThrow(retirementFailure).when(substrate).deprovision(any());
+        try (var fixture = new ProcessHostFixture(substrate, List.of(), true)) {
+            when(substrate.startBackground(any(), any(), any()))
+                    .thenAnswer(
+                            ignored -> {
+                                if (revokeGrant) fixture.admitted.set(false);
+                                return process;
+                            });
+            var call =
+                    new ToolCall(
+                            "run_task",
+                            Map.of(
+                                    "commands",
+                                    List.of(
+                                            Map.of(
+                                                    "executable",
+                                                    javaExecutable(),
+                                                    "args",
+                                                    List.of("-version"))),
+                                    "timeout",
+                                    30),
+                            "failed-start");
+            bind(
+                    fixture,
+                    fixture.permit(
+                            call,
+                            definition(fixture, "run_task"),
+                            Workspace.single(directory, PathMode.REAL)));
+            Throwable failure;
+            if (revokeGrant) {
+                failure = assertThrows(SecurityException.class, fixture.host::startApproved);
+                verify(substrate, never()).onExit(any(), any());
+            } else {
+                failure = assertThrows(AssertionError.class, fixture.host::startApproved);
+                assertSame(callbackFailure, failure);
+            }
+            assertArrayEquals(new Throwable[] {retirementFailure}, failure.getSuppressed());
+            var cleanup = inOrder(process, substrate);
+            cleanup.verify(process).destroyForcibly();
+            cleanup.verify(substrate).deprovision(any());
+        } finally {
+            ToolCallContextHolder.clear();
+        }
+    }
+
     private static @NonNull ToolDefinition definition(
             @NonNull ProcessHostFixture fixture, @NonNull String name) {
         var value = fixture.engine.resolveDefinition(name);

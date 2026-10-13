@@ -20,7 +20,7 @@ class VetoCommandSenderInputTest {
                             return null;
                         })
                 .when(server)
-                .send(eq("terminal"), any(Frame.Prompt.class));
+                .send(eq(sender), any(Frame.Prompt.class));
 
         var future = sender.inputAsync("Prompt", false, 1_000);
 

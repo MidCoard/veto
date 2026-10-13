@@ -2,6 +2,7 @@ package top.focess.veto.contract;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import java.time.Instant;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.LinkedBlockingQueue;
@@ -14,6 +15,24 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 
 class ProtocolClientWorkerTest {
+    @Test
+    @Timeout(15)
+    void missingAcknowledgementClosesAndWakesPendingExchangeWithoutAnotherHeartbeat()
+            throws Exception {
+        var transport = new RecordingTransport();
+        transport.acknowledge = false;
+        try (var client = new ProtocolClient(() -> transport, Version.UNKNOWN, "", 20)) {
+            long started = System.nanoTime();
+            assertNull(client.hint("pending", 30, TimeUnit.SECONDS));
+            assertTrue(client.isClosed());
+            assertTrue(transport.closed.await(1, TimeUnit.SECONDS));
+            assertEquals(
+                    2, transport.heartbeats.getCount(), "Only one heartbeat may be outstanding");
+            assertTrue(System.nanoTime() - started >= TimeUnit.SECONDS.toNanos(9));
+            assertNull(client.receive(1, TimeUnit.SECONDS));
+        }
+    }
+
     @Test
     @Timeout(5)
     void idleConnectionSendsHeartbeatsOnItsVirtualIoOwner() throws Exception {
@@ -71,6 +90,7 @@ class ProtocolClientWorkerTest {
         private final @NonNull AtomicInteger receives = new AtomicInteger();
         private final @NonNull CountDownLatch heartbeats = new CountDownLatch(3);
         private final @NonNull CountDownLatch closed = new CountDownLatch(1);
+        private boolean acknowledge = true;
 
         @Override
         public void send(Frame.@NonNull ClientFrame frame) {
@@ -82,7 +102,11 @@ class ProtocolClientWorkerTest {
                 return;
             }
             recordOwner();
-            if (frame instanceof Frame.Heartbeat) heartbeats.countDown();
+            if (frame instanceof Frame.Heartbeat) {
+                heartbeats.countDown();
+                if (acknowledge && !incoming.offer(new Frame.HeartbeatAck(Instant.now())))
+                    throw new AssertionError("Cannot acknowledge heartbeat");
+            }
             if (frame instanceof Frame.Request && keepSending.get()) {
                 sends.incrementAndGet();
                 var active = client.get();

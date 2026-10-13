@@ -41,6 +41,10 @@ import top.focess.veto.transport.zmq.ZmqChannel;
  *       TerminalView} and returns the next frame to dispatch (sent here).
  * </ul>
  *
+ * <p>The interaction monitor keeps each state transition and its outbound queue admission in order
+ * across both threads. Reading input, receiving frames, and shutdown joins run outside it. View
+ * callbacks may render or interrupt the reader but never wait for that thread to finish.
+ *
  * <h3>The one retained interrupt</h3>
  *
  * <p>When a {@link Frame.Prompt} arrives, the consumer thread (via {@link TerminalView#onPrompt})
@@ -78,6 +82,9 @@ public class VetoTerminal {
 
     /** IPC connection to the backend (transport-agnostic; ZMQ locally). */
     private final @NonNull ProtocolClient client;
+
+    /** Orders interaction transitions with their nonblocking protocol queue admission. */
+    private final @NonNull Object interactionLock = new Object();
 
     /** JLine reader driving the interactive REPL; set in {@link #start(LineReader)}. */
     private @NonNull LineReader reader;
@@ -199,17 +206,14 @@ public class VetoTerminal {
                                     if (frame == null) {
                                         if (client.isClosed()) {
                                             if (running)
-                                                session.onFrame(
+                                                acceptFrame(
                                                         new Frame.Terminate(
                                                                 "Backend connection closed."));
                                             break;
                                         }
                                         continue;
                                     }
-                                    Frame.ClientFrame reply = session.onFrame(frame);
-                                    if (reply != null) {
-                                        client.send(reply);
-                                    }
+                                    acceptFrame(frame);
                                 }
                             } catch (InterruptedException interrupted) {
                                 Thread.currentThread().interrupt();
@@ -218,11 +222,35 @@ public class VetoTerminal {
                                     log.warn(
                                             "Terminal receive failed ({})",
                                             failure.getClass().getSimpleName());
-                                    session.onFrame(
-                                            new Frame.Terminate("Backend connection failed."));
+                                    acceptFrame(new Frame.Terminate("Backend connection failed."));
                                 }
                             }
                         });
+    }
+
+    /** An accepted reply enters the outbox before completion can dispatch another command. */
+    void submitInput(@NonNull String line, Frame.ServerFrame displayedInteraction) {
+        synchronized (interactionLock) {
+            var reply = session.submit(line, displayedInteraction);
+            if (reply != null) client.send(reply);
+        }
+    }
+
+    /** Inbound transitions and any resulting command share the same ordering boundary. */
+    void acceptFrame(Frame.@NonNull ServerFrame frame) {
+        synchronized (interactionLock) {
+            var reply = session.onFrame(frame);
+            if (reply != null) client.send(reply);
+        }
+    }
+
+    /** Returns false when idle cancellation means the REPL should exit. */
+    private boolean cancelCommand() {
+        synchronized (interactionLock) {
+            if (!session.cancel()) return false;
+            client.cancel();
+            return true;
+        }
     }
 
     // ── repl ──────────────────────────────────────────────────────────────
@@ -310,18 +338,16 @@ public class VetoTerminal {
                 // Flag false ⇒ not a swap ⇒ genuine Ctrl+C → cancel the in-flight request/prompt,
                 // or exit if idle (cancel returns null as the shutdown signal per IDLE ×
                 // cancel).
-                Frame.Cancel cancel = session.cancel();
-                if (cancel == null) {
+                if (!cancelCommand()) {
                     break; // idle → exit the REPL
                 }
-                client.send(cancel);
                 continue;
             } catch (EndOfFileException e) {
                 break;
             }
 
             if (line == null || !running) break;
-            line = line.trim();
+            line = normalizeInput(line, interaction);
             if (line.isEmpty()) continue;
 
             // A veto picker reply is resolved to an option name (by 1-based index or name) before
@@ -333,35 +359,26 @@ public class VetoTerminal {
             if (activeVeto != null) {
                 String resolved = resolveVetoChoice(activeVeto, line);
                 if (resolved == null) {
-                    renderer.println(theme.style(StyleToken.ERROR, "  invalid choice: " + line));
+                    renderer.println(theme.style(StyleToken.ERROR, "  invalid choice"));
                     continue;
                 }
                 line = resolved;
             }
 
-            // Route the line authoritatively: submit checks the *current* state under its lock
-            // and returns exactly the frame to send — Input for a prompt reply, Request for a
-            // dispatched new command, or null if enqueued while awaiting (or discarded as a stale
-            // reply). Routing on the `state` captured above would be a TOCTOU: the consumer thread
-            // can transition the state machine during the blocking readLine (a Prompt arriving, or
-            // a
-            // Done/Error completing the in-flight request), so the render-time snapshot may no
-            // longer hold when the user submits. The snapshot is used only to *render* the prompt,
-            // never to route the reply. A dispatched command is echoed by onCommandDispatched
-            // (fired
-            // by submit on dispatch, and by onFrame when a queued command is auto-dispatched) — so
-            // a
-            // queued command echoes when it actually runs, not when it is merely typed — and the
-            // call site need not distinguish Input from Request: both just get sent, and only the
-            // null case (enqueued / discarded) sends nothing.
-            Frame.ClientFrame reply = session.submit(line);
-            if (reply != null) {
-                client.send(reply);
-            }
+            // Bind the reply to what the user actually saw. The atomic identity check discards
+            // stale secrets and approval choices; ordinary command input remains a command even
+            // if a new interaction arrived while readLine was returning.
+            submitInput(line, interaction);
         }
     }
 
     // ── UI helpers ────────────────────────────────────────────────────────
+
+    /** Text prompts preserve credential bytes; commands and approval choices ignore padding. */
+    static @NonNull String normalizeInput(
+            @NonNull String line, Frame.ServerFrame displayedInteraction) {
+        return displayedInteraction instanceof Frame.Prompt ? line : line.trim();
+    }
 
     /**
      * Echoes the user's input wrapped in a clean, framed box for visual clarity.

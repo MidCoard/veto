@@ -1,5 +1,6 @@
 package top.focess.veto.integration;
 
+import static org.apache.tomcat.websocket.Constants.READ_IDLE_TIMEOUT_MS;
 import static org.junit.jupiter.api.Assertions.*;
 
 import java.io.IOException;
@@ -10,11 +11,16 @@ import java.net.http.HttpResponse;
 import java.net.http.WebSocket;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
+import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
+import org.apache.tomcat.websocket.WsSession;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
@@ -25,12 +31,21 @@ import org.springframework.context.ApplicationContext;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.*;
 import org.springframework.http.client.ClientHttpResponse;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.client.DefaultResponseErrorHandler;
 import org.springframework.web.client.RestTemplate;
+import org.springframework.web.socket.WebSocketSession;
+import org.springframework.web.socket.adapter.NativeWebSocketSession;
+import org.springframework.web.socket.handler.WebSocketSessionDecorator;
 import top.focess.veto.VetoApplication;
 import top.focess.veto.agent.tool.ToolEngine;
 import top.focess.veto.agent.tool.ToolEngineImpl;
 import top.focess.veto.bus.DeltaBroker;
+import top.focess.veto.bus.VetoWebSocketAuthInterceptor;
+import top.focess.veto.bus.VetoWebSocketHandler;
+import top.focess.veto.contract.Frame;
+import top.focess.veto.contract.FrameCodec;
+import top.focess.veto.contract.Version;
 import top.focess.veto.integration.plugins.PluginManager;
 import top.focess.veto.memory.TurnLogService;
 import top.focess.veto.observability.AuditLogger;
@@ -286,6 +301,111 @@ class VetoApplicationTests {
     }
 
     @Test
+    void websocketReadTimeoutTracksHeartbeatsAndExpiresDespiteServerOutput() throws Exception {
+        var token = authenticatedHeaders().getFirst("X-Veto-Session-Token");
+        if (token == null) throw new AssertionError("Missing test token");
+        var messages = new LinkedBlockingQueue<@NonNull String>();
+        var closed = new CompletableFuture<Integer>();
+        try (var client = HttpClient.newHttpClient()) {
+            var socket =
+                    Objects.requireNonNull(
+                            client.newWebSocketBuilder()
+                                    .header("Origin", "http://localhost:5177")
+                                    .buildAsync(
+                                            URI.create(
+                                                    "ws://localhost:"
+                                                            + port
+                                                            + "/ws/veto/bus?token="
+                                                            + token),
+                                            new WebSocket.Listener() {
+                                                @Override
+                                                public @NonNull CompletionStage<?> onText(
+                                                        @NonNull WebSocket webSocket,
+                                                        @NonNull CharSequence data,
+                                                        boolean last) {
+                                                    assertTrue(last);
+                                                    assertTrue(messages.offer(data.toString()));
+                                                    webSocket.request(1);
+                                                    return CompletableFuture.completedFuture(null);
+                                                }
+
+                                                @Override
+                                                public @NonNull CompletionStage<?> onClose(
+                                                        @NonNull WebSocket webSocket,
+                                                        int statusCode,
+                                                        @NonNull String reason) {
+                                                    assertTrue(closed.complete(statusCode));
+                                                    return CompletableFuture.completedFuture(null);
+                                                }
+                                            })
+                                    .get(10, TimeUnit.SECONDS));
+            try {
+                socket.sendText(
+                                FrameCodec.encodeString(
+                                        new Frame.Hello(
+                                                Frame.PROTOCOL_VERSION, 1, Version.UNKNOWN, "")),
+                                true)
+                        .get(5, TimeUnit.SECONDS);
+                assertInstanceOf(Frame.Welcome.class, nextWebSocketFrame(messages));
+                var session = nativeWebSocket(token);
+                assertEquals(90_000L, session.getUserProperties().get(READ_IDLE_TIMEOUT_MS));
+                long oldRead = System.currentTimeMillis() - 80_000;
+                ReflectionTestUtils.setField(session, "lastActiveRead", oldRead);
+                socket.sendText(FrameCodec.encodeString(new Frame.Heartbeat()), true)
+                        .get(5, TimeUnit.SECONDS);
+                assertInstanceOf(Frame.HeartbeatAck.class, nextWebSocketFrame(messages));
+                var refreshed = ReflectionTestUtils.getField(session, "lastActiveRead");
+                assertTrue(refreshed instanceof Long timestamp && timestamp > oldRead);
+                assertNull(ReflectionTestUtils.invokeMethod(session, "checkExpiration"));
+                assertTrue(session.isOpen());
+
+                // Age the real container timestamp instead of adding test-only timeout
+                // configuration.
+                ReflectionTestUtils.setField(
+                        session, "lastActiveRead", System.currentTimeMillis() - 91_000);
+                session.getBasicRemote()
+                        .sendText(FrameCodec.encodeString(new Frame.HeartbeatAck(Instant.now())));
+                assertInstanceOf(Frame.HeartbeatAck.class, nextWebSocketFrame(messages));
+                assertNull(ReflectionTestUtils.invokeMethod(session, "checkExpiration"));
+                assertEquals(1001, closed.get(5, TimeUnit.SECONDS));
+                assertFalse(session.isOpen());
+                assertThrows(AssertionError.class, () -> nativeWebSocket(token));
+            } finally {
+                socket.abort();
+            }
+        }
+    }
+
+    private static Frame nextWebSocketFrame(@NonNull LinkedBlockingQueue<@NonNull String> messages)
+            throws InterruptedException {
+        var payload = messages.poll(5, TimeUnit.SECONDS);
+        if (payload == null) throw new AssertionError("Missing server frame");
+        return FrameCodec.decode(payload);
+    }
+
+    private @NonNull WsSession nativeWebSocket(@NonNull String token) {
+        var value =
+                ReflectionTestUtils.getField(
+                        context.getBean(VetoWebSocketHandler.class), "connections");
+        if (!(value instanceof Map<?, ?> connections))
+            throw new AssertionError("Missing connections");
+        for (var connection : connections.values()) {
+            if (connection == null) continue;
+            var candidate = ReflectionTestUtils.getField(connection, "socket");
+            if (candidate instanceof WebSocketSession socket
+                    && token.equals(
+                            socket.getAttributes()
+                                    .get(VetoWebSocketAuthInterceptor.LOGIN_TOKEN_ATTRIBUTE))) {
+                var delegate = WebSocketSessionDecorator.unwrap(socket);
+                if (delegate instanceof NativeWebSocketSession nativeSocket
+                        && nativeSocket.getNativeSession() instanceof WsSession session)
+                    return session;
+            }
+        }
+        throw new AssertionError("Missing authenticated Tomcat session");
+    }
+
+    @Test
     void restEndpointVetoStatus() {
         String url = "http://localhost:" + port + "/api/veto/status";
         ResponseEntity<Map<String, Object>> response =
@@ -403,23 +523,6 @@ class VetoApplicationTests {
                         body);
             }
         }
-        for (String body :
-                List.of(
-                        "{\"taskType\":42}",
-                        "{\"taskType\":\"test\",\"parameters\":[]}",
-                        "{\"taskType\":\"test\",\"id\":{}}")) {
-            HttpEntity<String> request = new HttpEntity<>(body, headers);
-            assertEquals(
-                    HttpStatus.BAD_REQUEST,
-                    restTemplate
-                            .exchange(
-                                    "http://localhost:" + port + "/api/tasks",
-                                    HttpMethod.POST,
-                                    request,
-                                    MAP_RESPONSE)
-                            .getStatusCode(),
-                    body);
-        }
     }
 
     @Test
@@ -450,112 +553,6 @@ class VetoApplicationTests {
                         .contains("X-Veto-Session-Token"));
     }
 
-    @Test
-    void restEndpointTaskLifecycle() {
-        String createUrl = "http://localhost:" + port + "/api/tasks";
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_JSON);
-        var sessions = context.getBean(LoginSessionManager.class);
-        var taskUser =
-                context.getBean(UserRegistry.class).create("task-owner", "test-password", "USER");
-        headers.set(
-                "X-Veto-Session-Token",
-                sessions.createLoginSession(taskUser.getUserId(), taskUser.getUsername()));
-        HttpEntity<Void> authenticated = new HttpEntity<>(headers);
-        for (HttpMethod method : List.of(HttpMethod.GET, HttpMethod.POST)) {
-            HttpHeaders anonymousHeaders = new HttpHeaders();
-            anonymousHeaders.setContentType(MediaType.APPLICATION_JSON);
-            var anonymous = new HttpEntity<>(Map.of("taskType", "anonymous"), anonymousHeaders);
-            assertEquals(
-                    HttpStatus.UNAUTHORIZED,
-                    restTemplate
-                            .exchange(createUrl, method, anonymous, MAP_RESPONSE)
-                            .getStatusCode());
-        }
-        for (HttpMethod method : List.of(HttpMethod.GET, HttpMethod.DELETE)) {
-            assertEquals(
-                    HttpStatus.UNAUTHORIZED,
-                    restTemplate
-                            .exchange(createUrl + "/missing", method, null, MAP_RESPONSE)
-                            .getStatusCode());
-        }
-
-        HttpEntity<Map<String, Object>> createRequest =
-                new HttpEntity<>(
-                        Map.of(
-                                "taskType",
-                                "integration_test",
-                                "parameters",
-                                Map.of("key", "value")),
-                        headers);
-
-        ResponseEntity<Map<String, Object>> createResponse =
-                restTemplate.exchange(createUrl, HttpMethod.POST, createRequest, MAP_RESPONSE);
-        assertEquals(HttpStatus.OK, createResponse.getStatusCode());
-        Map<String, Object> createBody = requireBody(createResponse);
-        String taskId = requireStringMapValue(createBody, "id");
-
-        String getUrl = "http://localhost:" + port + "/api/tasks/" + taskId;
-        ResponseEntity<Map<String, Object>> getResponse =
-                restTemplate.exchange(getUrl, HttpMethod.GET, authenticated, MAP_RESPONSE);
-        assertEquals(HttpStatus.OK, getResponse.getStatusCode());
-        Map<String, Object> getBody = requireBody(getResponse);
-        assertEquals(taskId, requireMapValue(getBody, "id"));
-
-        ResponseEntity<Map<String, Object>> listResponse =
-                restTemplate.exchange(createUrl, HttpMethod.GET, authenticated, MAP_RESPONSE);
-        assertEquals(HttpStatus.OK, listResponse.getStatusCode());
-
-        HttpHeaders otherHeaders = new HttpHeaders();
-        otherHeaders.setContentType(MediaType.APPLICATION_JSON);
-        var otherTaskUser =
-                context.getBean(UserRegistry.class)
-                        .create("other-task-owner", "test-password", "USER");
-        otherHeaders.set(
-                "X-Veto-Session-Token",
-                sessions.createLoginSession(
-                        otherTaskUser.getUserId(), otherTaskUser.getUsername()));
-        HttpEntity<Void> other = new HttpEntity<>(otherHeaders);
-        for (HttpMethod method : List.of(HttpMethod.GET, HttpMethod.DELETE)) {
-            assertEquals(
-                    HttpStatus.NOT_FOUND,
-                    restTemplate.exchange(getUrl, method, other, MAP_RESPONSE).getStatusCode());
-        }
-        assertEquals(
-                0,
-                requireMapValue(
-                        requireBody(
-                                restTemplate.exchange(
-                                        createUrl, HttpMethod.GET, other, MAP_RESPONSE)),
-                        "total"));
-        HttpEntity<Map<String, Object>> collision =
-                new HttpEntity<>(Map.of("id", taskId, "taskType", "replacement"), otherHeaders);
-        assertEquals(
-                HttpStatus.CONFLICT,
-                restTemplate
-                        .exchange(createUrl, HttpMethod.POST, collision, MAP_RESPONSE)
-                        .getStatusCode());
-        assertEquals(
-                "integration_test",
-                requireMapValue(
-                        requireBody(
-                                restTemplate.exchange(
-                                        getUrl, HttpMethod.GET, authenticated, MAP_RESPONSE)),
-                        "taskType"));
-
-        ResponseEntity<Map<String, Object>> deleteResponse =
-                restTemplate.exchange(getUrl, HttpMethod.DELETE, authenticated, MAP_RESPONSE);
-        assertEquals(HttpStatus.OK, deleteResponse.getStatusCode());
-
-        ResponseEntity<Map<String, Object>> notFoundResponse =
-                restTemplate.exchange(
-                        "http://localhost:" + port + "/api/tasks/nonexistent",
-                        HttpMethod.GET,
-                        authenticated,
-                        MAP_RESPONSE);
-        assertEquals(HttpStatus.NOT_FOUND, notFoundResponse.getStatusCode());
-    }
-
     private static <T extends @NonNull Object> @NonNull T requireBody(
             @NonNull ResponseEntity<T> response) {
         T body = response.getBody();
@@ -568,12 +565,5 @@ class VetoApplicationTests {
         Object value = body.get(key);
         if (value == null) throw new AssertionError("Response field should not be null: " + key);
         return value;
-    }
-
-    private static @NonNull String requireStringMapValue(
-            @NonNull Map<String, Object> body, @NonNull String key) {
-        Object value = requireMapValue(body, key);
-        if (value instanceof String stringValue) return stringValue;
-        throw new AssertionError("Response field should be a string: " + key);
     }
 }

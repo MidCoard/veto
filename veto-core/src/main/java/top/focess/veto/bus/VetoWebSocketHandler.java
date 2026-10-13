@@ -1,7 +1,9 @@
 package top.focess.veto.bus;
 
+import static org.apache.tomcat.websocket.Constants.READ_IDLE_TIMEOUT_MS;
 import static top.focess.veto.util.LogValues.safe;
 
+import jakarta.websocket.Session;
 import java.io.IOException;
 import java.time.Instant;
 import java.util.UUID;
@@ -13,6 +15,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.socket.CloseStatus;
 import org.springframework.web.socket.TextMessage;
 import org.springframework.web.socket.WebSocketSession;
+import org.springframework.web.socket.adapter.NativeWebSocketSession;
 import org.springframework.web.socket.handler.ConcurrentWebSocketSessionDecorator;
 import org.springframework.web.socket.handler.TextWebSocketHandler;
 import top.focess.veto.VetoVersion;
@@ -58,6 +61,11 @@ public class VetoWebSocketHandler extends TextWebSocketHandler {
             socket.close(CloseStatus.POLICY_VIOLATION.withReason("authentication required"));
             return;
         }
+        if (!(socket instanceof NativeWebSocketSession nativeSocket)
+                || !(nativeSocket.getNativeSession() instanceof Session session))
+            throw new IllegalStateException("Veto WebSocket requires a native Jakarta session");
+        // Tomcat tracks reads separately so outgoing events cannot keep a silent client alive.
+        session.getUserProperties().put(READ_IDLE_TIMEOUT_MS, 90_000L);
         var connection = new Connection(socket, user);
         connections.put(socket.getId(), connection);
     }
@@ -114,9 +122,22 @@ public class VetoWebSocketHandler extends TextWebSocketHandler {
             send(connection, new Frame.Error(scope, null, -1, "Approval not found", 0, null));
             return;
         }
+        Object token =
+                connection
+                        .socket
+                        .getAttributes()
+                        .get(VetoWebSocketAuthInterceptor.LOGIN_TOKEN_ATTRIBUTE);
         if (result.option().isBlank()
-                || !agents.resolveVeto(
-                        result.scope().agent(), result.callId(), result.option(), result.seq())) {
+                || !(token instanceof String text)
+                || !loginSessions.whileAuthenticated(
+                        text,
+                        connection.user,
+                        () ->
+                                agents.resolveVeto(
+                                        result.scope().agent(),
+                                        result.callId(),
+                                        result.option(),
+                                        result.seq()))) {
             send(
                     connection,
                     new Frame.Error(scope, null, -1, "Approval no longer pending", 0, null));

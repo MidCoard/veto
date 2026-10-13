@@ -109,11 +109,6 @@ public class VetoAgent implements Agent {
         return runner.state();
     }
 
-    /** The provenance of plugins contributing tools to this agent's latest context. */
-    public @NonNull PluginContextSnapshot pluginContext() {
-        return runner.models.pluginContext();
-    }
-
     /** The reason the agent is parked (approval, question, breaker, etc.), or {@code null}. */
     public String executionWaitReason() {
         return runner.executionWaitReason();

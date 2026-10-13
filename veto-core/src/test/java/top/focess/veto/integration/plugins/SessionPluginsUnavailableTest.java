@@ -11,12 +11,15 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
+import top.focess.veto.api.agent.tool.Tool;
 import top.focess.veto.api.plugin.PluginBinding;
 import top.focess.veto.api.plugin.PluginDeclinedException;
 import top.focess.veto.api.plugin.PluginIdentity;
 import top.focess.veto.api.plugin.PluginState;
 import top.focess.veto.api.plugin.contract.StandardContributionPoints;
 import top.focess.veto.api.plugin.contribution.ContributionCatalog;
+import top.focess.veto.api.plugin.contribution.ContributionEntry;
+import top.focess.veto.api.plugin.contribution.ContributionSource;
 import top.focess.veto.event.EventListenerRegistry;
 import top.focess.veto.model.SessionEntity;
 import top.focess.veto.model.SessionRepository;
@@ -44,6 +47,8 @@ class SessionPluginsUnavailableTest {
                 List.of(
                         new SessionPlugins.BoundPluginStatus(
                                 "missing.plugin",
+                                "missing.plugin",
+                                List.of(),
                                 "1.0.0",
                                 "revision",
                                 false,
@@ -67,6 +72,7 @@ class SessionPluginsUnavailableTest {
         session.setPluginBindings(List.of(disabled, declined, changed));
         when(sessions.findById(session.getId())).thenReturn(Optional.of(session));
         var runtime = mock(ManagedPlugin.class);
+        when(runtime.displayName()).thenReturn("Changed Plugin");
         when(runtime.state()).thenReturn(PluginState.ACTIVE);
         when(runtime.identity()).thenReturn(new PluginIdentity("changed.plugin", "1.0.0"));
         when(runtime.binding()).thenReturn(new PluginBinding("changed.plugin", "1.0.0", "1.0.0"));
@@ -95,6 +101,14 @@ class SessionPluginsUnavailableTest {
                 selected.status(session.getId()).stream()
                         .map(SessionPlugins.BoundPluginStatus::availability)
                         .toList());
+        assertEquals(
+                List.of("Disabled", "Declined", "Changed Plugin"),
+                selected.status(session.getId()).stream()
+                        .map(SessionPlugins.BoundPluginStatus::name)
+                        .toList());
+        assertTrue(
+                selected.status(session.getId()).stream()
+                        .allMatch(status -> status.tools().isEmpty()));
         assertTrue(
                 selected.status(session.getId()).stream()
                         .noneMatch(SessionPlugins.BoundPluginStatus::available));
@@ -149,6 +163,7 @@ class SessionPluginsUnavailableTest {
         var manager = mock(PluginManager.class);
         var installed = mock(ManagedPlugin.class);
         when(installed.identity()).thenReturn(new PluginIdentity("installed.plugin", "1.0.0"));
+        when(installed.displayName()).thenReturn("Installed");
         publication(manager, List.of(installed));
         var sessions = mock(SessionRepository.class);
         var session =
@@ -162,6 +177,44 @@ class SessionPluginsUnavailableTest {
         assertEquals(List.of(), selected.status(session.getId()));
         verify(sessions, times(2)).findById(session.getId());
         verifyNoMoreInteractions(sessions);
+    }
+
+    @Test
+    void reportsDisplayNameAndOwnToolsThenPreservesBindingWhenPackageIsRemoved() {
+        var manager = mock(PluginManager.class);
+        var runtime = mock(ManagedPlugin.class);
+        var pin = new PluginBinding("workspace.plugin", "1.0.0", "revision");
+        when(runtime.identity()).thenReturn(new PluginIdentity(pin.id(), pin.version()));
+        when(runtime.binding()).thenReturn(pin);
+        when(runtime.displayName()).thenReturn("Workspace Tools");
+        when(runtime.state()).thenReturn(PluginState.ACTIVE);
+        var registry = publication(manager, List.of(runtime));
+        var source = new ContributionSource(pin.id(), "1.0.0", ContributionSource.Origin.PLUGIN);
+        var other =
+                new ContributionSource("other.plugin", "1.0.0", ContributionSource.Origin.PLUGIN);
+        var ownTool = new ContributionEntry<>(source.qualify("read"), source, mock(Tool.class));
+        var otherTool = new ContributionEntry<>(other.qualify("read"), other, mock(Tool.class));
+        doReturn(List.of(ownTool, otherTool))
+                .when(registry)
+                .entries(StandardContributionPoints.TOOLS);
+        doReturn("read_file").when(registry).toolName(ownTool);
+        var sessions = mock(SessionRepository.class);
+        var session = new SessionEntity(UUID.randomUUID(), "session");
+        session.setPluginBindings(List.of(pin));
+        when(sessions.findById(session.getId())).thenReturn(Optional.of(session));
+        var selected = new SessionPlugins(manager, sessions);
+        var status = selected.status(session.getId()).getFirst();
+        assertEquals("Workspace Tools", status.name());
+        assertEquals(List.of("read_file"), status.tools());
+        assertTrue(status.available());
+        when(runtime.binding()).thenReturn(new PluginBinding(pin.id(), "1.0.0", "changed"));
+        assertTrue(selected.status(session.getId()).getFirst().tools().isEmpty());
+        when(manager.registry()).thenReturn(PluginRegistry.empty());
+        var missing = selected.status(session.getId()).getFirst();
+        assertEquals(SessionPlugins.BoundPluginAvailability.ABSENT, missing.availability());
+        assertEquals(pin.id(), missing.name());
+        assertTrue(missing.tools().isEmpty());
+        assertEquals(List.of(pin), selected.bindings(session.getId()));
     }
 
     private static @NonNull PluginRegistry publication(

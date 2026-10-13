@@ -1,10 +1,8 @@
 package top.focess.veto.agent;
 
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import java.util.Set;
 import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -17,7 +15,6 @@ public final class AgentRunnerFixture {
         AgentRunner runner = mock(AgentRunner.class);
         AgentOutput output = mock(AgentOutput.class);
         ModelSession models = mock(ModelSession.class);
-        when(models.pluginContext()).thenReturn(PluginContextSnapshot.from(Set.of(), false));
         var events =
                 new AgentEvents(
                         id,

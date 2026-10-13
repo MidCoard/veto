@@ -170,7 +170,6 @@ public class CommandRegistry {
                             scope,
                             done.requestId(),
                             done.turnNumber(),
-                            done.cancelled(),
                             done.content(),
                             sender.username());
             case Frame.Error error ->
@@ -256,7 +255,7 @@ public class CommandRegistry {
      *     null} or empty
      * @return a list of {@link Frame.Completion} candidates; never {@code null}, may be empty
      */
-    public @NonNull List<Frame.Completion> complete(
+    public @NonNull List<Frame.@NonNull Completion> complete(
             @NonNull VetoCommandSender sender, String partial) {
         if (partial == null || partial.isEmpty()) return List.of();
 

@@ -1,15 +1,11 @@
 package top.focess.veto.terminal;
 
-import jakarta.annotation.PostConstruct;
-import jakarta.annotation.PreDestroy;
 import java.time.Instant;
 import java.util.ArrayDeque;
 import java.util.UUID;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingQueue;
@@ -17,19 +13,13 @@ import java.util.concurrent.TimeUnit;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.stereotype.Component;
-import org.zeromq.ZContext;
 import top.focess.veto.VetoVersion;
 import top.focess.veto.agent.AgentService;
 import top.focess.veto.api.plugin.Scope;
-import top.focess.veto.bus.DeltaBroker;
 import top.focess.veto.command.CommandRegistry;
 import top.focess.veto.command.VetoCommandSender;
 import top.focess.veto.contract.Frame;
 import top.focess.veto.contract.ServerTransport;
-import top.focess.veto.transport.zmq.ZmqChannel;
 import top.focess.veto.vault.ExecutionSecurity;
 
 /**
@@ -37,17 +27,14 @@ import top.focess.veto.vault.ExecutionSecurity;
  * lifecycle. Command workers post results to that mailbox and never change request state
  * themselves.
  */
-@Component
-@ConditionalOnProperty(name = "veto.terminal.enabled", havingValue = "true", matchIfMissing = true)
 public class IpcServer {
     private static final @NonNull Logger log =
             LoggerFactory.getLogger("top.focess.veto.terminal.IpcServer");
     private static final long SESSION_TIMEOUT_NANOS = TimeUnit.SECONDS.toNanos(90);
     private static final long SESSION_SCAN_NANOS = TimeUnit.SECONDS.toNanos(30);
-    private final @NonNull DeltaBroker broker;
     private final @NonNull CommandRegistry registry;
     private final @NonNull AgentService agentService;
-    private final @NonNull String bindAddress;
+    private final @NonNull ServerTransport transport;
     private final @NonNull BlockingQueue<@NonNull Outgoing> outbox =
             new ArrayBlockingQueue<>(10_000);
     private final @NonNull ConcurrentHashMap<@NonNull String, @NonNull Session> sessions =
@@ -60,53 +47,37 @@ public class IpcServer {
     public IpcServer(
             @NonNull CommandRegistry registry,
             @NonNull AgentService agentService,
-            @NonNull DeltaBroker broker,
-            @Value("${veto.terminal.bind-address}") @NonNull String bindAddress) {
-        this.broker = broker;
+            @NonNull ServerTransport transport) {
         this.registry = registry;
         this.agentService = agentService;
-        this.bindAddress = bindAddress;
+        this.transport = transport;
     }
 
-    /** Binds on the IO owner and reports startup failure to Spring. */
-    @PostConstruct
+    /** Starts the sole IO worker after Spring has initialized its resources. */
     public void start() {
-        var ready = new CompletableFuture<Void>();
         running = true;
-        ioThread = Thread.ofVirtual().name("terminal-io").start(() -> serve(ready));
-        try {
-            ready.get();
-        } catch (InterruptedException interrupted) {
-            stop();
-            Thread.currentThread().interrupt();
-            throw new IllegalStateException("Terminal startup interrupted", interrupted);
-        } catch (ExecutionException failure) {
-            throw new IllegalStateException("Cannot start terminal endpoint", failure.getCause());
-        }
+        ioThread = Thread.ofVirtual().name("terminal-io").start(this::serve);
     }
 
-    @PreDestroy
+    /** Returns only after the worker releases the transport for Spring to close. */
     public void stop() {
         running = false;
         var worker = ioThread;
-        if (worker != null && worker != Thread.currentThread()) {
+        if (worker == null || worker == Thread.currentThread()) return;
+        boolean interrupted = false;
+        while (worker.isAlive()) {
             try {
-                worker.join(4_000);
-                if (worker.isAlive()) log.warn("Terminal IO owner is still closing its socket");
-            } catch (InterruptedException interrupted) {
-                Thread.currentThread().interrupt();
+                worker.join();
+            } catch (InterruptedException ignored) {
+                // Resource destruction must not race the IO worker, even on interrupted shutdown.
+                interrupted = true;
             }
         }
+        if (interrupted) Thread.currentThread().interrupt();
     }
 
-    @SuppressWarnings(
-            "try") // The subscription is owned here solely for connection-lifetime cleanup.
-    private void serve(@NonNull CompletableFuture<Void> ready) {
-        try (var context = new ZContext();
-                var transport = ZmqChannel.Server.bindRouter(context, bindAddress);
-                var subscription = broker.subscribeAll(this::publishAction)) {
-            ready.complete(null);
-            log.info("Terminal endpoint bound to {}", bindAddress);
+    private void serve() {
+        try {
             long lastScan = System.nanoTime();
             try {
                 while (running) {
@@ -115,7 +86,7 @@ public class IpcServer {
                     for (int i = 0; running && i < 256; i++) {
                         var outgoing = outbox.poll();
                         if (outgoing == null) break;
-                        deliver(transport, outgoing.identity(), outgoing.frame());
+                        deliver(outgoing);
                     }
                     long now = System.nanoTime();
                     if (now - lastScan >= SESSION_SCAN_NANOS) {
@@ -136,15 +107,16 @@ public class IpcServer {
                     // Best-effort notification has one shared deadline, not one timeout per peer.
                     if (System.nanoTime() < goodbyeDeadline)
                         deliver(
-                                transport,
-                                session.identity,
-                                new Frame.Terminate("Server shutting down."));
+                                new Outgoing(
+                                        session.identity,
+                                        session,
+                                        session.sender.authenticationVersion(),
+                                        new Frame.Terminate("Server shutting down.")));
                     session.post(new Disconnect());
                 }
             }
         } catch (Throwable failure) {
-            if (!ready.completeExceptionally(failure))
-                log.warn("Terminal IO failed ({})", failure.getClass().getSimpleName());
+            log.warn("Terminal IO failed", failure);
         } finally {
             running = false;
             sessionWorkers.shutdownNow();
@@ -152,7 +124,7 @@ public class IpcServer {
     }
 
     /** Plugin events are independent of an active command, but remain session-authorized. */
-    private void publishAction(Frame.@NonNull ScopedFrame frame) {
+    void publishAction(Frame.@NonNull ScopedFrame frame) {
         var scope =
                 switch (frame) {
                     case Frame.PluginAction action -> action.scope();
@@ -164,7 +136,7 @@ public class IpcServer {
         for (var session : sessions.values()) {
             if (scope.userId().equals(session.sender.userId())
                     && scope.session().equals(registry.activeSession(session.identity)))
-                send(session.identity, event);
+                send(session.sender, event);
         }
     }
 
@@ -198,27 +170,102 @@ public class IpcServer {
         }
     }
 
-    private void deliver(
-            @NonNull ServerTransport transport,
-            @NonNull String identity,
-            Frame.@NonNull ServerFrame frame) {
+    private void deliver(@NonNull Outgoing outgoing) {
+        var owner = outgoing.owner();
+        if (sessions.get(outgoing.identity()) != owner) return;
+        if (owner != null) {
+            // Identity changes and socket admission share the sender's ownership boundary.
+            synchronized (owner.sender) {
+                if (sessions.get(outgoing.identity()) != owner) return;
+                if (outgoing.authenticationVersion() != owner.sender.authenticationVersion()) {
+                    if (outgoing.frame() instanceof Frame.Done
+                            || outgoing.frame() instanceof Frame.Error error && error.seq() == 0) {
+                        // Completion belongs to the original command even after its authority ends.
+                        outgoing =
+                                new Outgoing(
+                                        outgoing.identity(),
+                                        owner,
+                                        owner.sender.authenticationVersion(),
+                                        registry.terminalOutcome(
+                                                owner.sender,
+                                                new Frame.Done(
+                                                        new Scope.GlobalScope(),
+                                                        null,
+                                                        -1,
+                                                        null,
+                                                        null)));
+                    } else if (!(outgoing.frame() instanceof Frame.HeartbeatAck)
+                            && !(outgoing.frame() instanceof Frame.CancelResult)
+                            && !(outgoing.frame() instanceof Frame.Terminate)) return;
+                }
+                if (!authorizedOutput(owner.sender, outgoing.frame())) return;
+                deliverFrame(transport, outgoing);
+            }
+        } else deliverFrame(transport, outgoing);
+    }
+
+    private static boolean authorizedOutput(
+            @NonNull VetoCommandSender sender, Frame.@NonNull ServerFrame frame) {
+        if (!(frame instanceof Frame.ScopedFrame scoped)) return true;
+        var user = scoped.scope().userId();
+        return user == null || user.equals(sender.userId());
+    }
+
+    private void deliverFrame(@NonNull ServerTransport transport, @NonNull Outgoing outgoing) {
         try {
-            transport.send(identity, frame);
+            transport.send(outgoing.identity(), outgoing.frame());
         } catch (RuntimeException failure) {
             log.warn("Terminal send failed ({})", failure.getClass().getSimpleName());
-            var session = sessions.get(identity);
+            var session = outgoing.owner();
             if (session != null) session.post(new Disconnect());
         }
     }
 
     /** Thread-safe output handoff; only the IO owner touches the socket. */
-    public void send(@NonNull String identity, Frame.@NonNull ServerFrame frame) {
+    private void send(@NonNull String identity, Frame.@NonNull ServerFrame frame) {
         var owner = sessions.get(identity);
-        if (owner != null && frame instanceof Frame.TurnOutcome outcome)
-            frame = registry.terminalOutcome(owner.sender, outcome);
-        if (running && !outbox.offer(new Outgoing(identity, frame))) {
+        if (owner != null) send(owner.sender, frame);
+        else enqueue(new Outgoing(identity, null, -1, frame));
+    }
+
+    /** Output remains bound to the producing connection even if its routing identity is reused. */
+    public void send(@NonNull VetoCommandSender sender, Frame.@NonNull ServerFrame frame) {
+        synchronized (sender) {
+            send(sender, sender.outputAuthenticationVersion(), frame);
+        }
+    }
+
+    private void send(
+            @NonNull VetoCommandSender sender,
+            long authenticationVersion,
+            Frame.@NonNull ServerFrame frame) {
+        synchronized (sender) {
+            var owner = sessions.get(sender.terminalId());
+            if (owner == null || owner.sender != sender) return;
+            boolean authorized =
+                    authenticationVersion == sender.authenticationVersion()
+                            && authorizedOutput(sender, frame);
+            if (frame instanceof Frame.TurnOutcome outcome) {
+                if (!authorized && outcome instanceof Frame.Error error && error.seq() != 0) return;
+                frame =
+                        registry.terminalOutcome(
+                                sender,
+                                authorized
+                                        ? outcome
+                                        : new Frame.Done(
+                                                new Scope.GlobalScope(), null, -1, null, null));
+            } else if (!authorized
+                    && !(frame instanceof Frame.HeartbeatAck)
+                    && !(frame instanceof Frame.CancelResult)
+                    && !(frame instanceof Frame.Terminate)) return;
+            enqueue(new Outgoing(owner.identity, owner, sender.authenticationVersion(), frame));
+        }
+    }
+
+    private void enqueue(@NonNull Outgoing outgoing) {
+        if (running && !outbox.offer(outgoing)) {
             log.warn("Terminal outbox is full; disconnecting the affected peer");
-            var session = sessions.get(identity);
+            var session = outgoing.owner();
             if (session != null) session.post(new Disconnect());
         }
     }
@@ -226,21 +273,30 @@ public class IpcServer {
     /** Authentication revocation is immediate, independently of a command waiting for input. */
     public void revokeUser(@NonNull UUID userId) {
         for (var session : sessions.values()) {
-            if (userId.equals(session.sender.userId())) {
-                session.sender.setUser(null);
-                if (session.sender.cancelCurrentPrompt())
-                    log.debug("Cancelled pending input for revoked user {}", userId);
+            synchronized (session.sender) {
+                if (userId.equals(session.sender.userId())) {
+                    session.sender.setUser(null);
+                    if (session.sender.cancelCurrentPrompt())
+                        log.debug("Cancelled pending input for revoked user {}", userId);
+                }
             }
         }
     }
 
-    private record Outgoing(@NonNull String identity, Frame.@NonNull ServerFrame frame) {}
+    private record Outgoing(
+            @NonNull String identity,
+            Session owner,
+            long authenticationVersion,
+            Frame.@NonNull ServerFrame frame) {}
 
     private sealed interface SessionEvent {}
 
     private record Incoming(Frame.@NonNull ClientFrame frame) implements SessionEvent {}
 
-    private record Finished(@NonNull Thread request, Frame.@NonNull ServerFrame response)
+    private record Finished(
+            @NonNull Thread request,
+            Frame.@NonNull ServerFrame response,
+            long authenticationVersion)
             implements SessionEvent {}
 
     private record Disconnect() implements SessionEvent {}
@@ -278,21 +334,22 @@ public class IpcServer {
                         if (active != null && active.worker() == finished.request()) {
                             activeRequest = null;
                             send(
-                                    identity,
+                                    sender,
+                                    finished.authenticationVersion(),
                                     active.cancelled()
                                             ? new Frame.Done(
-                                                    new Scope.GlobalScope(),
-                                                    null,
-                                                    -1,
-                                                    true,
-                                                    null,
-                                                    null)
+                                                    new Scope.GlobalScope(), null, -1, null, null)
                                             : finished.response());
                             startNext();
                         }
                     } else if (event instanceof Incoming incoming) {
                         if (incoming.frame() instanceof Frame.Bye) break;
-                        var security = ExecutionSecurity.open(sender.userId());
+                        UUID owner;
+                        synchronized (sender) {
+                            sender.beginExecution();
+                            owner = sender.userId();
+                        }
+                        var security = ExecutionSecurity.open(owner);
                         try {
                             handle(incoming.frame());
                         } catch (RuntimeException failure) {
@@ -304,9 +361,10 @@ public class IpcServer {
                                             ? request.seq()
                                             : 0;
                             send(
-                                    identity,
+                                    sender,
                                     new Frame.Error("Frame could not be processed.", sequence));
                         } finally {
+                            sender.endExecution();
                             security.close();
                         }
                     }
@@ -314,7 +372,9 @@ public class IpcServer {
             } catch (InterruptedException interrupted) {
                 Thread.currentThread().interrupt();
             } finally {
-                sessions.remove(identity, this);
+                synchronized (sender) {
+                    sessions.remove(identity, this);
+                }
                 var request = activeRequest;
                 if (request != null) request.worker().interrupt();
                 pendingRequests.clear();
@@ -333,46 +393,54 @@ public class IpcServer {
                         log.debug("Discarded input without a pending prompt");
                 }
                 case Frame.VetoResult result -> {
-                    if (sender.claimPendingVeto(result))
-                        agentService.resolveVeto(
-                                result.scope().agent(),
-                                result.callId(),
-                                result.option(),
-                                result.seq());
-                    else log.debug("Discarded decision without a matching pending approval");
+                    synchronized (sender) {
+                        if (sender.claimPendingVeto(result))
+                            agentService.resolveVeto(
+                                    result.scope().agent(),
+                                    result.callId(),
+                                    result.option(),
+                                    result.seq());
+                        else log.debug("Discarded decision without a matching pending approval");
+                    }
                 }
                 case Frame.Complete complete ->
                         send(
-                                identity,
+                                sender,
                                 new Frame.CompleteResult(
                                         registry.complete(sender, complete.raw()), complete.seq()));
                 case Frame.Hint hint ->
                         send(
-                                identity,
+                                sender,
                                 new Frame.HintResult(
                                         registry.hint(sender, hint.raw()), hint.seq()));
-                case Frame.Cancel ignored -> cancel();
-                case Frame.Heartbeat ignored ->
-                        send(identity, new Frame.HeartbeatAck(Instant.now()));
-                default ->
-                        send(identity, new Frame.Error("Unsupported frame on this connection", 0));
+                case Frame.Cancel request ->
+                        send(sender, new Frame.CancelResult(cancel(), request.seq()));
+                case Frame.Heartbeat ignored -> send(sender, new Frame.HeartbeatAck(Instant.now()));
+                default -> send(sender, new Frame.Error("Unsupported frame on this connection", 0));
             }
         }
 
-        private void cancel() {
-            var request = activeRequest;
-            if (request == null) {
-                send(identity, Frame.Error.ofError("No in-flight request to cancel."));
-            } else if (request.cancelled()) {
-                // The existing worker still owns its output until it really exits.
-                return;
-            } else if (sender.cancelCurrentPrompt()) {
-                log.debug("Dismissed terminal prompt");
-            } else if (sender.claimPendingVeto() instanceof VetoCommandSender.PendingVeto veto) {
-                agentService.declineVeto(veto.scope().agent(), veto.callId());
-            } else {
-                activeRequest = new ActiveRequest(request.worker(), true);
+        private Frame.@NonNull CancelStatus cancel() {
+            try {
+                if (sender.cancelCurrentPrompt()) {
+                    log.debug("Dismissed terminal prompt");
+                    return Frame.CancelStatus.ACCEPTED;
+                }
+                if (sender.claimPendingVeto() instanceof VetoCommandSender.PendingVeto veto) {
+                    return agentService.declineVeto(veto.scope().agent(), veto.callId())
+                            ? Frame.CancelStatus.ACCEPTED
+                            : Frame.CancelStatus.REJECTED;
+                }
+                var request = activeRequest;
+                if (request == null) return Frame.CancelStatus.NO_ACTIVE_REQUEST;
+                // Repeated cancellation does not interrupt the worker a second time.
+                if (request.cancelled()) return Frame.CancelStatus.ACCEPTED;
                 request.worker().interrupt();
+                activeRequest = new ActiveRequest(request.worker(), true);
+                return Frame.CancelStatus.ACCEPTED;
+            } catch (RuntimeException failure) {
+                log.warn("Terminal cancellation failed ({})", failure.getClass().getSimpleName());
+                return Frame.CancelStatus.REJECTED;
             }
         }
 
@@ -387,18 +455,26 @@ public class IpcServer {
 
         private void execute(Frame.@NonNull Request request) {
             Frame.ServerFrame response;
+            long authenticationVersion;
             // Resolve when execution starts: logout must revoke requests queued behind earlier
             // work.
-            var security = ExecutionSecurity.open(sender.userId());
+            UUID owner;
+            synchronized (sender) {
+                sender.beginExecution();
+                owner = sender.userId();
+            }
+            var security = ExecutionSecurity.open(owner);
             try {
                 response = registry.dispatch(sender, request.raw());
             } catch (Throwable failure) {
                 log.error("Terminal command failed", failure);
                 response = Frame.Error.ofError("Command failed.");
             } finally {
+                authenticationVersion = sender.outputAuthenticationVersion();
+                sender.endExecution();
                 security.close();
             }
-            post(new Finished(Thread.currentThread(), response));
+            post(new Finished(Thread.currentThread(), response, authenticationVersion));
         }
     }
 }

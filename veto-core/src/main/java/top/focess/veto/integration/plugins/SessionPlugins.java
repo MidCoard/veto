@@ -1,7 +1,9 @@
 package top.focess.veto.integration.plugins;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -259,6 +261,8 @@ public class SessionPlugins {
     /** Preserved session pin and whether its exact plugin revision is currently usable. */
     public record BoundPluginStatus(
             @NonNull String id,
+            @NonNull String name,
+            @NonNull List<@NonNull String> tools,
             @NonNull String version,
             @NonNull String revision,
             boolean available,
@@ -267,12 +271,36 @@ public class SessionPlugins {
     /** Reports unavailable pins without mutating or locking the session. */
     public @NonNull List<BoundPluginStatus> status(@NonNull String sessionId) {
         var publication = manager.registry();
+        Map<@NonNull String, @NonNull String> names = new HashMap<>();
+        publication
+                .plugins()
+                .forEach(plugin -> names.put(plugin.identity().id(), plugin.displayName()));
+        publication.disabled().forEach(plugin -> names.put(plugin.id(), plugin.name()));
+        publication.declined().forEach(plugin -> names.put(plugin.id(), plugin.name()));
         return bindings(sessionId).stream()
                 .map(
                         binding -> {
                             var availability = availability(binding, publication);
+                            String canonical = publication.canonicalId(binding.id());
+                            var tools =
+                                    availability == BoundPluginAvailability.AVAILABLE
+                                            ? publication
+                                                    .entries(StandardContributionPoints.TOOLS)
+                                                    .stream()
+                                                    .filter(
+                                                            entry ->
+                                                                    entry.source()
+                                                                            .namespace()
+                                                                            .equals(canonical))
+                                                    .map(publication::toolName)
+                                                    .distinct()
+                                                    .sorted()
+                                                    .toList()
+                                            : List.<@NonNull String>of();
                             return new BoundPluginStatus(
                                     binding.id(),
+                                    names.getOrDefault(canonical, binding.id()),
+                                    tools,
                                     binding.version(),
                                     binding.revision(),
                                     availability == BoundPluginAvailability.AVAILABLE,

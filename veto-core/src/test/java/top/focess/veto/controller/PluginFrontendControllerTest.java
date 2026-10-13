@@ -75,6 +75,8 @@ class PluginFrontendControllerTest {
                             List.of(
                                     new SessionPlugins.BoundPluginStatus(
                                             "fixture.workflow",
+                                            "Workflow",
+                                            List.of(),
                                             "1.0.0",
                                             "1.0.0",
                                             true,
@@ -84,7 +86,7 @@ class PluginFrontendControllerTest {
                             List.of(
                                     new SessionAgentRegistry.AgentSummary(
                                             "local", "Local", null, null, null, null, false, null,
-                                            null, null, null, true, null, null)));
+                                            null, null, null, true, null)));
             var controller =
                     new PluginFrontendController(
                             AuthorizationTestSupport.authorizer(user -> false),
@@ -139,7 +141,7 @@ class PluginFrontendControllerTest {
                         List.of(
                                 new SessionAgentRegistry.AgentSummary(
                                         "local", "Local", null, null, null, null, false, null, null,
-                                        null, null, true, null, null)));
+                                        null, null, true, null)));
         var controller =
                 new PluginFrontendController(
                         AuthorizationTestSupport.authorizer(user -> false),

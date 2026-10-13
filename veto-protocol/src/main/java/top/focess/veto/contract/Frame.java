@@ -24,6 +24,18 @@ import top.focess.veto.api.plugin.Scope;
  * <p>Direction and exchange role are independent: a ServerFrame can be a SeqRequest, and a
  * ClientFrame can be its SeqResponse. Transport APIs enforce direction; correlation uses role.
  *
+ * <h3>Thread safety</h3>
+ *
+ * Nested value records and enums are immutable and thread-safe except for payload-bearing {@link
+ * Veto} and {@link PluginAction}; {@link Delta} has its own data-dependent contract. CompleteResult
+ * and Action copy their lists, whose elements are immutable. A record's final references alone do
+ * not make an arbitrary map or JSON tree immutable.
+ *
+ * <p>Veto args, PluginAction data and Delta.ToolCall args are retained and exposed by reference.
+ * Finish constructing those payloads before safe publication, including enqueueing, and treat the
+ * entire reachable payload as read-only afterward. None of these types synchronizes mutable payload
+ * access or creates a deep snapshot for asynchronous encoding.
+ *
  * <h3>Request/response correlation</h3>
  *
  * Either peer may initiate an exchange. Requests carry a sequence allocated by their sender;
@@ -31,8 +43,8 @@ import top.focess.veto.api.plugin.Scope;
  * Endpoints decide which application operations they accept, independently of these wire types.
  *
  * <p>Frames with indeterminate output (e.g. {@link Request} which may produce 0, 1, or many
- * streaming frames) do <b>not</b> carry a {@code seq}. Fire-and-forget frames ({@link Cancel},
- * {@link Bye}, {@link Input}) also omit it.
+ * streaming frames) do <b>not</b> carry a {@code seq}. Fire-and-forget frames ({@link Bye}, {@link
+ * Input}) also omit it.
  *
  * <p>Discriminated by the {@code type} field in JSON.
  */
@@ -44,6 +56,7 @@ import top.focess.veto.api.plugin.Scope;
     @JsonSubTypes.Type(value = Frame.Hint.class, name = "hint"),
     @JsonSubTypes.Type(value = Frame.Input.class, name = "input"),
     @JsonSubTypes.Type(value = Frame.Cancel.class, name = "cancel"),
+    @JsonSubTypes.Type(value = Frame.CancelResult.class, name = "cancel_result"),
     @JsonSubTypes.Type(value = Frame.Bye.class, name = "bye"),
     @JsonSubTypes.Type(value = Frame.Heartbeat.class, name = "heartbeat"),
     @JsonSubTypes.Type(value = Frame.Welcome.class, name = "welcome"),
@@ -76,6 +89,7 @@ public sealed interface Frame
             permits Welcome,
                     CompleteResult,
                     HintResult,
+                    CancelResult,
                     TurnOutcome,
                     Terminate,
                     Prompt,
@@ -85,11 +99,13 @@ public sealed interface Frame
                     PluginAction,
                     HeartbeatAck {}
 
-    /** Current protocol version. Increment when frame types or semantics change incompatibly. */
-    int PROTOCOL_VERSION = 12;
+    /**
+     * Current protocol baseline. Advance only for a major protocol revision, not each frame change.
+     */
+    int PROTOCOL_VERSION = 5;
 
     /** A request initiated by either peer. */
-    sealed interface SeqRequest extends Frame permits Hello, Complete, Hint, Veto {
+    sealed interface SeqRequest extends Frame permits Hello, Complete, Hint, Cancel, Veto {
         /**
          * Returns the sequence number associated with this request.
          *
@@ -190,8 +206,45 @@ public sealed interface Frame
         }
     }
 
-    /** User interrupted the current request (Ctrl+C). Fire-and-forget. */
-    record Cancel() implements ClientFrame {}
+    /**
+     * Requests cancellation of the current interaction or command; acknowledged by CancelResult.
+     */
+    record Cancel(
+            @JsonProperty(value = "seq", required = true) @JsonSetter(nulls = Nulls.FAIL) long seq)
+            implements ClientFrame, SeqRequest {
+        public Cancel {
+            if (seq <= 0)
+                throw new IllegalArgumentException("Sequence must be positive; 0 is uncorrelated");
+        }
+    }
+
+    /**
+     * Acknowledges cancellation admission, not command completion. Done/Error still settle the
+     * command after its worker exits.
+     */
+    record CancelResult(
+            @JsonProperty(value = "status", required = true) @JsonSetter(nulls = Nulls.FAIL)
+                    @NonNull CancelStatus status,
+            @JsonProperty(value = "seq", required = true) @JsonSetter(nulls = Nulls.FAIL) long seq)
+            implements ServerFrame, SeqResponse {
+        public CancelResult {
+            Objects.requireNonNull(status, "status");
+            if (seq <= 0)
+                throw new IllegalArgumentException("Sequence must be positive; 0 is uncorrelated");
+        }
+    }
+
+    /** Result of attempting cancellation, independent of command completion. */
+    enum CancelStatus {
+        /**
+         * The interaction was cancelled or worker interruption was requested (possibly earlier).
+         */
+        ACCEPTED,
+        /** The cancellation operation could not be carried out. */
+        REJECTED,
+        /** No pending interaction or command exists on this connection. */
+        NO_ACTIVE_REQUEST
+    }
 
     /** Terminal is shutting down cleanly — backend should release resources. Fire-and-forget. */
     record Bye() implements ClientFrame {}
@@ -220,7 +273,7 @@ public sealed interface Frame
 
     /** A response to a request initiated by either peer. */
     sealed interface SeqResponse extends Frame
-            permits Welcome, CompleteResult, HintResult, Error, VetoResult {
+            permits Welcome, CompleteResult, HintResult, CancelResult, Error, VetoResult {
         /**
          * Returns the sequence number echoed from the initiating sequenced request.
          *
@@ -281,11 +334,13 @@ public sealed interface Frame
      * @param seq echoed from the initiating {@link Complete} request
      */
     record CompleteResult(
-            @JsonProperty(value = "candidates", required = true) @JsonSetter(nulls = Nulls.FAIL)
-                    @NonNull List<Completion> candidates,
+            @JsonProperty(value = "candidates", required = true)
+                    @JsonSetter(nulls = Nulls.FAIL, contentNulls = Nulls.FAIL)
+                    @NonNull List<@NonNull Completion> candidates,
             @JsonProperty(value = "seq", required = true) @JsonSetter(nulls = Nulls.FAIL) long seq)
             implements ServerFrame, SeqResponse {
         public CompleteResult {
+            candidates = List.copyOf(candidates);
             if (seq <= 0)
                 throw new IllegalArgumentException("Sequence must be positive; 0 is uncorrelated");
         }
@@ -339,8 +394,6 @@ public sealed interface Frame
             String requestId,
             @JsonProperty(value = "turnNumber", required = true) @JsonSetter(nulls = Nulls.FAIL)
                     int turnNumber,
-            @JsonProperty(value = "cancelled", required = true) @JsonSetter(nulls = Nulls.FAIL)
-                    boolean cancelled,
             String content,
             String username)
             implements TurnOutcome {
@@ -349,7 +402,7 @@ public sealed interface Frame
         }
 
         public Done(String content) {
-            this(new Scope.GlobalScope(), null, -1, false, content, null);
+            this(new Scope.GlobalScope(), null, -1, content, null);
         }
     }
 
@@ -401,7 +454,12 @@ public sealed interface Frame
                     boolean mask)
             implements ServerFrame {}
 
-    /** Approval request shared by browser and terminal; both clients use the actual agent scope. */
+    /**
+     * Approval request shared by browser and terminal; both clients use the actual agent scope.
+     *
+     * <p>Not unconditionally thread-safe: options are copied, but args and its nested values are
+     * retained without copying or synchronization. Keep them read-only after publication.
+     */
     record Veto(
             @JsonProperty(value = "scope", required = true) @JsonSetter(nulls = Nulls.FAIL)
                     Scope.@NonNull AgentScope scope,
@@ -411,8 +469,9 @@ public sealed interface Frame
                     @NonNull String tool,
             @JsonProperty(value = "scenario", required = true) @JsonSetter(nulls = Nulls.FAIL)
                     @NonNull String scenario,
-            @JsonProperty(value = "options", required = true) @JsonSetter(nulls = Nulls.FAIL)
-                    @NonNull List<String> options,
+            @JsonProperty(value = "options", required = true)
+                    @JsonSetter(nulls = Nulls.FAIL, contentNulls = Nulls.FAIL)
+                    @NonNull List<@NonNull String> options,
             @JsonProperty(value = "args", required = true) @JsonSetter(nulls = Nulls.FAIL)
                     @NonNull Map<String, Object> args,
             Danger danger,
@@ -425,7 +484,7 @@ public sealed interface Frame
                 @NonNull String callId,
                 @NonNull String tool,
                 @NonNull String scenario,
-                @NonNull List<String> options,
+                @NonNull List<@NonNull String> options,
                 @NonNull Map<String, Object> args,
                 Danger danger,
                 Relevance relevance,
@@ -436,7 +495,7 @@ public sealed interface Frame
             this.callId = callId;
             this.tool = tool;
             this.scenario = scenario;
-            this.options = options;
+            this.options = List.copyOf(options);
             this.args = args;
             this.danger = danger;
             this.relevance = relevance;
@@ -477,7 +536,12 @@ public sealed interface Frame
         }
     }
 
-    /** Independent plugin publication. Does not complete a command or require a Done frame. */
+    /**
+     * Independent plugin publication. Does not complete a command or require a Done frame.
+     *
+     * <p>Not unconditionally thread-safe: the mutable data tree is retained and exposed without
+     * copying or synchronization. Keep the entire tree read-only after publication.
+     */
     record PluginAction(
             @JsonProperty(value = "scope", required = true) @JsonSetter(nulls = Nulls.FAIL)
                     Scope.@NonNull SessionScope scope,

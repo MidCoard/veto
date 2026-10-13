@@ -298,6 +298,8 @@ class ScopedPluginStorageTest {
                         List.of(
                                 new SessionPlugins.BoundPluginStatus(
                                         "one",
+                                        "One",
+                                        List.of(),
                                         "1.0.0",
                                         "1.0.0",
                                         true,
@@ -331,7 +333,6 @@ class ScopedPluginStorageTest {
                                         null,
                                         null,
                                         true,
-                                        null,
                                         null)));
         var controller =
                 new PluginFrontendController(

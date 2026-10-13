@@ -67,7 +67,6 @@ final class ModelSession {
     private final @NonNull ModelFlowStack flows = new ModelFlowStack();
     private final @NonNull AgentPluginHooks hooks;
     private double correctionFactor = 1.0;
-    private volatile PluginContextSnapshot lastPluginContext;
 
     ModelSession(
             @NonNull String agentId,
@@ -86,14 +85,6 @@ final class ModelSession {
         this.hooks = hooks;
         this.runner = runner;
         this.mapper = mapper;
-    }
-
-    @NonNull PluginContextSnapshot pluginContext() {
-        var last = lastPluginContext;
-        return last == null
-                ? PluginContextSnapshot.from(
-                        runner.modelConfiguration().persona().whitelistedTools(), false)
-                : last;
     }
 
     private @NonNull Set<String> toolNames(@NonNull Configuration current) {
@@ -227,15 +218,6 @@ final class ModelSession {
         LlmSystemUsage.begin();
         try {
             boundary.run();
-            if (!compaction) {
-                lastPluginContext =
-                        PluginContextSnapshot.from(
-                                toolEngine.getActiveTools(
-                                        request.tools().stream()
-                                                .map(top.focess.veto.api.llm.ToolDefinition::name)
-                                                .collect(Collectors.toSet())),
-                                true);
-            }
             response = hooks.callModelWithHooks(request);
             boundary.run();
         } finally {

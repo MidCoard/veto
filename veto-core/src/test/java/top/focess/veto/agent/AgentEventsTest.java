@@ -115,7 +115,6 @@ class AgentEventsTest {
                                         "agent"),
                                 "successful-request",
                                 8,
-                                false,
                                 "ok",
                                 null)),
                 frames);

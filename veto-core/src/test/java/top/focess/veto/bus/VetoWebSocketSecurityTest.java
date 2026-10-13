@@ -2,6 +2,7 @@ package top.focess.veto.bus;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.doThrow;
@@ -12,6 +13,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
+import jakarta.websocket.Session;
 import java.io.IOException;
 import java.net.URI;
 import java.util.HashMap;
@@ -19,8 +21,14 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.ArgumentMatchers;
 import org.springframework.http.HttpHeaders;
@@ -31,6 +39,7 @@ import org.springframework.web.socket.CloseStatus;
 import org.springframework.web.socket.TextMessage;
 import org.springframework.web.socket.WebSocketHandler;
 import org.springframework.web.socket.WebSocketSession;
+import org.springframework.web.socket.adapter.standard.StandardWebSocketSession;
 import top.focess.veto.VetoVersion;
 import top.focess.veto.agent.AgentService;
 import top.focess.veto.agent.intercept.HitlRegistry;
@@ -125,7 +134,6 @@ class VetoWebSocketSecurityTest {
                         new Scope.AgentScope(session.getUserId(), session.getId(), "agent"),
                         "request",
                         2,
-                        false,
                         null,
                         null);
         try {
@@ -195,8 +203,10 @@ class VetoWebSocketSecurityTest {
                 socket, new TextMessage(FrameCodec.encodeString(new Frame.Heartbeat())));
         handler.handleTextMessage(
                 socket, new TextMessage(FrameCodec.encodeString(new Frame.Request("/signup"))));
+        handler.handleTextMessage(
+                socket, new TextMessage(FrameCodec.encodeString(new Frame.Cancel(9))));
         var sent = ArgumentCaptor.forClass(TextMessage.class);
-        verify(socket, times(3)).sendMessage(sent.capture());
+        verify(socket, times(4)).sendMessage(sent.capture());
         var values = sent.getAllValues();
         var first = FrameCodec.decode(values.get(0).getPayload());
         if (!(first instanceof Frame.Welcome welcome)) throw new AssertionError("Missing welcome");
@@ -205,6 +215,9 @@ class VetoWebSocketSecurityTest {
         assertTrue(second instanceof Frame.HeartbeatAck);
         assertFalse(values.get(1).getPayload().contains("seq"));
         assertTrue(FrameCodec.decode(values.get(2).getPayload()) instanceof Frame.Error);
+        var cancellation =
+                assertInstanceOf(Frame.Error.class, FrameCodec.decode(values.get(3).getPayload()));
+        assertEquals(9, cancellation.seq());
     }
 
     @Test
@@ -471,6 +484,69 @@ class VetoWebSocketSecurityTest {
         }
     }
 
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    @Timeout(15)
+    void logoutDuringApprovalLookupCannotCommitAStaleDecision(boolean revokeAccount)
+            throws Exception {
+        var tokens = new LoginSessionManager();
+        var token = tokens.createLoginSession(TestUsers.ALICE, "alice");
+        var sessions = mock(SessionRepository.class);
+        var agents = mock(AgentService.class);
+        var approvals = mock(HitlRegistry.class);
+        var handler = new VetoWebSocketHandler(sessions, tokens, agents, approvals);
+        var socket = socket("revoked-approval", TestUsers.ALICE, token);
+        connect(handler, socket);
+        var owned = new SessionEntity(TestUsers.ALICE, "owned");
+        owned.setPrimaryAgentId("agent");
+        when(approvals.sessionAgents("agent")).thenReturn(List.of("agent"));
+        var entered = new CountDownLatch(1);
+        var release = new CountDownLatch(1);
+        when(sessions.findById(owned.getId()))
+                .thenAnswer(
+                        invocation -> {
+                            entered.countDown();
+                            assertTrue(release.await(5, TimeUnit.SECONDS));
+                            return Optional.of(owned);
+                        });
+        var stale =
+                new Frame.VetoResult(
+                        new Scope.AgentScope(TestUsers.ALICE, owned.getId(), "agent"),
+                        "call",
+                        "ACCEPT_GENERIC",
+                        7);
+        try (var workers = Executors.newVirtualThreadPerTaskExecutor()) {
+            var pending =
+                    workers.submit(
+                            () ->
+                                    handler.handleTextMessage(
+                                            socket,
+                                            new TextMessage(FrameCodec.encodeString(stale))));
+            try {
+                assertTrue(entered.await(5, TimeUnit.SECONDS));
+                if (revokeAccount) tokens.revokeUserTokens(TestUsers.ALICE);
+                else tokens.revokeToken(token);
+                assertTrue(tokens.validateToken(token).isEmpty());
+            } finally {
+                release.countDown();
+            }
+            pending.get(5, TimeUnit.SECONDS);
+        }
+        verify(agents, never()).resolveVeto("agent", "call", "ACCEPT_GENERIC", 7);
+        verify(socket).close(CloseStatus.POLICY_VIOLATION.withReason("authentication expired"));
+
+        var current =
+                socket(
+                        "current-approval",
+                        TestUsers.ALICE,
+                        tokens.createLoginSession(TestUsers.ALICE, "alice"));
+        connect(handler, current);
+        when(agents.resolveVeto("agent", "call", "ACCEPT_GENERIC", 8)).thenReturn(true);
+        var valid = new Frame.VetoResult(stale.scope(), "call", "ACCEPT_GENERIC", 8);
+        handler.handleTextMessage(current, new TextMessage(FrameCodec.encodeString(valid)));
+        verify(agents).resolveVeto("agent", "call", "ACCEPT_GENERIC", 8);
+    }
+
     @Test
     void approvalLifecycleUsesDedicatedWireFrames() throws Exception {
         var tokens = new LoginSessionManager();
@@ -578,7 +654,10 @@ class VetoWebSocketSecurityTest {
 
     private static @NonNull WebSocketSession socket(
             @NonNull String id, @NonNull UUID userId, @NonNull String token) {
-        WebSocketSession session = mock(WebSocketSession.class);
+        var session = mock(StandardWebSocketSession.class);
+        var nativeSession = mock(Session.class);
+        when(nativeSession.getUserProperties()).thenReturn(new HashMap<>());
+        when(session.getNativeSession()).thenReturn(nativeSession);
         when(session.getId()).thenReturn(id);
         when(session.isOpen()).thenReturn(true);
         when(session.getAttributes())

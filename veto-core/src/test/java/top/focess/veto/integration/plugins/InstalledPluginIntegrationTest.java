@@ -9,11 +9,13 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.jar.JarEntry;
 import java.util.jar.JarOutputStream;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.test.util.ReflectionTestUtils;
 import top.focess.veto.agent.tool.ToolCallContextHolder;
 import top.focess.veto.agent.tool.ToolEngineImpl;
@@ -35,6 +37,67 @@ import top.focess.veto.model.SessionRepository;
 import top.focess.veto.plugin.runtime.PluginClassLoader;
 
 class InstalledPluginIntegrationTest {
+    @Test
+    void startupDirectoryRegistrationsPublishWithoutResolvingConsumers(@TempDir @NonNull Path root)
+            throws Exception {
+        writePointPackage(
+                Files.createDirectory(root.resolve("directory")),
+                "sample.directory",
+                "InstalledDirectoryPlugin");
+        var tools = mock(ToolEngineImpl.class);
+        var providers = mock(PluginLlmProviders.class);
+        var resolutions = new AtomicInteger();
+        var toolProvider =
+                new ObjectProvider<ToolEngineImpl>() {
+                    @Override
+                    public @NonNull ToolEngineImpl getObject() {
+                        resolutions.incrementAndGet();
+                        return tools;
+                    }
+                };
+        var modelProvider =
+                new ObjectProvider<PluginLlmProviders>() {
+                    @Override
+                    public @NonNull PluginLlmProviders getObject() {
+                        resolutions.incrementAndGet();
+                        return providers;
+                    }
+                };
+        try (var manager =
+                new PluginManager(
+                        root.toString(),
+                        "",
+                        false,
+                        5000,
+                        PluginTestSupport.providerOf(PluginTestSupport.configurationServices(null)),
+                        new PluginConfigurations(),
+                        PluginTestSupport.activationStore(root.toString()),
+                        PluginTestSupport.providerOf(mock(SessionPlugins.class)),
+                        PluginTestSupport.providerOf(mock(SessionRepository.class)),
+                        PluginTestSupport.providerOf(mock(SessionActions.class)),
+                        toolProvider,
+                        modelProvider)) {
+            assertEquals(0, resolutions.get());
+            verifyNoInteractions(tools, providers);
+            var startup = manager.registry();
+            assertEquals(1, startup.entries(StandardContributionPoints.SERVICES).size());
+            var service = manager.services().find("sample:directory", 1).orElseThrow();
+            assertEquals(
+                    new JsonValue.BooleanValue(true),
+                    service.invoke(new JsonValue.StringValue("observed")));
+            assertEquals(
+                    new JsonValue.BooleanValue(true),
+                    service.invoke(new JsonValue.StringValue("register")));
+            var current = manager.registry();
+            assertEquals(1, startup.entries(StandardContributionPoints.SERVICES).size());
+            assertEquals(2, current.entries(StandardContributionPoints.SERVICES).size());
+            assertTrue(manager.services().find("sample:runtime", 1).isPresent());
+            assertEquals(2, resolutions.get());
+            verify(tools).reloadPlugins(current);
+            verify(providers).reload(current);
+        }
+    }
+
     @Test
     void workflowInvocationHidesUnselectedServicesAndRejectsRetainedHandles(
             @TempDir @NonNull Path root) throws Exception {

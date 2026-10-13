@@ -12,7 +12,14 @@ import java.util.Objects;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.api.plugin.Scope;
 
-/** One incremental backend update. Completion and user approval have their own frames. */
+/**
+ * One incremental backend update. Completion and user approval have their own frames.
+ *
+ * <p><b>Thread safety:</b> the envelope has final references, but is only as safe to share as its
+ * data. All data variants except {@link ToolCall} are immutable and thread-safe. ToolCall retains a
+ * mutable JSON tree; neither it nor this envelope copies or synchronizes that tree. Finish
+ * constructing it before publication and keep it read-only afterward, including while queued.
+ */
 public record Delta(
         @JsonProperty(value = "scope", required = true) @JsonSetter(nulls = Nulls.FAIL)
                 @NonNull Scope scope,
@@ -38,6 +45,9 @@ public record Delta(
         return new Delta(new Scope.GlobalScope(), new Message(text, -1));
     }
 
+    /**
+     * Data sharing follows the enclosing Delta contract; ToolCall is the mutable-payload exception.
+     */
     @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, property = "type")
     @JsonSubTypes({
         @JsonSubTypes.Type(value = Progress.class, name = "progress"),
@@ -50,11 +60,14 @@ public record Delta(
     })
     public sealed interface Data permits Progress, AgentData, Message {}
 
-    /** Output tied to an actual agent; Delta rejects any other enclosing scope. */
+    /**
+     * Output tied to an actual agent; Delta rejects any other enclosing scope. Thread safety
+     * depends on the variant: ToolCall retains mutable arguments; the other variants are immutable.
+     */
     public sealed interface AgentData extends Data
             permits Notice, Thought, ToolCall, ToolResult, TokenUsage {}
 
-    /** A rendering hint; percent is 0–100, or -1 when completion is indeterminate. */
+    /** Immutable, thread-safe rendering hint; percent is 0–100, or -1 when indeterminate. */
     public record Progress(
             @JsonProperty(value = "content", required = true) @JsonSetter(nulls = Nulls.FAIL)
                     @NonNull String content,
@@ -69,12 +82,14 @@ public record Delta(
         }
     }
 
+    /** Immutable, thread-safe notice severity. */
     public enum Level {
         INFO,
         WARNING,
         ERROR
     }
 
+    /** Immutable, thread-safe notice. */
     public record Notice(
             @JsonProperty(value = "text", required = true) @JsonSetter(nulls = Nulls.FAIL)
                     @NonNull String text,
@@ -82,7 +97,10 @@ public record Delta(
                     @NonNull Level level)
             implements AgentData {}
 
-    /** One measured model call, not a cumulative total. Nullable cache counts mean unreported. */
+    /**
+     * Immutable, thread-safe measurement of one model call, not a cumulative total. Nullable cache
+     * counts mean unreported.
+     */
     public record TokenUsage(
             @JsonProperty(value = "modelCallId", required = true) @JsonSetter(nulls = Nulls.FAIL)
                     @NonNull String modelCallId,
@@ -102,6 +120,7 @@ public record Delta(
                     int turnNumber)
             implements AgentData {}
 
+    /** Immutable, thread-safe reasoning text. */
     public record Thought(
             @JsonProperty(value = "text", required = true) @JsonSetter(nulls = Nulls.FAIL)
                     @NonNull String text,
@@ -109,6 +128,7 @@ public record Delta(
                     int turnNumber)
             implements AgentData {}
 
+    /** Immutable, thread-safe message text. */
     public record Message(
             @JsonProperty(value = "text", required = true) @JsonSetter(nulls = Nulls.FAIL)
                     @NonNull String text,
@@ -116,6 +136,10 @@ public record Delta(
                     int turnNumber)
             implements Data {}
 
+    /**
+     * Not unconditionally thread-safe: args retains and exposes a mutable JSON tree without copying
+     * or synchronization. Keep the complete tree read-only after publication.
+     */
     public record ToolCall(
             String callId,
             @JsonProperty(value = "tool", required = true) @JsonSetter(nulls = Nulls.FAIL)
@@ -126,6 +150,7 @@ public record Delta(
                     int turnNumber)
             implements AgentData {}
 
+    /** Immutable, thread-safe tool result text and status. */
     public record ToolResult(
             String callId,
             @JsonProperty(value = "text", required = true) @JsonSetter(nulls = Nulls.FAIL)

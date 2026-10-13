@@ -1,3 +1,8 @@
+/**
+ * ZeroMQ channels are not thread-safe. Each instance requires one exclusive owner for send, recv
+ * and close. A thread start/join handoff may transfer ownership without overlapping access; context
+ * lifecycle ownership does not change this rule. Use ProtocolClient for concurrent callers.
+ */
 @DefaultQualifier(
         value = Nullable.class,
         locations = {

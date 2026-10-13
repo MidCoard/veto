@@ -138,8 +138,7 @@ public final class SessionAgentRegistry implements AutoCloseable {
             Instant endedAt,
             String responsibility,
             boolean userInteractionEnabled,
-            String executionWait,
-            PluginContextSnapshot pluginContext) {}
+            String executionWait) {}
 
     /** Session membership survives runtime cleanup; histories remain in their own streams. */
     public synchronized @NonNull List<@NonNull AgentSummary> records(@NonNull UUID sessionId) {
@@ -166,7 +165,6 @@ public final class SessionAgentRegistry implements AutoCloseable {
                             entity.getEndedAt(),
                             entity.getResponsibility(),
                             entity.isUserInteractionEnabled(),
-                            null,
                             null));
         }
         for (String id : turns.findAgentIdsBySessionId(sessionId.toString())) {
@@ -175,7 +173,7 @@ public final class SessionAgentRegistry implements AutoCloseable {
                         id,
                         new AgentSummary(
                                 id, id, null, null, null, null, false, null, null, null, null,
-                                false, null, null));
+                                false, null));
             }
         }
         for (Entry entry : agents(sessionId)) {
@@ -197,8 +195,7 @@ public final class SessionAgentRegistry implements AutoCloseable {
                                     null,
                                     agent.persona().description(),
                                     agent.userInteractionEnabled(),
-                                    agent.executionWaitReason(),
-                                    agent.pluginContext()));
+                                    agent.executionWaitReason()));
         }
         return result.values().stream().sorted(Comparator.comparing(AgentSummary::id)).toList();
     }

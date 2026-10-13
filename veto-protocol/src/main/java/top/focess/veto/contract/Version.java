@@ -8,6 +8,9 @@ import org.jspecify.annotations.NonNull;
 /**
  * A semantic version with structured, comparable meaning.
  *
+ * <p><b>Thread safety:</b> immutable and thread-safe; instances and static operations may be shared
+ * across threads without additional synchronization.
+ *
  * <p>Unlike a bare {@code String}, a {@code Version} exposes its {@link #major()}, {@link
  * #minor()}, {@link #patch()}, {@link #preRelease()} and {@link #build()} components and implements
  * semver precedence via {@link #compareTo(Version)}. It is parsed leniently from a variety of

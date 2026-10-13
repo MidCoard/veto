@@ -7,12 +7,15 @@ import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.zeromq.SocketType;
 import org.zeromq.ZContext;
+import org.zeromq.ZMQ;
 import org.zeromq.ZMQException;
 import top.focess.veto.api.plugin.Scope;
 import top.focess.veto.contract.Delta;
@@ -23,6 +26,60 @@ import top.focess.veto.contract.Version;
 
 /** Round-trip tests for {@link ZmqChannel} over a real loopback ZMQ ROUTER/DEALER pair. */
 class ZmqChannelRoundTripTest {
+    @Test
+    void routerReportsUnknownRecipient() {
+        assertThrows(
+                RuntimeException.class, () -> router().send("absent-peer", new Frame.Done(null)));
+    }
+
+    @Test
+    void fullPeerQueueFailsWithoutDroppingAcceptedFramesOrBlockingHealthyPeer() {
+        try (var isolated = new ZContext()) {
+            String address = "inproc://backpressure-" + UUID.randomUUID();
+            try (var server = ZmqChannel.Server.bindRouter(isolated, address);
+                    var slow = connectPeer(isolated, address, "slow");
+                    var healthy = connectPeer(isolated, address, "healthy")) {
+                assertTrue(slow.send(FrameCodec.encode(new Frame.Heartbeat())));
+                assertTrue(server.recv(1000) != null);
+                assertTrue(healthy.send(FrameCodec.encode(new Frame.Heartbeat())));
+                assertTrue(server.recv(1000) != null);
+                int accepted = 0;
+                boolean rejected = false;
+                for (int i = 0; i < 3000; i++) {
+                    try {
+                        server.send("slow", new Frame.Done(Integer.toString(i)));
+                        accepted++;
+                    } catch (RuntimeException failure) {
+                        rejected = true;
+                        break;
+                    }
+                }
+                assertTrue(rejected, "A saturated peer must fail admission");
+                var done = new Frame.Done("healthy");
+                server.send("healthy", done);
+                assertEquals(
+                        done,
+                        FrameCodec.decode(
+                                Objects.requireNonNull(
+                                        healthy.recv(), "Missing healthy peer frame")));
+                for (int i = 0; i < accepted; i++)
+                    assertEquals(
+                            new Frame.Done(Integer.toString(i)),
+                            FrameCodec.decode(
+                                    Objects.requireNonNull(slow.recv(), "Missing accepted frame")));
+                assertNull(slow.recv(ZMQ.DONTWAIT));
+            }
+        }
+    }
+
+    private static ZMQ.@NonNull Socket connectPeer(
+            @NonNull ZContext context, @NonNull String address, @NonNull String identity) {
+        var socket = context.createSocket(SocketType.DEALER);
+        assertTrue(socket.setIdentity(identity.getBytes(ZMQ.CHARSET)));
+        assertTrue(socket.setReceiveTimeOut(1000));
+        assertTrue(socket.connect(address));
+        return socket;
+    }
 
     private static final @NonNull String ADDR = "tcp://127.0.0.1:15581";
 
@@ -35,7 +92,7 @@ class ZmqChannelRoundTripTest {
         ZContext newContext = new ZContext();
         ctx = newContext;
         router = ZmqChannel.Server.bindRouter(newContext, ADDR);
-        dealer = ZmqChannel.Client.connectDealer(newContext, ADDR, UUID.randomUUID().toString());
+        dealer = ZmqChannel.Client.connect(ADDR);
     }
 
     @AfterEach
@@ -175,12 +232,26 @@ class ZmqChannelRoundTripTest {
     }
 
     @Test
-    void failedSharedContextSetupDoesNotRetainSocket() {
+    void invalidClientAddressFailsWithoutAffectingTheServerContext() {
         int before = context().getSockets().size();
-        assertThrows(
-                ZMQException.class,
-                () -> ZmqChannel.Client.connectDealer(context(), "invalid://address", "peer"));
+        assertThrows(ZMQException.class, () -> ZmqChannel.Client.connect("invalid://address"));
         assertEquals(before, context().getSockets().size());
+        assertFalse(context().isClosed());
+    }
+
+    @Test
+    void clientClosesItsOwnContextAndServerLeavesItsContextToTheCaller() throws Exception {
+        var field = ZmqChannel.Client.class.getDeclaredField("context");
+        field.setAccessible(true);
+        if (!(field.get(dealer()) instanceof ZContext clientContext))
+            throw new AssertionError("Missing client context");
+        assertFalse(clientContext.isClosed());
+        dealer().close();
+        dealer().close();
+        assertTrue(clientContext.isClosed());
+        assertFalse(context().isClosed());
+        router().close();
+        assertFalse(context().isClosed());
     }
 
     @Test

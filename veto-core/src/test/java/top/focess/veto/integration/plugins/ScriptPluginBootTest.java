@@ -146,44 +146,6 @@ class ScriptPluginBootTest {
         assertEquals(Danger.ELEVATED, definition.defaultDanger());
         assertTrue(engine.getActiveTools(Set.of()).stream().noneMatch(t -> t == definition));
         assertTrue(engine.getActiveTools(Set.of(definition.name())).contains(definition));
-        var snapshot =
-                top.focess.veto.agent.PluginContextSnapshot.from(
-                        java.util.List.of(definition, definition), true);
-        assertTrue(snapshot.lastRequest());
-        assertEquals(1, snapshot.plugins().size());
-        assertEquals("text", snapshot.plugins().getFirst().id());
-        assertEquals("0.1.0", snapshot.plugins().getFirst().version());
-        assertEquals(
-                java.util.List.of("plugin_text__length"), snapshot.plugins().getFirst().tools());
-        var agentOnlySnapshot =
-                top.focess.veto.agent.PluginContextSnapshot.from(
-                        engine.getActiveTools(Set.of()), false);
-        assertEquals(1, agentOnlySnapshot.plugins().size());
-        assertEquals("top.focess.builtin", agentOnlySnapshot.plugins().getFirst().id());
-        assertEquals(
-                java.util.List.of(
-                        "answer_with_citations",
-                        "ask_user",
-                        "cancel_group_task",
-                        "cancel_monitor",
-                        "create_group",
-                        "create_mate",
-                        "create_monitor",
-                        "create_task",
-                        "disband_group",
-                        "forget_memory",
-                        "inspect_group",
-                        "inspect_monitor",
-                        "load_skill",
-                        "pause_monitor",
-                        "post_message",
-                        "recall_memory",
-                        "remove_mate",
-                        "remove_node",
-                        "resume_monitor",
-                        "submit_plan",
-                        "write_memory"),
-                agentOnlySnapshot.plugins().getFirst().tools());
         var call = new ToolCall(definition.name(), Map.of("text", "a😀b"), "plugin-boot-call");
         assertEquals(ToolResultStatus.FAILURE, engine.execute(call, definition).status());
         UUID user = UUID.randomUUID();

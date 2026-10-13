@@ -4,6 +4,7 @@ import java.time.Instant;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.BooleanSupplier;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -35,11 +36,23 @@ public class LoginSessionManager {
         return Optional.ofNullable(loginSessions.get(token));
     }
 
+    /** Commits a short authenticated operation before this specific login can be revoked. */
+    public boolean whileAuthenticated(
+            @NonNull String token, @NonNull UUID userId, @NonNull BooleanSupplier operation) {
+        var login = loginSessions.get(token);
+        if (login == null || !userId.equals(login.userId())) return false;
+        synchronized (login) {
+            return loginSessions.get(token) == login && operation.getAsBoolean();
+        }
+    }
+
     /** Revokes a login token; no-op when the token is unknown. */
     public void revokeToken(@NonNull String token) {
-        LoginSession removed = loginSessions.remove(token);
-        if (removed != null) {
-            log.info("Login session revoked for user '{}'", removed.username);
+        var login = loginSessions.get(token);
+        if (login == null) return;
+        synchronized (login) {
+            if (loginSessions.remove(token, login))
+                log.info("Login session revoked for user '{}'", login.username());
         }
     }
 
@@ -50,7 +63,9 @@ public class LoginSessionManager {
 
     /** Revokes every token belonging to an account before its vault is closed or deleted. */
     public void revokeUserTokens(@NonNull UUID userId) {
-        loginSessions.values().removeIf(loginSession -> userId.equals(loginSession.userId()));
+        for (var login : loginSessions.values()) {
+            if (userId.equals(login.userId())) revokeToken(login.token());
+        }
     }
 
     /** Whether this account still has an authenticated client. */

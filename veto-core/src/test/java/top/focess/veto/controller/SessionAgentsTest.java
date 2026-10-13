@@ -204,7 +204,6 @@ class SessionAgentsTest {
                                         null,
                                         null,
                                         false,
-                                        null,
                                         null)));
         mvc.perform(get("/api/sessions/session/agents"))
                 .andExpect(status().isOk())

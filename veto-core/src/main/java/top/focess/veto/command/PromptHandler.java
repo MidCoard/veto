@@ -158,7 +158,7 @@ public class PromptHandler {
 
             if (result.success() || Boolean.TRUE.equals(result.metadata().get("breakerTrip"))) {
                 // Content was already streamed; this completes the terminal request.
-                return new Frame.Done(scope, null, turnsOf(result), false, null, null);
+                return new Frame.Done(scope, null, turnsOf(result), null, null);
             }
             // Execution failures surface in Error; a breaker already emitted its notice.
             String resultMessage = result.message();

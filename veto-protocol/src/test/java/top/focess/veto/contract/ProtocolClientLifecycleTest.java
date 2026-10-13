@@ -20,6 +20,30 @@ import top.focess.veto.api.plugin.Scope;
 @Timeout(10)
 class ProtocolClientLifecycleTest {
     @Test
+    void cancellationUsesTheConnectionSequenceAndDoesNotConsumeQueryReplies() throws Exception {
+        var peer = new Peer();
+        try (var client = new ProtocolClient(() -> peer)) {
+            client.cancel();
+            var cancel = assertInstanceOf(Frame.Cancel.class, peer.sent.poll(1, TimeUnit.SECONDS));
+            var answer = new CompletableFuture<Frame.@Nullable HintResult>();
+            Thread.ofVirtual()
+                    .start(() -> answer.complete(client.hint("command", 5, TimeUnit.SECONDS)));
+            var hint = assertInstanceOf(Frame.Hint.class, peer.sent.poll(1, TimeUnit.SECONDS));
+            assertTrue(hint.seq() > cancel.seq());
+            var result = new Frame.CancelResult(Frame.CancelStatus.ACCEPTED, cancel.seq());
+            assertTrue(peer.incoming.offer(result));
+            assertEquals(result, client.receive(1, TimeUnit.SECONDS));
+            assertFalse(answer.isDone());
+            var reply = new Frame.HintResult(new Frame.HintInfo("hint", null), hint.seq());
+            assertTrue(peer.incoming.offer(reply));
+            assertEquals(reply, answer.get(1, TimeUnit.SECONDS));
+            client.cancel();
+            var next = assertInstanceOf(Frame.Cancel.class, peer.sent.poll(1, TimeUnit.SECONDS));
+            assertTrue(next.seq() > hint.seq());
+        }
+    }
+
+    @Test
     void serverRequestDoesNotConsumeClientExchangeWithTheSameSequence() throws Exception {
         var peer = new Peer();
         try (var client = new ProtocolClient(() -> peer)) {

@@ -17,6 +17,14 @@ import org.slf4j.LoggerFactory;
  * A polling protocol connection. One virtual worker creates, handshakes, uses and closes its
  * transport. Callers exchange typed frames through bounded queues, never through the socket.
  *
+ * <p><b>Thread safety:</b> after construction, public operations may be called concurrently.
+ * Connection state, queue admission and sequence allocation are synchronized; only the IO worker
+ * touches the transport. Multiple receive callers compete for one queue, not a broadcast stream.
+ * Calls made as a group are not atomic: for example, send may fail after isClosed returned false.
+ *
+ * <p>Queued frames are shared by reference. Callers must finish building mutable payloads before
+ * enqueueing and leave them read-only afterward; see {@link Frame} for payload exceptions.
+ *
  * <p>The supplied factory opens a transport on the IO worker and may throw an unchecked setup
  * failure. It must clean up any resources allocated before failing. A successfully returned
  * transport belongs to this client and is closed by the same worker.
@@ -26,6 +34,7 @@ public final class ProtocolClient implements AutoCloseable {
             LoggerFactory.getLogger("top.focess.veto.contract.ProtocolClient");
     private static final int CAPACITY = 256;
     private static final int POLL_MILLIS = 50;
+    private static final long HEARTBEAT_ACK_NANOS = TimeUnit.SECONDS.toNanos(10);
     private final @NonNull ConnectionState state = new ConnectionState();
     private final @NonNull Thread ioThread;
     private final @NonNull Version serverProductVersion;
@@ -154,33 +163,52 @@ public final class ProtocolClient implements AutoCloseable {
             @NonNull ClientTransport transport,
             @NonNull ConnectionState state,
             long heartbeatNanos) {
-        long lastHeartbeat = System.nanoTime();
+        long deadline = System.nanoTime() + heartbeatNanos;
+        boolean awaitingHeartbeat = false;
         while (!state.isClosed()) {
             // Bound each batch so sustained producers cannot starve receive or heartbeat.
-            for (int i = 0; i < CAPACITY; i++) {
+            for (int i = 0; i < CAPACITY && System.nanoTime() - deadline < 0; i++) {
                 var frame = state.nextOutgoing();
                 if (frame == null || state.isClosed()) break;
                 transport.send(frame);
             }
             if (state.isClosed()) return;
-            long elapsed = System.nanoTime() - lastHeartbeat;
-            if (elapsed >= heartbeatNanos) {
+            if (System.nanoTime() - deadline >= 0) {
+                if (awaitingHeartbeat)
+                    throw new IllegalStateException("Heartbeat acknowledgement timed out");
                 transport.send(new Frame.Heartbeat());
-                lastHeartbeat = System.nanoTime();
-                elapsed = 0;
+                awaitingHeartbeat = true;
+                deadline = System.nanoTime() + HEARTBEAT_ACK_NANOS;
             }
-            long wait = Math.max(1, TimeUnit.NANOSECONDS.toMillis(heartbeatNanos - elapsed));
+            long wait = Math.max(1, TimeUnit.NANOSECONDS.toMillis(deadline - System.nanoTime()));
             var frame = transport.recv(Math.min(POLL_MILLIS, wait));
-            if (frame != null) state.accept(frame);
+            if (frame instanceof Frame.HeartbeatAck) {
+                if (awaitingHeartbeat) {
+                    awaitingHeartbeat = false;
+                    deadline = System.nanoTime() + heartbeatNanos;
+                }
+            } else if (frame != null) state.accept(frame);
         }
     }
 
-    /** Queues a frame, rejecting a closed/full connection instead of silently dropping work. */
+    /**
+     * Thread-safe enqueue; rejects a closed/full connection. Admission does not guarantee delivery:
+     * close may discard queued work. Frames are not copied; keep their payloads read-only
+     * afterward.
+     */
     public void send(Frame.@NonNull ClientFrame frame) {
         state.send(frame);
     }
 
-    /** Returns the next stream frame, or null on timeout or after the closed stream drains. */
+    /** Queues cancellation with a connection-owned sequence; CancelResult arrives on receive(). */
+    public void cancel() {
+        state.cancel();
+    }
+
+    /**
+     * Thread-safe dequeue; returns null on timeout or after the closed stream drains. Concurrent
+     * receivers consume distinct entries from one queue, with no guarantee of which caller wins.
+     */
     public Frame.ServerFrame receive(long timeout, @NonNull TimeUnit unit)
             throws InterruptedException {
         return state.receive(unit.toNanos(timeout));
@@ -202,7 +230,9 @@ public final class ProtocolClient implements AutoCloseable {
     }
 
     /**
-     * Wakes callers immediately and lets the IO owner close after its current bounded socket call.
+     * Thread-safe and idempotent. Wakes callers and asks the IO owner to close its transport. Waits
+     * up to three seconds for the worker (less if interrupted); returning does not guarantee
+     * transport cleanup has finished. Concurrent sends may fail, and queued work may be discarded.
      */
     @Override
     public void close() {
@@ -242,6 +272,9 @@ public final class ProtocolClient implements AutoCloseable {
      * CONNECTING -> OPEN on Welcome; CONNECTING/OPEN -> CLOSED on close or failure. CLOSED is
      * terminal: callers wake immediately, while the IO owner retires the socket. This object alone
      * owns admission, queues and correlation under its monitor.
+     *
+     * <p>Thread-safe: every access to mutable state holds this object's monitor. Waiting for and
+     * completing detached futures happen outside the monitor; frame payloads are not protected.
      */
     private static final class ConnectionState {
         private @NonNull Phase phase = Phase.CONNECTING;
@@ -273,6 +306,10 @@ public final class ProtocolClient implements AutoCloseable {
 
         private synchronized Frame.ClientFrame nextOutgoing() {
             return outgoing.pollFirst();
+        }
+
+        private synchronized void cancel() {
+            send(new Frame.Cancel(sequence++));
         }
 
         private <R extends Frame.SeqRequest & Frame.ClientFrame> Frame.SeqResponse exchange(

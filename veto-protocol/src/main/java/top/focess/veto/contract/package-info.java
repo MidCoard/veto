@@ -1,3 +1,11 @@
+/**
+ * Shared frames, codecs and connection contracts.
+ *
+ * <p>ProtocolClient supports concurrent public calls; FrameCodec supports concurrent calls with
+ * stable inputs; Version is immutable. Frame and Delta document their mutable payload exceptions.
+ * ClientTransport and ServerTransport require exclusive ownership, not concurrent socket access.
+ * Passing a record across a thread boundary does not freeze its maps or JSON trees.
+ */
 @DefaultQualifier(
         value = Nullable.class,
         locations = {

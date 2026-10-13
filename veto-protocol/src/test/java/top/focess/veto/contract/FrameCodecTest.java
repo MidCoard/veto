@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
@@ -131,11 +132,87 @@ class FrameCodecTest {
             })
     void invalidDeltaPayloadsAreRejected(@NonNull String data) {
         String payload =
-                "{\"type\":\"delta\",\"sessionId\":null,\"agentId\":null,"
+                "{\"type\":\"delta\",\"scope\":{\"type\":\"agent\","
+                        + "\"userId\":\"00000000-0000-0000-0000-000000000010\","
+                        + "\"session\":\"00000000-0000-0000-0000-000000000011\",\"agent\":\"agent\"},"
                         + "\"sequence\":1,\"emittedAt\":\"2026-10-12T00:00:00Z\",\"data\":"
                         + data
                         + "}";
         assertNull(FrameCodec.decode(payload));
+        assertNull(FrameCodec.decode(payload.getBytes(StandardCharsets.UTF_8)));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"0", "1", "\"1\""})
+    void numericEnumValuesAreRejected(@NonNull String ordinal) {
+        var scope = new Scope.AgentScope(UUID.randomUUID(), UUID.randomUUID().toString(), "agent");
+        String valid =
+                FrameCodec.encodeString(
+                        new Delta(scope, new Delta.Notice("notice", Delta.Level.WARNING)));
+        assertTrue(FrameCodec.decode(valid) != null);
+        String malformed = valid.replace("\"WARNING\"", ordinal);
+        assertNull(FrameCodec.decode(malformed));
+        assertNull(FrameCodec.decode(malformed.getBytes(StandardCharsets.UTF_8)));
+    }
+
+    @Test
+    void completionCandidatesRejectNullElements() {
+        String valid = FrameCodec.encodeString(new Frame.CompleteResult(List.of(), 2));
+        assertTrue(FrameCodec.decode(valid) != null);
+        String malformed = valid.replace("\"candidates\":[]", "\"candidates\":[null]");
+        assertNull(FrameCodec.decode(malformed));
+        assertNull(FrameCodec.decode(malformed.getBytes(StandardCharsets.UTF_8)));
+    }
+
+    @Test
+    void approvalOptionsRejectNullElements() {
+        var scope = new Scope.AgentScope(UUID.randomUUID(), UUID.randomUUID().toString(), "agent");
+        String valid =
+                FrameCodec.encodeString(
+                        new Frame.Veto(
+                                scope, "call", "tool", "GENERIC", List.of(), Map.of(), null, null,
+                                2));
+        assertTrue(FrameCodec.decode(valid) != null);
+        String malformed = valid.replace("\"options\":[]", "\"options\":[null]");
+        assertNull(FrameCodec.decode(malformed));
+        assertNull(FrameCodec.decode(malformed.getBytes(StandardCharsets.UTF_8)));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"0", "0.5", "true", "{}", "[]", "null", "\"\""})
+    void timestampsRejectNonStringAndEmptyValues(@NonNull String timestamp) {
+        String[] payloads = {
+            "{\"type\":\"heartbeat_ack\",\"timestamp\":" + timestamp + "}",
+            "{\"type\":\"delta\",\"scope\":{\"type\":\"global\"},\"sequence\":1,\"emittedAt\":"
+                    + timestamp
+                    + ",\"data\":{\"type\":\"message\",\"text\":\"test\",\"turnNumber\":-1}}"
+        };
+        for (var payload : payloads) {
+            assertNull(FrameCodec.decode(payload));
+            assertNull(FrameCodec.decode(payload.getBytes(StandardCharsets.UTF_8)));
+        }
+    }
+
+    @ParameterizedTest
+    @ValueSource(
+            strings = {
+                "{\"type\":\"cancel\"}",
+                "{\"type\":\"cancel\",\"seq\":0}",
+                "{\"type\":\"cancel\",\"seq\":-1}",
+                "{\"type\":\"cancel\",\"seq\":null}",
+                "{\"type\":\"cancel_result\",\"seq\":1}",
+                "{\"type\":\"cancel_result\",\"status\":null,\"seq\":1}",
+                "{\"type\":\"cancel_result\",\"status\":true,\"seq\":1}",
+                "{\"type\":\"cancel_result\",\"status\":0,\"seq\":1}",
+                "{\"type\":\"cancel_result\",\"status\":\"0\",\"seq\":1}",
+                "{\"type\":\"cancel_result\",\"status\":\"UNKNOWN\",\"seq\":1}",
+                "{\"type\":\"cancel_result\",\"status\":\"ACCEPTED\"}",
+                "{\"type\":\"cancel_result\",\"status\":\"ACCEPTED\",\"seq\":0}",
+                "{\"type\":\"cancel_result\",\"status\":\"ACCEPTED\",\"seq\":-1}"
+            })
+    void cancellationRequiresStatusAndPositiveCorrelation(@NonNull String payload) {
+        assertNull(FrameCodec.decode(payload));
+        assertNull(FrameCodec.decode(payload.getBytes(StandardCharsets.UTF_8)));
     }
 
     @Test

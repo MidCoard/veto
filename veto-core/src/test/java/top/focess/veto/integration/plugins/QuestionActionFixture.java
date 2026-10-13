@@ -149,7 +149,7 @@ public final class QuestionActionFixture implements AutoCloseable {
                         List.of(
                                 new SessionAgentRegistry.AgentSummary(
                                         "agent", "Agent", null, null, null, null, false, null, null,
-                                        null, null, true, null, null)));
+                                        null, null, true, null)));
         mvc =
                 MockMvcBuilders.standaloneSetup(
                                 new PluginFrontendController(

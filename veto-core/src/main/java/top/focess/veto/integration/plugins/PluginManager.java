@@ -79,8 +79,8 @@ import top.focess.veto.plugin.runtime.*;
  * <p>Threading: startup construction is externally owned. After publication, readers use volatile
  * immutable query registries and concurrent host-service maps. Capture {@link #registry()} when
  * catalog entries and their owning activations must come from one publication; separate captures
- * need not observe the same publication. Active contribution registration serializes validation and
- * republication on the manager monitor. Desired activation writes and data-cleanup claim counts use
+ * need not observe the same publication. Contribution staging and publication serialize on the
+ * manager monitor, including startup. Desired activation writes and data-cleanup claim counts use
  * that same monitor. Point validators and metadata getters may run during republication under it
  * and must not block or wait for another management operation. Catalog-change listeners also run
  * inline during republication and must follow that restriction. Ordinary plugin invocations and
@@ -227,9 +227,9 @@ public final class PluginManager implements AutoCloseable {
     private final @NonNull Map<String, String> aliases;
     private final @NonNull List<Registration> stagedRegistrations;
 
-    // WHY: volatile publishes the completed constructor to deferred plugin registration callbacks.
+    // Guarded by the manager monitor; dependent consumers can reload after startup completes.
     @SuppressWarnings("FieldMayBeFinal")
-    private volatile boolean ready;
+    private boolean ready;
 
     /** Captures a coherent immutable query registry; lifecycle admission remains live. */
     public @NonNull PluginRegistry registry() {
@@ -432,37 +432,30 @@ public final class PluginManager implements AutoCloseable {
                 }
             }
             aliases = Map.copyOf(aliasLookup);
-            stagedRegistrations = List.copyOf(registered);
-            var validatedCatalog = buildCatalog(registered);
-            serviceRegistry.bind(validatedCatalog, staged);
-            published =
-                    new PluginRegistry(
-                            staged,
-                            disabledPackages,
-                            declinedPlugins,
-                            validatedCatalog,
-                            preparedEvents(validatedCatalog, staged, listenerPreparation),
-                            aliases,
-                            toolNames,
-                            installedIds);
+            synchronized (this) {
+                var validatedCatalog = buildCatalog(registered);
+                serviceRegistry.bind(validatedCatalog, staged);
+                published =
+                        new PluginRegistry(
+                                staged,
+                                disabledPackages,
+                                declinedPlugins,
+                                validatedCatalog,
+                                preparedEvents(validatedCatalog, staged, listenerPreparation),
+                                aliases,
+                                toolNames,
+                                installedIds);
+            }
             for (var plugin : staged) plugin.start();
-            validatedCatalog = buildCatalog(registered);
-            serviceRegistry.bind(validatedCatalog, staged);
-            published =
-                    new PluginRegistry(
-                            staged,
-                            disabledPackages,
-                            declinedPlugins,
-                            validatedCatalog,
-                            preparedEvents(validatedCatalog, staged, listenerPreparation),
-                            aliases,
-                            toolNames,
-                            installedIds);
-            for (var entry : validatedCatalog.entries(StandardContributionPoints.DATA_LIFECYCLE))
-                dataLifecycleOwners.add(entry.source().namespace());
-            published.events().submit(new ServiceDirectoryChangedEvent());
-            registerFrontendInvalidations();
-            ready = true;
+            synchronized (this) {
+                // Keep callbacks staged until every start() has released the lifecycle executor.
+                stagedRegistrations = List.copyOf(registered);
+                publish(staged, registered, disabledPackages, declinedPlugins);
+                for (var entry : published.entries(StandardContributionPoints.DATA_LIFECYCLE))
+                    dataLifecycleOwners.add(entry.source().namespace());
+                registerFrontendInvalidations();
+                ready = true;
+            }
         } catch (Exception | ServiceConfigurationError e) {
             definedPoints.clear();
             for (var plugin : staged.reversed()) {
@@ -645,10 +638,10 @@ public final class PluginManager implements AutoCloseable {
         };
     }
 
-    // WHY: ready gates publication, but Checker still needs local guards for this construction
-    // callback. Plugin handles read here remain manager-owned.
+    // WHY: construction callbacks can run before the registration list is assigned. Plugin
+    // handles read here remain manager-owned.
     @SuppressWarnings({"method.invocation", "ConstantValue", "resource"})
-    private void registerContribution(
+    private synchronized void registerContribution(
             @UnknownInitialization PluginManager this,
             @NonNull ManagedPlugin plugin,
             @NonNull PointRegistrations points,
@@ -659,24 +652,22 @@ public final class PluginManager implements AutoCloseable {
                 || state == PluginState.FAILED
                 || state == PluginState.DECLINED)
             throw new IllegalStateException("Plugin registration is closed");
-        if (state != PluginState.ACTIVE || !ready) {
+        if (closing) throw new IllegalStateException("Plugin manager is closing");
+        if (state != PluginState.ACTIVE) {
             points.add(contribution);
             return;
         }
-        synchronized (this) {
-            if (closing) throw new IllegalStateException("Plugin manager is closing");
-            points.add(contribution);
-            var current = published;
-            var registrations = stagedRegistrations;
-            if (current == null
-                    || registrations == null
-                    || registrations.stream().noneMatch(entry -> entry.plugin() == plugin)) return;
-            try {
-                publish(current.plugins(), registrations, current.disabled(), current.declined());
-            } catch (RuntimeException failure) {
-                points.remove(contribution);
-                throw failure;
-            }
+        points.add(contribution);
+        var current = published;
+        var registrations = stagedRegistrations;
+        if (current == null
+                || registrations == null
+                || registrations.stream().noneMatch(entry -> entry.plugin() == plugin)) return;
+        try {
+            publish(current.plugins(), registrations, current.disabled(), current.declined());
+        } catch (RuntimeException failure) {
+            points.remove(contribution);
+            throw failure;
         }
     }
 
@@ -818,14 +809,18 @@ public final class PluginManager implements AutoCloseable {
                         installedIds);
         published = next;
         try {
-            toolEngine.getObject().reloadPlugins(next);
-            llmProviders.getObject().reload(next);
+            if (ready) {
+                toolEngine.getObject().reloadPlugins(next);
+                llmProviders.getObject().reload(next);
+            }
             serviceRegistry.bind(nextCatalog, nextPlugins);
             nextEvents.submit(new ServiceDirectoryChangedEvent());
         } catch (RuntimeException failure) {
             published = previous;
-            toolEngine.getObject().reloadPlugins(previous);
-            llmProviders.getObject().reload(previous);
+            if (ready) {
+                toolEngine.getObject().reloadPlugins(previous);
+                llmProviders.getObject().reload(previous);
+            }
             serviceRegistry.bind(previous.catalog(), previous.plugins());
             throw failure;
         }

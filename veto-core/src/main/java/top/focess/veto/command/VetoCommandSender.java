@@ -7,6 +7,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.atomic.AtomicLong;
 import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import top.focess.command.AbstractCommandSender;
@@ -60,6 +61,9 @@ public final class VetoCommandSender extends AbstractCommandSender {
     private final @NonNull IpcServer ipcServer;
     private final @NonNull AtomicLong outputSequence = new AtomicLong();
     private volatile Identity identity;
+    private long authenticationVersion;
+    private final @NonNull ThreadLocal<@Nullable Long> executionAuthentication =
+            new ThreadLocal<>();
 
     private record Identity(@NonNull UUID userId, @NonNull String username) {}
 
@@ -136,8 +140,33 @@ public final class VetoCommandSender extends AbstractCommandSender {
      *
      * @param user the authenticated account, or {@code null} to mark the session as logged out
      */
-    public void setUser(UserEntity user) {
+    public synchronized void setUser(UserEntity user) {
+        pendingVeto = null;
         identity = user == null ? null : new Identity(user.getUserId(), user.getUsername());
+        authenticationVersion++;
+        if (executionAuthentication.get() != null)
+            executionAuthentication.set(authenticationVersion);
+    }
+
+    /** Identifies this authentication incarnation, including logout and same-account login. */
+    public synchronized long authenticationVersion() {
+        return authenticationVersion;
+    }
+
+    /** Captures this request's authority independently of later external revocation. */
+    public synchronized void beginExecution() {
+        executionAuthentication.set(authenticationVersion);
+    }
+
+    /** Output uses the command's captured authority, or the current identity for control frames. */
+    public synchronized long outputAuthenticationVersion() {
+        var commandVersion = executionAuthentication.get();
+        return commandVersion == null ? authenticationVersion : commandVersion;
+    }
+
+    /** Clears request-local authority when its command or control-frame handler exits. */
+    public void endExecution() {
+        executionAuthentication.remove();
     }
 
     /** The authenticated account identity, or null before login. */
@@ -208,7 +237,7 @@ public final class VetoCommandSender extends AbstractCommandSender {
     public void output(String message) {
         if (message == null || message.isEmpty()) return;
         ipcServer.send(
-                terminalId,
+                this,
                 new Delta(
                         new Scope.GlobalScope(),
                         outputSequence.incrementAndGet(),
@@ -220,7 +249,7 @@ public final class VetoCommandSender extends AbstractCommandSender {
     public void sendEvent(Frame.@NonNull ScopedFrame frame) {
         // The command actor owns terminal completion and its pending approval input.
         if (!(frame instanceof Delta delta)) return;
-        ipcServer.send(terminalId, delta);
+        ipcServer.send(this, delta);
     }
 
     // ── input (CommandSender contract overrides & overloads) ──────────────────────────────
@@ -296,7 +325,7 @@ public final class VetoCommandSender extends AbstractCommandSender {
     public @NonNull CompletableFuture<String> inputAsync(
             @NonNull String text, boolean mask, long timeoutMillis) {
         var future = super.inputAsync(timeoutMillis);
-        ipcServer.send(terminalId, new Frame.Prompt(text, mask));
+        ipcServer.send(this, new Frame.Prompt(text, mask));
         return future;
     }
 
@@ -331,12 +360,13 @@ public final class VetoCommandSender extends AbstractCommandSender {
     /** Publishes an approval and retains its identity for an exact VetoResult or cancellation. */
     public synchronized void sendVetoPrompt(
             @NonNull UUID userId, @NonNull UUID sessionId, @NonNull VetoPrompt vp) {
+        if (!userId.equals(userId())) return;
         var scope = new Scope.AgentScope(userId, sessionId.toString(), vp.agentId());
         pendingVeto = new PendingVeto(scope, vp.callId(), vp.seq());
         var danger = vp.danger();
         var relevance = vp.relevance();
         ipcServer.send(
-                terminalId,
+                this,
                 new Frame.Veto(
                         scope,
                         vp.callId(),
@@ -353,6 +383,7 @@ public final class VetoCommandSender extends AbstractCommandSender {
     public synchronized boolean claimPendingVeto(Frame.@NonNull VetoResult result) {
         var pending = pendingVeto;
         if (pending == null
+                || !result.scope().userId().equals(userId())
                 || pending.seq() != result.seq()
                 || !pending.scope().equals(result.scope())
                 || !pending.callId().equals(result.callId())) return false;

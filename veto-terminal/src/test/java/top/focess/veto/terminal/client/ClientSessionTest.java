@@ -25,6 +25,23 @@ import top.focess.veto.contract.ProtocolClient;
  * ClientView} captures every render event.
  */
 class ClientSessionTest {
+    @Test
+    void correlatedErrorPreservesCommandPromptQueueAndLoginMetadata() {
+        var view = new RecordingView();
+        var session = new ClientSession(view);
+        session.onFrame(new Frame.Done(new Scope.GlobalScope(), null, -1, null, "alice"));
+        session.submit("first", null);
+        session.submit("second", null);
+        var prompt = new Frame.Prompt("Confirm", false);
+        session.onFrame(prompt);
+        view.events.clear();
+        assertNull(session.onFrame(new Frame.Error("late hint failure", 9)));
+        assertEquals(ClientSession.State.PROMPTED, session.state());
+        assertEquals(prompt, session.promptView().activePrompt());
+        assertEquals("alice", session.promptView().username());
+        assertEquals(List.of("error:Error: late hint failure"), view.events);
+        assertEquals(new Frame.Request("second"), session.onFrame(new Frame.Done(null)));
+    }
 
     /** A ClientView that records every callback as a string for assertion. */
     private static final class RecordingView implements ClientView {
@@ -103,8 +120,8 @@ class ClientSessionTest {
     void tokenUsageRendersWithoutFinishingTheCommand() {
         var view = new RecordingView();
         var client = new ClientSession(view);
-        client.submit("first");
-        client.submit("second");
+        client.submit("first", null);
+        client.submit("second", null);
         client.onFrame(
                 new Delta(
                         new Scope.AgentScope(
@@ -128,8 +145,8 @@ class ClientSessionTest {
                         JsonNodeFactory.instance.objectNode().put("status", "ready"));
         session.onFrame(event);
         assertTrue(view.events.stream().anyMatch(value -> value.startsWith("delta:task.updated")));
-        session.submit("first");
-        session.submit("second");
+        session.submit("first", null);
+        session.submit("second", null);
         view.events.clear();
         assertNull(session.onFrame(event));
         assertFalse(view.events.contains("dispatched:second"));
@@ -143,7 +160,7 @@ class ClientSessionTest {
         var session = new ClientSession(view);
         assertInstanceOf(
                 Objects.requireNonNull(Frame.Request.class),
-                requireFrame(session.submit("prompt")));
+                requireFrame(session.submit("prompt", null)));
         assertNull(
                 session.onFrame(
                         new Delta(
@@ -177,7 +194,7 @@ class ClientSessionTest {
         RecordingView v = new RecordingView();
         ClientSession s = new ClientSession(v);
 
-        Frame f = requireFrame(s.submit("hello"));
+        Frame f = requireFrame(s.submit("hello", null));
 
         Frame.Request request = assertInstanceOf(Objects.requireNonNull(Frame.Request.class), f);
         assertEquals("hello", request.raw());
@@ -189,10 +206,10 @@ class ClientSessionTest {
     void submitWhileRunningEnqueuesAndReturnsNull() {
         RecordingView v = new RecordingView();
         ClientSession s = new ClientSession(v);
-        s.submit("first"); // IDLE → RUNNING, dispatched
+        s.submit("first", null); // IDLE → RUNNING, dispatched
 
         v.events.clear();
-        Frame f = s.submit("second"); // RUNNING → enqueue
+        Frame f = s.submit("second", null); // RUNNING → enqueue
 
         assertNull(f);
         assertEquals(ClientSession.State.RUNNING, s.state());
@@ -203,14 +220,14 @@ class ClientSessionTest {
     void submitFromPromptedReturnsInputAndTransitionsToRunning() {
         RecordingView v = new RecordingView();
         ClientSession s = new ClientSession(v);
-        s.submit("first"); // RUNNING
+        s.submit("first", null); // RUNNING
         s.onFrame(new Frame.Prompt("password", true));
 
         assertEquals(ClientSession.State.PROMPTED, s.state());
         requirePrompt(s.promptView().activePrompt());
         v.events.clear();
 
-        Frame f = requireFrame(s.submit("secret"));
+        Frame f = requireFrame(s.submit("secret", s.promptView().activePrompt()));
 
         Frame.Input input = assertInstanceOf(Objects.requireNonNull(Frame.Input.class), f);
         assertEquals("secret", input.raw());
@@ -220,24 +237,120 @@ class ClientSessionTest {
 
     @Test
     void submitAfterPromptResolvedDiscardsStaleReply() {
-        // stale-reply rule: a line typed for a Prompt that has already resolved (a terminal
-        // frame raced the reply) is treated as a NEW command (or enqueued) — never sent as a stale
-        // Input. submit routes on the live state, so a reply typed after the prompt vanished
-        // becomes a Request, not an Input.
-        RecordingView v = new RecordingView();
-        ClientSession s = new ClientSession(v);
-        s.submit("first"); // RUNNING
-        s.onFrame(new Frame.Prompt("pw", false)); // PROMPTED
-        s.onFrame(new Frame.Done(null)); // terminal raced the reply → RUNNING (idle dispatch)
-        assertEquals(ClientSession.State.IDLE, s.state());
-        assertNull(s.promptView().activePrompt());
+        for (boolean queued : new boolean[] {false, true}) {
+            var view = new RecordingView();
+            var session = new ClientSession(view);
+            session.submit("first", null);
+            if (queued) session.submit("second", null);
+            session.onFrame(new Frame.Prompt("password", true));
+            var displayed = session.promptView().activePrompt();
+            session.onFrame(new Frame.Done(null));
+            view.events.clear();
 
-        // The user's "reply" arrives after the prompt is gone — it is a new command, not an Input.
-        Frame f = requireFrame(s.submit("not-a-password"));
+            assertNull(session.submit("synthetic-secret", displayed));
+            assertTrue(view.events.isEmpty());
+            assertTrue(session.pendingQueue().isEmpty());
+            assertEquals(
+                    queued ? ClientSession.State.RUNNING : ClientSession.State.IDLE,
+                    session.state());
+        }
+    }
 
-        Frame.Request request = assertInstanceOf(Objects.requireNonNull(Frame.Request.class), f);
-        assertEquals("not-a-password", request.raw());
-        assertEquals(ClientSession.State.RUNNING, s.state());
+    @Test
+    void equalReplacementPromptDoesNotAcceptThePreviousReply() {
+        var view = new RecordingView();
+        var session = new ClientSession(view);
+        session.submit("first", null);
+        var original = new Frame.Prompt("password", true);
+        var replacement = new Frame.Prompt("password", true);
+        session.onFrame(original);
+        session.onFrame(replacement);
+        view.events.clear();
+
+        assertNull(session.submit("synthetic-secret", original));
+        assertTrue(replacement == session.promptView().activePrompt());
+        assertEquals(ClientSession.State.PROMPTED, session.state());
+        assertTrue(session.pendingQueue().isEmpty());
+        assertTrue(view.events.isEmpty());
+        assertEquals(
+                new Frame.Input("current-secret"), session.submit("current-secret", replacement));
+    }
+
+    @Test
+    void replacementApprovalDoesNotReceiveAnEarlierApprovalChoice() {
+        var view = new RecordingView();
+        var session = new ClientSession(view);
+        session.submit("first", null);
+        var scope = new Scope.AgentScope(UUID.randomUUID(), "session", "agent");
+        var original =
+                new Frame.Veto(
+                        scope,
+                        "first-call",
+                        "tool",
+                        "scenario",
+                        List.of("ACCEPT"),
+                        Map.of(),
+                        null,
+                        null,
+                        1);
+        var replacement =
+                new Frame.Veto(
+                        scope,
+                        "second-call",
+                        "tool",
+                        "scenario",
+                        List.of("ACCEPT"),
+                        Map.of(),
+                        null,
+                        null,
+                        2);
+        session.onFrame(original);
+        session.onFrame(replacement);
+        view.events.clear();
+
+        assertNull(session.submit("ACCEPT", original));
+        assertTrue(replacement == session.promptView().activePrompt());
+        assertEquals(ClientSession.State.PROMPTED, session.state());
+        assertTrue(session.pendingQueue().isEmpty());
+        assertTrue(view.events.isEmpty());
+        assertEquals(
+                new Frame.VetoResult(scope, "second-call", "ACCEPT", 2),
+                session.submit("ACCEPT", replacement));
+    }
+
+    @Test
+    void commandReadBeforeInteractionArrivedRemainsQueuedCommandInput() {
+        var scope = new Scope.AgentScope(UUID.randomUUID(), "session", "agent");
+        List<Frame.@NonNull ServerFrame> interactions =
+                List.of(
+                        new Frame.Prompt("password", true),
+                        new Frame.Veto(
+                                scope,
+                                "call",
+                                "tool",
+                                "scenario",
+                                List.of("ACCEPT"),
+                                Map.of(),
+                                null,
+                                null,
+                                1));
+        for (var interaction : interactions) {
+            var view = new RecordingView();
+            var session = new ClientSession(view);
+            session.submit("first", null);
+            var displayed = session.promptView().activePrompt();
+            assertNull(displayed);
+            session.onFrame(interaction);
+            view.events.clear();
+
+            assertNull(session.submit("second", displayed));
+            assertTrue(interaction == session.promptView().activePrompt());
+            assertEquals(ClientSession.State.PROMPTED, session.state());
+            assertEquals(List.of("second"), session.pendingQueue());
+            assertTrue(view.events.isEmpty());
+            assertEquals(new Frame.Request("second"), session.onFrame(new Frame.Done(null)));
+            assertTrue(view.events.contains("dispatched:second"));
+        }
     }
 
     // ═══ outbound: cancel ════════════════════════════════════════════
@@ -247,7 +360,7 @@ class ClientSessionTest {
         // Approval choices use their own frame and preserve the exact pending call identity.
         RecordingView v = new RecordingView();
         ClientSession s = new ClientSession(v);
-        s.submit("first"); // RUNNING
+        s.submit("first", null); // RUNNING
 
         Frame.Veto payload =
                 new Frame.Veto(
@@ -273,7 +386,7 @@ class ClientSessionTest {
         assertTrue(v.events.contains("prompted"));
         assertTrue(v.events.contains("prompt:veto"));
 
-        Frame f = requireFrame(s.submit("ACCEPT_COMMAND"));
+        Frame f = requireFrame(s.submit("ACCEPT_COMMAND", activePayload));
         Frame.VetoResult input =
                 assertInstanceOf(Objects.requireNonNull(Frame.VetoResult.class), f);
         assertEquals("ACCEPT_COMMAND", input.option());
@@ -283,25 +396,25 @@ class ClientSessionTest {
     }
 
     @Test
-    void cancelFromIdleReturnsNullAsShutdownSignal() {
+    void cancelFromIdleReturnsFalseAsShutdownSignal() {
         RecordingView v = new RecordingView();
         ClientSession s = new ClientSession(v);
 
-        assertNull(s.cancel());
+        assertFalse(s.cancel());
         assertEquals(ClientSession.State.IDLE, s.state());
     }
 
     @Test
-    void cancelFromRunningReturnsCancelAndPreservesQueue() {
+    void cancelFromRunningPreservesQueue() {
         // : cancelling the in-flight command preserves the pending queue — dispatch-next-or-idle
         // may still dispatch a queued request after the cancelled command's terminal frame.
         RecordingView v = new RecordingView();
         ClientSession s = new ClientSession(v);
-        s.submit("first"); // dispatched
-        s.submit("second");
-        s.submit("third"); // queued
+        s.submit("first", null); // dispatched
+        s.submit("second", null);
+        s.submit("third", null); // queued
 
-        requireCancel(s.cancel());
+        assertTrue(s.cancel());
 
         assertEquals(ClientSession.State.RUNNING, s.state()); // await the command's terminal frame
         assertEquals(List.of("second", "third"), s.pendingQueue()); // queue preserved
@@ -309,16 +422,47 @@ class ClientSessionTest {
     }
 
     @Test
-    void cancelFromPromptedReturnsCancelClearsPromptAndStaysRunning() {
+    void cancelFromPromptedClearsPromptAndStaysRunning() {
         RecordingView v = new RecordingView();
         ClientSession s = new ClientSession(v);
-        s.submit("first");
+        s.submit("first", null);
         s.onFrame(new Frame.Prompt("pw", false));
 
-        requireCancel(s.cancel());
+        assertTrue(s.cancel());
 
         assertNull(s.promptView().activePrompt());
         assertEquals(ClientSession.State.RUNNING, s.state());
+    }
+
+    @Test
+    void cancellationResultsNeverSettleCommandsOrClearReplacementPrompts() {
+        var view = new RecordingView();
+        var session = new ClientSession(view);
+        session.submit("first", null);
+        session.submit("second", null);
+        assertTrue(session.cancel());
+        var statuses =
+                List.of(
+                        Frame.CancelStatus.ACCEPTED,
+                        Frame.CancelStatus.REJECTED,
+                        Frame.CancelStatus.NO_ACTIVE_REQUEST);
+        for (var status : statuses) {
+            assertNull(session.onFrame(new Frame.CancelResult(status, 2)));
+            assertEquals(ClientSession.State.RUNNING, session.state());
+            assertEquals(List.of("second"), session.pendingQueue());
+        }
+        assertEquals(new Frame.Request("second"), session.onFrame(new Frame.Done(null)));
+        var replacement = new Frame.Prompt("Replacement prompt", false);
+        session.onFrame(replacement);
+        for (var status : statuses) {
+            assertNull(session.onFrame(new Frame.CancelResult(status, 2)));
+            assertEquals(ClientSession.State.PROMPTED, session.state());
+            assertSame(replacement, requireFrame(session.promptView().activePrompt()));
+        }
+        assertNull(session.onFrame(new Frame.Done(null)));
+        assertNull(
+                session.onFrame(new Frame.CancelResult(Frame.CancelStatus.NO_ACTIVE_REQUEST, 3)));
+        assertEquals(ClientSession.State.IDLE, session.state());
     }
 
     // ═══ inbound: IDLE ═══════════════════════════════════════════════
@@ -381,8 +525,7 @@ class ClientSessionTest {
         RecordingView v = new RecordingView();
         ClientSession s = new ClientSession(v);
 
-        Frame f =
-                s.onFrame(new Frame.Done(new Scope.GlobalScope(), null, -1, false, null, "alice"));
+        Frame f = s.onFrame(new Frame.Done(new Scope.GlobalScope(), null, -1, null, "alice"));
 
         assertNull(f);
         assertEquals(ClientSession.State.IDLE, s.state());
@@ -409,7 +552,7 @@ class ClientSessionTest {
     void runningDeltaDisplays() {
         RecordingView v = new RecordingView();
         ClientSession s = new ClientSession(v);
-        s.submit("first"); // RUNNING
+        s.submit("first", null); // RUNNING
 
         s.onFrame(Delta.message("chunk"));
 
@@ -422,7 +565,7 @@ class ClientSessionTest {
         // terminal can dim the agent's reasoning separately from user-facing message prose.
         RecordingView v = new RecordingView();
         ClientSession s = new ClientSession(v);
-        s.submit("first"); // RUNNING
+        s.submit("first", null); // RUNNING
 
         s.onFrame(
                 new Delta(
@@ -440,7 +583,7 @@ class ClientSessionTest {
     void runningProgressDisplays() {
         RecordingView v = new RecordingView();
         ClientSession s = new ClientSession(v);
-        s.submit("first"); // RUNNING
+        s.submit("first", null); // RUNNING
 
         s.onFrame(new Delta(new Scope.GlobalScope(), new Delta.Progress("loading", 50)));
 
@@ -451,7 +594,7 @@ class ClientSessionTest {
     void runningPromptTransitionsToPrompted() {
         RecordingView v = new RecordingView();
         ClientSession s = new ClientSession(v);
-        s.submit("first"); // RUNNING
+        s.submit("first", null); // RUNNING
 
         s.onFrame(new Frame.Prompt("password", true));
 
@@ -466,15 +609,14 @@ class ClientSessionTest {
     void runningDoneAppliesMetaAndDispatchesNext() {
         RecordingView v = new RecordingView();
         ClientSession s = new ClientSession(v);
-        s.submit("first"); // dispatched
-        s.submit("second"); // enqueued
+        s.submit("first", null); // dispatched
+        s.submit("second", null); // enqueued
 
         v.events.clear();
         Frame f =
                 requireFrame(
                         s.onFrame(
-                                new Frame.Done(
-                                        new Scope.GlobalScope(), null, -1, false, null, "alice")));
+                                new Frame.Done(new Scope.GlobalScope(), null, -1, null, "alice")));
 
         Frame.Request request = assertInstanceOf(Objects.requireNonNull(Frame.Request.class), f);
         assertEquals("second", request.raw());
@@ -496,7 +638,7 @@ class ClientSessionTest {
         RecordingView v = new RecordingView();
         ClientSession s = new ClientSession(v);
 
-        s.submit("hello");
+        s.submit("hello", null);
 
         assertTrue(v.events.contains("dispatched:hello"));
     }
@@ -507,10 +649,10 @@ class ClientSessionTest {
         // onCommandDispatched only when it is actually dispatched from the queue.
         RecordingView v = new RecordingView();
         ClientSession s = new ClientSession(v);
-        s.submit("first"); // dispatched → echoes
+        s.submit("first", null); // dispatched → echoes
         v.events.clear();
 
-        s.submit("second"); // enqueued while RUNNING — no echo yet
+        s.submit("second", null); // enqueued while RUNNING — no echo yet
         assertFalse(v.events.stream().anyMatch(e -> e.startsWith("dispatched:")));
         assertEquals(ClientSession.State.RUNNING, s.state());
         assertEquals(List.of("second"), s.pendingQueue());
@@ -524,7 +666,7 @@ class ClientSessionTest {
     void runningDoneWithEmptyQueueGoesIdle() {
         RecordingView v = new RecordingView();
         ClientSession s = new ClientSession(v);
-        s.submit("first"); // dispatched
+        s.submit("first", null); // dispatched
 
         v.events.clear();
         Frame f = s.onFrame(new Frame.Done(null));
@@ -540,8 +682,8 @@ class ClientSessionTest {
     void runningErrorDisplaysAndDispatchesNext() {
         RecordingView v = new RecordingView();
         ClientSession s = new ClientSession(v);
-        s.submit("first"); // dispatched
-        s.submit("second"); // queued
+        s.submit("first", null); // dispatched
+        s.submit("second", null); // queued
 
         v.events.clear();
         Frame f = requireFrame(s.onFrame(Frame.Error.ofError("boom")));
@@ -557,7 +699,7 @@ class ClientSessionTest {
     void promptedDeltaDisplays() {
         RecordingView v = new RecordingView();
         ClientSession s = new ClientSession(v);
-        s.submit("first");
+        s.submit("first", null);
         s.onFrame(new Frame.Prompt("pw", false)); // PROMPTED
 
         s.onFrame(Delta.message("chunk"));
@@ -570,7 +712,7 @@ class ClientSessionTest {
     void promptedPromptReplacesPrompt() {
         RecordingView v = new RecordingView();
         ClientSession s = new ClientSession(v);
-        s.submit("first");
+        s.submit("first", null);
         s.onFrame(new Frame.Prompt("pw1", false)); // PROMPTED
 
         s.onFrame(new Frame.Prompt("pw2", false)); // replace
@@ -587,8 +729,8 @@ class ClientSessionTest {
     void promptedDoneAppliesMetaClearsPromptAndDispatchesNext() {
         RecordingView v = new RecordingView();
         ClientSession s = new ClientSession(v);
-        s.submit("first");
-        s.submit("second"); // queued
+        s.submit("first", null);
+        s.submit("second", null); // queued
         s.onFrame(new Frame.Prompt("pw", false)); // PROMPTED
         requirePrompt(s.promptView().activePrompt());
 
@@ -596,8 +738,7 @@ class ClientSessionTest {
         Frame f =
                 requireFrame(
                         s.onFrame(
-                                new Frame.Done(
-                                        new Scope.GlobalScope(), null, -1, false, null, "alice")));
+                                new Frame.Done(new Scope.GlobalScope(), null, -1, null, "alice")));
 
         Frame.Request request = assertInstanceOf(Objects.requireNonNull(Frame.Request.class), f);
         assertEquals("second", request.raw());
@@ -611,7 +752,7 @@ class ClientSessionTest {
     void promptedDoneWithEmptyQueueClearsPromptAndGoesIdle() {
         RecordingView v = new RecordingView();
         ClientSession s = new ClientSession(v);
-        s.submit("first");
+        s.submit("first", null);
         s.onFrame(new Frame.Prompt("pw", false)); // PROMPTED
         requirePrompt(s.promptView().activePrompt());
 
@@ -626,8 +767,8 @@ class ClientSessionTest {
     void promptedErrorClearsPromptDisplaysAndDispatchesNext() {
         RecordingView v = new RecordingView();
         ClientSession s = new ClientSession(v);
-        s.submit("first");
-        s.submit("second"); // queued
+        s.submit("first", null);
+        s.submit("second", null); // queued
         s.onFrame(new Frame.Prompt("pw", false)); // PROMPTED
         requirePrompt(s.promptView().activePrompt());
 
@@ -646,7 +787,7 @@ class ClientSessionTest {
     void terminateFiresTerminateAndClearsPrompt() {
         RecordingView v = new RecordingView();
         ClientSession s = new ClientSession(v);
-        s.submit("first");
+        s.submit("first", null);
         s.onFrame(new Frame.Prompt("pw", false)); // PROMPTED
         requirePrompt(s.promptView().activePrompt());
 
@@ -664,21 +805,21 @@ class ClientSessionTest {
         var view = new RecordingView();
         var session = new ClientSession(view);
         var scope = new Scope.SessionScope(UUID.randomUUID(), "session");
-        session.submit("/login");
-        session.onFrame(new Frame.Done(scope, null, -1, false, null, "alice"));
+        session.submit("/login", null);
+        session.onFrame(new Frame.Done(scope, null, -1, null, "alice"));
         assertEquals("alice", session.snapshot().username());
         assertEquals("session", session.snapshot().sessionId());
-        session.submit("first");
-        session.onFrame(new Frame.Done(scope, "first", 5, false, null, "alice"));
+        session.submit("first", null);
+        session.onFrame(new Frame.Done(scope, "first", 5, null, "alice"));
         assertEquals(5, session.snapshot().turnCount());
-        session.submit("second");
+        session.submit("second", null);
         session.onFrame(new Frame.Error(scope, "second", 6, "failed", 0, "alice"));
         assertEquals(6, session.snapshot().turnCount());
-        session.submit("/help");
-        session.onFrame(new Frame.Done(scope, null, -1, false, null, "alice"));
+        session.submit("/help", null);
+        session.onFrame(new Frame.Done(scope, null, -1, null, "alice"));
         session.onFrame(new Frame.Error(scope, null, -1, "command failed", 0, "alice"));
         assertEquals(6, session.snapshot().turnCount());
-        session.submit("/logout");
+        session.submit("/logout", null);
         session.onFrame(new Frame.Done(null));
         assertNull(session.snapshot().username());
         assertNull(session.snapshot().sessionId());
@@ -689,13 +830,12 @@ class ClientSessionTest {
     void unchangedMetaDoesNotFireMetaChanged() {
         RecordingView v = new RecordingView();
         ClientSession s = new ClientSession(v);
-        s.submit("first");
-        s.onFrame(new Frame.Done(new Scope.GlobalScope(), null, -1, false, null, "alice"));
+        s.submit("first", null);
+        s.onFrame(new Frame.Done(new Scope.GlobalScope(), null, -1, null, "alice"));
         v.events.clear();
 
         s.onFrame(
-                new Frame.Done(
-                        new Scope.GlobalScope(), null, -1, false, null, "alice")); // same username
+                new Frame.Done(new Scope.GlobalScope(), null, -1, null, "alice")); // same username
 
         assertFalse(v.events.stream().anyMatch(e -> e.startsWith("meta:")));
     }
@@ -706,7 +846,7 @@ class ClientSessionTest {
     void promptViewCapturesStateAndPromptAtomically() {
         RecordingView v = new RecordingView();
         ClientSession s = new ClientSession(v);
-        s.submit("first"); // RUNNING
+        s.submit("first", null); // RUNNING
 
         s.onFrame(new Frame.Prompt("password", true));
         ClientSession.PromptView prompted = s.promptView();
@@ -715,7 +855,7 @@ class ClientSessionTest {
         assertEquals("password", activePrompt.content());
         assertEquals(ClientSession.State.PROMPTED, prompted.state()); // unchanged by the read
 
-        s.submit("secret"); // PROMPTED → RUNNING (Input sent)
+        s.submit("secret", s.promptView().activePrompt()); // PROMPTED → RUNNING (Input sent)
         ClientSession.PromptView running = s.promptView();
         assertEquals(ClientSession.State.RUNNING, running.state());
         assertNull(running.activePrompt()); // cleared on submit, same moment as the state
@@ -725,9 +865,9 @@ class ClientSessionTest {
     void pendingQueueSnapshotIsImmutableCopy() {
         RecordingView v = new RecordingView();
         ClientSession s = new ClientSession(v);
-        s.submit("a"); // dispatched
-        s.submit("b");
-        s.submit("c");
+        s.submit("a", null); // dispatched
+        s.submit("b", null);
+        s.submit("c", null);
 
         List<String> q = s.pendingQueue();
 
@@ -739,12 +879,12 @@ class ClientSessionTest {
     void statusViewCapturesUsernameAndQueueAtomically() {
         RecordingView v = new RecordingView();
         ClientSession s = new ClientSession(v);
-        s.submit("first"); // dispatched → RUNNING
-        s.submit("second"); // enqueued
-        s.submit("third"); // enqueued → queue = [second, third]
+        s.submit("first", null); // dispatched → RUNNING
+        s.submit("second", null); // enqueued
+        s.submit("third", null); // enqueued → queue = [second, third]
         // The Done sets the username AND dispatches the next queued request ("second") — both in
         // one transition. statusView must reflect both effects from the same moment.
-        s.onFrame(new Frame.Done(new Scope.GlobalScope(), null, -1, false, null, "alice"));
+        s.onFrame(new Frame.Done(new Scope.GlobalScope(), null, -1, null, "alice"));
 
         ClientSession.StatusView view = s.statusView();
         assertEquals("alice", view.username()); // username just set by the Done
@@ -761,10 +901,10 @@ class ClientSessionTest {
         for (int i = 0; i < 200; i++) {
             RecordingView v = new RecordingView();
             ClientSession s = new ClientSession(v);
-            s.submit("first"); // RUNNING
+            s.submit("first", null); // RUNNING
 
             CountDownLatch bothStarted = new CountDownLatch(1);
-            Thread a = new Thread(() -> s.submit("reply"));
+            Thread a = new Thread(() -> s.submit("reply", null));
             Thread b =
                     new Thread(
                             () -> {
@@ -782,8 +922,9 @@ class ClientSessionTest {
             a.join();
             b.join();
 
-            // Never IDLE (either still RUNNING, or PROMPTED), and no exception propagated.
-            assertNotEquals(ClientSession.State.IDLE, s.state());
+            // The command was read before either thread ran, so it cannot answer the new Prompt.
+            assertEquals(ClientSession.State.PROMPTED, s.state());
+            assertEquals(List.of("reply"), s.pendingQueue());
         }
     }
 
@@ -798,13 +939,6 @@ class ClientSessionTest {
         if (!(prompt instanceof Frame.Prompt text))
             throw new AssertionError("Expected an active text prompt");
         return text;
-    }
-
-    private static Frame.@NonNull Cancel requireCancel(Frame.Cancel cancel) {
-        if (cancel == null) {
-            throw new AssertionError("Expected a cancel frame");
-        }
-        return cancel;
     }
 
     private static Frame.@NonNull Veto requireVeto(Frame.ServerFrame payload) {

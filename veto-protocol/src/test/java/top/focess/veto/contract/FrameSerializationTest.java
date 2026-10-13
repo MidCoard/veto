@@ -40,7 +40,10 @@ class FrameSerializationTest {
             new Frame.Hello(Frame.PROTOCOL_VERSION, 1, Version.parse("1.0.100"), "/workspace"),
             new Frame.Request("hello"),
             new Frame.Input("test input"),
-            new Frame.Cancel(),
+            new Frame.Cancel(4),
+            new Frame.CancelResult(Frame.CancelStatus.ACCEPTED, 4),
+            new Frame.CancelResult(Frame.CancelStatus.REJECTED, 5),
+            new Frame.CancelResult(Frame.CancelStatus.NO_ACTIVE_REQUEST, 6),
             new Frame.Bye(),
             new Frame.Heartbeat(),
             new Frame.Welcome(Frame.PROTOCOL_VERSION, 1, Version.parse("1.0.100")),
@@ -110,11 +113,10 @@ class FrameSerializationTest {
         var done =
                 JSON.readTree(
                         FrameCodec.encodeString(
-                                new Frame.Done(
-                                        new Scope.GlobalScope(), null, 3, true, null, null)));
+                                new Frame.Done(new Scope.GlobalScope(), null, 3, null, null)));
         assertFalse(done.has("meta"));
         assertEquals(3, done.path("turnNumber").asInt());
-        assertTrue(done.path("cancelled").asBoolean());
+        assertFalse(done.has("cancelled"));
         assertTrue(
                 List.of(Frame.ServerFrame.class.getPermittedSubclasses())
                         .contains(Frame.Veto.class));

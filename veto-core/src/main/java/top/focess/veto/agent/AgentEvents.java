@@ -117,7 +117,7 @@ final class AgentEvents {
 
     void completed(String requestId, int turnNumber, boolean success, @NonNull String message) {
         if (success) {
-            publishFrame(new Frame.Done(scope, requestId, turnNumber, false, message, null));
+            publishFrame(new Frame.Done(scope, requestId, turnNumber, message, null));
         } else {
             publishFrame(new Frame.Error(scope, requestId, turnNumber, message, 0, null));
         }

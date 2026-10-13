@@ -289,7 +289,6 @@ The backend currently exposes these primary REST groups:
 - `/api/auth` — setup, login, logout, status, and user administration;
 - `/api/sessions` — sessions, prompts, raw history, complete rewind-annotated records, pending vetoes, and
   background tasks;
-- `/api/tasks` — asynchronous task lifecycle;
 - `/api/patterns` — agent patterns;
 - `/api/modeltiers` — model-tier profiles and bindings;
 - `/api/vault` — encrypted note and credential storage;
@@ -438,7 +437,7 @@ is generated output and must not be committed.
 - Preserve the explicit-nullness contract: reference returns and parameters are nullable unless
   they carry `@NonNull`; primitive types are outside that contract.
 - Run focused tests while iterating and the complete `check` task before a release.
-- Keep shared message contracts and format codecs in `veto-protocol`; IPC and WebSocket use
+- Keep shared message contracts and format codecs in `veto-protocol`; feature-specific data stays with its owner (for example, group models in the builtin plugin). IPC and WebSocket use
   its public `FrameCodec` for UTF-8 bytes and JSON text, with strict parsing in that same codec.
   Authentication, backend dispatch and
   recipient routing belong to the application. Both transports use the same `Frame` hierarchy
@@ -448,30 +447,44 @@ is generated output and must not be committed.
   over `ZmqChannel.Client`. Each connection uses one virtual
   IO worker from transport creation through handshake and cleanup, with bounded queues and private request futures.
   Closing wakes readers and pending exchanges immediately and discards unsent application frames.
-  On the backend, `IpcServer` owns the router on one virtual IO worker. Each terminal mailbox owns
+On the backend, `TerminalConfiguration` initializes the IPC resource beans before starting `IpcServer`.
+When terminal IPC is enabled, initialization failures abort Spring startup and Spring closes the resources already created.
+Set `veto.terminal.enabled=false` to disable IPC explicitly. On shutdown, Spring stops the server before closing its resources.
+  `IpcServer` owns the context, router and broker subscription on one virtual IO worker. Each terminal mailbox owns
   its request lifecycle; command workers only post results. Cancellation releases that request only
   after its body exits, so a later command cannot overlap stale output or account changes.
+  Cancel carries a positive sequence; CancelResult echoes it with ACCEPTED, REJECTED or NO_ACTIVE_REQUEST.
+  This reports the cancellation operation immediately; Done/Error still settle the worker after exit.
+  Done has no cancellation flag, and CancelResult never advances the terminal command queue.
   Client transports receive server frames directly; server transports alone carry peer identities.
   The browser entry point is `veto-ui/src/state/SessionContext.tsx`, which connects `VetoBus`
   to `/ws/veto/bus` on the backend HTTP port. `WebSocketConfig` registers the authenticated native WebSocket
   endpoint; `VetoWebSocketHandler` decodes frames directly in Spring callbacks and owns socket
   authentication, Hello admission and owner-based recipient routing. Agent output follows
   `DeltaBroker -> DeltaBusBridge -> VetoWebSocketHandler -> VetoBus`.
-  Protocol v4 requires clients to send Hello before application traffic; Welcome echoes its sequence.
+  Advance the protocol number only for major protocol revisions; individual frame changes share the development baseline.
+  Protocol v5 requires clients to send Hello before application traffic; Welcome echoes its sequence.
   Heartbeat and HeartbeatAck carry no sequence; the browser allows one outstanding heartbeat and
-  reconnects if its acknowledgement does not arrive within 10 seconds. There are no topic subscriptions.
+  reconnects if its acknowledgement does not arrive within 10 seconds. Heartbeats are sent 30 seconds
+  after the previous acknowledgement. The server uses Tomcat's 90-second WebSocket read-idle timeout
+  to remove silent clients; outgoing events do not reset that timeout. IPC uses a 90-second inactivity
+  threshold checked every 30 seconds. There are no topic subscriptions.
+  Thread safety: `ProtocolClient` supports concurrent callers, and `FrameCodec` supports concurrent
+  calls with stable inputs. `Version` and immutable frame values may be shared freely. `Frame.Veto`
+  arguments, `Frame.PluginAction` data and `Delta.ToolCall` arguments retain mutable payloads;
+  finish building them before enqueueing and leave them read-only afterward. ZMQ channels require
+  one exclusive owner for send, receive and close; a thread start/join handoff may transfer ownership.
   Prompt/Input is terminal-only text interaction. Veto/VetoResult carries human approvals on both
   transports, while gateway enforcement remains backend-owned. Approval
   frames originate in the agent and pass through the same owner-scoped broker; pending
   approval snapshots remain available for reconnect recovery. Delta carries a typed nested payload
   (thought, message, tool call/result, notice or resource update); Done ends a completed request,
   while Error ends a failed request. Application output carries the same Scope used by plugin
-  operations: null for connection-local output, SessionScope for session resources, AgentScope
+  operations: GlobalScope for connection-local output, SessionScope for session resources, AgentScope
   for an agent (including its owning account and session). Terminal deltas also render while idle.
   Compaction feedback uses the generic Notice renderer. PluginAction transports custom plugin
   facts; current clients consume resource invalidations, not custom plugin-event payloads. Client-triggered gateway processing is not part of the wire protocol.
-  There is no outbound Java cloud bus or remote task executor. `/api/tasks` is a user-owned
-  in-memory task registry; creating a task records it locally without executing it.
+  There is no outbound Java cloud bus or remote task executor.
   Browser message types, JSON validation, schema and wire fixtures belong to
   `veto-ui/src/protocol` and are bundled with the UI. Update them alongside Java wire-contract
   changes; frontend tests cover validation and wire fixtures. `veto-terminal` must not depend on `veto-core`.
