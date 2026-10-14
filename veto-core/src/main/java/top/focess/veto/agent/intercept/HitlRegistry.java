@@ -162,6 +162,11 @@ public class HitlRegistry {
         history.append(session, agent, call, event, decision, source, grant);
     }
 
+    /** Approval routing uses the live binding without acquiring the agent lifecycle monitor. */
+    public boolean belongsToSession(@NonNull String agentId, @NonNull UUID sessionId) {
+        return sessionId.equals(sessions.get(agentId));
+    }
+
     /** Runtime members of the already-authorized primary agent's session. */
     public @NonNull List<@NonNull String> sessionAgents(@NonNull String primaryAgentId) {
         UUID sessionId = sessions.get(primaryAgentId);
@@ -888,6 +893,15 @@ public class HitlRegistry {
                     }
                 });
         return declined[0];
+    }
+
+    /** Declines every currently registered agent's approvals in an already-authorized session. */
+    public int declineSession(@NonNull UUID sessionId) {
+        int declined = 0;
+        for (var entry : sessions.entrySet()) {
+            if (sessionId.equals(entry.getValue())) declined += declineAll(entry.getKey());
+        }
+        return declined;
     }
 
     /** Drops any pending veto + grants for the agent (on terminate). */

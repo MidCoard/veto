@@ -1,406 +1,106 @@
 package top.focess.veto.command;
 
-import java.time.Instant;
 import java.util.UUID;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
-import java.util.concurrent.atomic.AtomicLong;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import top.focess.command.AbstractCommandSender;
 import top.focess.command.CommandPermission;
-import top.focess.command.CommandSender;
-import top.focess.veto.agent.intercept.VetoPrompt;
-import top.focess.veto.api.plugin.Scope;
-import top.focess.veto.contract.Delta;
-import top.focess.veto.contract.Frame;
 import top.focess.veto.contract.Version;
-import top.focess.veto.terminal.IpcServer;
+import top.focess.veto.session.ProtocolConnection;
 import top.focess.veto.vault.UserEntity;
 
-/**
- * A pure {@link CommandSender} for a single terminal session.
- *
- * <h3>Output</h3>
- *
- * {@link #output(String)} pushes {@code Delta} entries onto the shared outbox queue. The IO thread
- * in {@link IpcServer} drains the queue and sends frames on the ZMQ ROUTER socket.
- *
- * <h3>Input</h3>
- *
- * {@link #inputAsync(String, boolean, long)} sends a {@link Frame.Prompt} frame so the terminal
- * knows to collect input, then creates a {@link CompletableFuture} (via {@link
- * AbstractCommandSender#inputAsync(long)}) and parks on it. The session worker calls {@link
- * #receiveInput(String)} when an {@link Frame.Input} frame arrives — completing the future and
- * unblocking the dispatch worker. No extra threads are spawned.
- *
- * <h3>Two-level cancel</h3>
- *
- * A {@link Frame.Cancel} has two levels:
- *
- * <ol>
- *   <li><b>Prompted</b> — the command is parked in {@code input} awaiting a reply. Cancel dismisses
- *       just the current prompt (via {@link #cancelCurrentPrompt()}); the command continues and may
- *       issue another prompt. The blocking {@code input} methods return {@code null} on cancel —
- *       the command checks for null and decides how to proceed.
- *   <li><b>Running</b> — the command is executing (not awaiting input). Cancel aborts the entire
- *       in-flight request (the server calls {@code task.cancel(true)}).
- * </ol>
- *
- * <p>Whether the command is prompted is determined by whether the {@code inputFutures} queue
- * inherited from {@link AbstractCommandSender} contains an incomplete future.
- */
+/** Terminal command-library adapter. Identity, input and output belong to its connection. */
 public final class VetoCommandSender extends AbstractCommandSender {
-
-    private static final @NonNull Logger log =
-            LoggerFactory.getLogger("top.focess.veto.command.VetoCommandSender");
-
-    private final @NonNull IpcServer ipcServer;
-    private final @NonNull AtomicLong outputSequence = new AtomicLong();
-    private volatile Identity identity;
-    private long authenticationVersion;
-    private final @NonNull ThreadLocal<@Nullable Long> executionAuthentication =
-            new ThreadLocal<>();
-
-    private record Identity(@NonNull UUID userId, @NonNull String username) {}
-
-    private final @NonNull String terminalId;
+    private final @NonNull ProtocolConnection connection;
     private final @NonNull Version clientProductVersion;
-
-    /**
-     * The current working directory the terminal reported in its {@link Frame.Hello} handshake,
-     * used as the session's workspace root when {@code /session create} does not name one
-     * explicitly. Never {@code null} - the terminal always reports its JVM working dir.
-     */
     private final @NonNull String cwd;
 
-    /**
-     * The pending HITL veto (agentId + callId), stashed when a veto Prompt is sent and claimed when
-     * the user's reply (or a cancel) arrives. Under the 1:1 request invariant at most one veto is
-     * pending per session, so a single slot suffices. Atomic: written on the agent virtual thread
-     * (the veto sink), claimed on the session-worker thread (Input/Cancel).
-     */
-    private PendingVeto pendingVeto;
-
-    /**
-     * Constructs a new {@code VetoCommandSender} for the given terminal session.
-     *
-     * @param ipcServer the IPC server used to enqueue outbound frames
-     * @param user the initially authenticated account, or {@code null} if not yet logged in
-     * @param terminalId the ZMQ DEALER identity of the owning terminal
-     * @param clientProductVersion the product version the connecting terminal reported in its
-     *     {@link Frame.Hello} handshake; never {@code null} - {@link Version#UNKNOWN} when the
-     *     terminal did not report a meaningful version
-     * @param cwd the current working directory the terminal reported in its {@link Frame.Hello}
-     *     handshake, mapped to the session's workspace at {@code /session create} time; never
-     *     {@code null} - the terminal always reports its JVM working dir
-     */
     public VetoCommandSender(
-            @NonNull IpcServer ipcServer,
-            UserEntity user,
-            @NonNull String terminalId,
+            @NonNull ProtocolConnection connection,
             @NonNull Version clientProductVersion,
             @NonNull String cwd) {
         super(CommandPermission.EVERYONE);
-        this.ipcServer = ipcServer;
-        identity = user == null ? null : new Identity(user.getUserId(), user.getUsername());
-        this.terminalId = terminalId;
+        this.connection = connection;
         this.clientProductVersion = clientProductVersion;
         this.cwd = cwd;
     }
 
-    // ── identity ──────────────────────────────────────────────────────────
+    public @NonNull ProtocolConnection connection() {
+        return connection;
+    }
 
-    /**
-     * Returns the username of the authenticated user for this session.
-     *
-     * @return the username, or {@code null} if the terminal is not yet logged in
-     */
     public String username() {
-        var current = identity;
-        return current == null ? null : current.username();
+        return connection.username();
     }
 
-    /** Returns the authenticated username for code guarded by the logged-in permission. */
-    public @NonNull String requireUsername() {
-        String current = username();
-        if (current == null) {
-            throw new IllegalStateException("Command requires an authenticated user");
-        }
-        return current;
-    }
-
-    /**
-     * Updates the authenticated account and its display name together.
-     *
-     * <p>Set after successful authentication; reset to {@code null} on logout.
-     *
-     * @param user the authenticated account, or {@code null} to mark the session as logged out
-     */
-    public synchronized void setUser(UserEntity user) {
-        pendingVeto = null;
-        identity = user == null ? null : new Identity(user.getUserId(), user.getUsername());
-        authenticationVersion++;
-        if (executionAuthentication.get() != null)
-            executionAuthentication.set(authenticationVersion);
-    }
-
-    /** Identifies this authentication incarnation, including logout and same-account login. */
-    public synchronized long authenticationVersion() {
-        return authenticationVersion;
-    }
-
-    /** Captures this request's authority independently of later external revocation. */
-    public synchronized void beginExecution() {
-        executionAuthentication.set(authenticationVersion);
-    }
-
-    /** Output uses the command's captured authority, or the current identity for control frames. */
-    public synchronized long outputAuthenticationVersion() {
-        var commandVersion = executionAuthentication.get();
-        return commandVersion == null ? authenticationVersion : commandVersion;
-    }
-
-    /** Clears request-local authority when its command or control-frame handler exits. */
-    public void endExecution() {
-        executionAuthentication.remove();
-    }
-
-    /** The authenticated account identity, or null before login. */
     public UUID userId() {
-        var current = identity;
-        return current == null ? null : current.userId();
+        return connection.userId();
     }
 
-    /** Requires the authenticated account identity for session and resource access. */
-    public @NonNull UUID requireUserId() {
-        var current = userId();
-        if (current == null)
-            throw new IllegalStateException("Command requires an authenticated user");
-        return current;
+    public void setUser(UserEntity user) {
+        connection.setUser(user);
     }
 
-    /**
-     * Returns the ZMQ DEALER identity of the terminal that owns this sender.
-     *
-     * @return the terminal ID string; never {@code null}
-     */
+    public boolean isLoggedIn() {
+        return userId() != null;
+    }
+
     public @NonNull String terminalId() {
-        return terminalId;
+        return connection.id();
     }
 
-    /**
-     * Returns the product version the connecting terminal reported in its {@link Frame.Hello}
-     * handshake.
-     *
-     * @return the terminal's product version; never {@code null} - {@link Version#UNKNOWN} when the
-     *     terminal did not report a meaningful version
-     */
     public @NonNull Version clientProductVersion() {
         return clientProductVersion;
     }
 
-    /**
-     * Returns the current working directory the connecting terminal reported in its {@link
-     * Frame.Hello} handshake, mapped to the session's workspace at {@code /session create} time.
-     *
-     * @return the terminal's cwd; never {@code null} - the terminal always reports its JVM working
-     *     dir
-     */
     public @NonNull String cwd() {
         return cwd;
     }
 
-    /**
-     * Returns whether this sender's session is currently authenticated.
-     *
-     * @return {@code true} if an authenticated account is present, {@code false} otherwise
-     */
-    public boolean isLoggedIn() {
-        return identity != null;
+    public @NonNull UUID requireUserId() {
+        var user = userId();
+        if (user == null) throw new IllegalStateException("Command requires an authenticated user");
+        return user;
     }
 
-    // ── output (CommandSender contract) ───────────────────────────────────
+    public @NonNull String requireUsername() {
+        var name = username();
+        if (name == null) throw new IllegalStateException("Command requires an authenticated user");
+        return name;
+    }
 
-    /**
-     * Sends a streaming content chunk to the terminal as a {@link Delta} frame.
-     *
-     * <p>Null or empty messages are silently ignored. The frame is enqueued to the outbox of the
-     * owning {@link IpcServer} and delivered by the IO thread.
-     *
-     * @param message the text chunk to stream; {@code null} or empty strings are silently dropped
-     */
     @Override
     public void output(String message) {
-        if (message == null || message.isEmpty()) return;
-        ipcServer.send(
-                this,
-                new Delta(
-                        new Scope.GlobalScope(),
-                        outputSequence.incrementAndGet(),
-                        Instant.now(),
-                        new Delta.Message(message, -1)));
+        if (message != null && !message.isEmpty()) connection.output(message);
     }
 
-    /** Forwards the canonical broker event without translating or rebuilding its payload. */
-    public void sendEvent(Frame.@NonNull ScopedFrame frame) {
-        // The command actor owns terminal completion and its pending approval input.
-        if (!(frame instanceof Delta delta)) return;
-        ipcServer.send(this, delta);
-    }
-
-    // ── input (CommandSender contract overrides & overloads) ──────────────────────────────
-
-    /**
-     * Blocks until the terminal user provides input, with no prompt text and no masking.
-     *
-     * <p>Convenience override that delegates to {@link #input(String, boolean)} with a 90-second
-     * timeout.
-     *
-     * @return the user's input string, or {@code null} if the prompt was cancelled
-     */
-    // focess-command declares this legacy override non-null, but cancellation is represented by
-    // null in its runtime protocol. The nullable overload below is the actual Veto contract.
+    // The command library declares a non-null return, but cancellation is a nullable answer.
     @SuppressWarnings("override.return")
     @Override
     public String input() {
         return input("", false);
     }
 
-    /**
-     * Blocks until the terminal user provides input, optionally masking the characters.
-     *
-     * <p>Sends a {@link Frame.Prompt} frame to the terminal with the given text and mask flag, then
-     * waits up to 90 seconds for the terminal to respond with an {@link Frame.Input} frame. If the
-     * user cancels the prompt (via {@link Frame.Cancel}), returns {@code null} instead of throwing
-     * — the command checks for null and decides how to proceed (re-prompt, abort, etc.).
-     *
-     * @param text the prompt text to display above the input field; use {@code ""} for none
-     * @param mask {@code true} to mask input characters (e.g. for passwords)
-     * @return the user's input string, or {@code null} if the prompt was cancelled
-     */
     public String input(@NonNull String text, boolean mask) {
         try {
-            return inputAsync(text, mask, 90000).join();
-        } catch (CancellationException e) {
-            // join() throws a raw CancellationException (NOT wrapped in CompletionException) when
-            // cancelCurrentPrompt() completes the input future with one - return null so the
-            // command can handle the cancel (e.g. /login checks for null and returns REFUSE).
+            return inputAsync(text, mask, 90_000).join();
+        } catch (CancellationException cancelled) {
             return null;
-        } catch (CompletionException e) {
-            if (e.getCause() instanceof CancellationException) {
-                // Cancelled — return null so the command can handle it gracefully.
-                return null;
-            }
-            throw e;
+        } catch (CompletionException failed) {
+            if (failed.getCause() instanceof CancellationException) return null;
+            throw failed;
         }
     }
 
-    /**
-     * Asynchronously requests user input with no prompt text and no masking.
-     *
-     * @param timeoutMillis maximum time to wait for a reply in milliseconds
-     * @return a {@link CompletableFuture} that completes with the user's input string
-     */
     @Override
     public @NonNull CompletableFuture<String> inputAsync(long timeoutMillis) {
         return inputAsync("", false, timeoutMillis);
     }
 
-    /**
-     * Sends a {@link Frame.Prompt} frame to the terminal and asynchronously waits for the user's
-     * reply.
-     *
-     * <p>The future is completed by {@link #receiveInput(String)} when the session worker receives
-     * the corresponding {@link Frame.Input} frame from the terminal.
-     *
-     * @param text the prompt message displayed above the input field
-     * @param mask {@code true} to mask input characters (e.g. for passwords)
-     * @param timeoutMillis maximum time to wait in milliseconds before the future times out
-     * @return a {@link CompletableFuture} that completes with the user's reply
-     */
     public @NonNull CompletableFuture<String> inputAsync(
             @NonNull String text, boolean mask, long timeoutMillis) {
-        var future = super.inputAsync(timeoutMillis);
-        ipcServer.send(this, new Frame.Prompt(text, mask));
-        return future;
+        return connection.input(text, mask, timeoutMillis);
     }
-
-    // ── cancel ───────────────────────────────────────────────────────────
-
-    /**
-     * Cancels the current prompt: completes the pending input future exceptionally with a {@link
-     * CancellationException}, so {@code input.join} throws immediately instead of waiting out its
-     * timeout. The command continues — it may issue another prompt or complete normally.
-     *
-     * <p>This is an atomic check-and-cancel: it returns {@code true} only if a prompt was actually
-     * pending and was cancelled, avoiding the time-of-check-to-time-of-use race between checking
-     * prompted state and calling cancel.
-     *
-     * @return {@code true} if a pending prompt was cancelled, {@code false} if no prompt was
-     *     pending
-     */
-    public boolean cancelCurrentPrompt() {
-        for (CompletableFuture<String> f : inputFutures) {
-            if (!f.isDone()) {
-                if (f.completeExceptionally(new CancellationException("input cancelled by user"))) {
-                    log.debug("Cancelled current prompt");
-                    return true;
-                }
-            }
-        }
-        return false;
-    }
-
-    // ── HITL veto ────────────────────────────────────────────────────────
-
-    /** Publishes an approval and retains its identity for an exact VetoResult or cancellation. */
-    public synchronized void sendVetoPrompt(
-            @NonNull UUID userId, @NonNull UUID sessionId, @NonNull VetoPrompt vp) {
-        if (!userId.equals(userId())) return;
-        var scope = new Scope.AgentScope(userId, sessionId.toString(), vp.agentId());
-        pendingVeto = new PendingVeto(scope, vp.callId(), vp.seq());
-        var danger = vp.danger();
-        var relevance = vp.relevance();
-        ipcServer.send(
-                this,
-                new Frame.Veto(
-                        scope,
-                        vp.callId(),
-                        vp.tool(),
-                        vp.scenario().name(),
-                        vp.options().stream().map(Enum::name).toList(),
-                        vp.args(),
-                        danger,
-                        relevance,
-                        vp.seq()));
-    }
-
-    /** A stale or unrelated decision cannot consume the current approval. */
-    public synchronized boolean claimPendingVeto(Frame.@NonNull VetoResult result) {
-        var pending = pendingVeto;
-        if (pending == null
-                || !result.scope().userId().equals(userId())
-                || pending.seq() != result.seq()
-                || !pending.scope().equals(result.scope())
-                || !pending.callId().equals(result.callId())) return false;
-        pendingVeto = null;
-        return true;
-    }
-
-    /**
-     * Atomically claims the pending veto (returns and clears it), so the inbound handler resolves
-     * it exactly once. Returns {@code null} if no veto is pending (a free-text prompt, or none).
-     */
-    public synchronized PendingVeto claimPendingVeto() {
-        PendingVeto claimed = pendingVeto;
-        pendingVeto = null;
-        return claimed;
-    }
-
-    /** The (agentId, callId) stashed for a pending veto - the HitlRegistry key + call id. */
-    public record PendingVeto(Scope.@NonNull AgentScope scope, @NonNull String callId, long seq) {}
 }

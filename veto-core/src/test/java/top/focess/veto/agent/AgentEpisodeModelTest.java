@@ -93,6 +93,7 @@ import top.focess.veto.model.tier.ModelTier;
 import top.focess.veto.model.tier.ModelTierRegistry;
 import top.focess.veto.session.SessionHistoryLoader;
 import top.focess.veto.session.SessionService;
+import top.focess.veto.session.TestAgentSessions;
 import top.focess.veto.util.Nullness;
 import top.focess.veto.vault.CurrentUser;
 import top.focess.veto.vault.KeysteadVault;
@@ -568,7 +569,8 @@ class AgentEpisodeModelTest {
                         Mockito.mock(PluginManager.class),
                         Mockito.mock(EventManager.class),
                         Mockito.mock(PluginDataCleanup.class),
-                        Mockito.mock(RequestContinuationStore.class));
+                        Mockito.mock(RequestContinuationStore.class),
+                        TestAgentSessions.create(sessions, runtime));
         MonitorRepository repository = Mockito.mock(MonitorRepository.class);
         var groups = new GroupRegistry();
         var monitors =

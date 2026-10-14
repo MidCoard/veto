@@ -62,7 +62,7 @@ class FrameCodecTest {
             new Scope.AgentScope(owner, session, "agent")
         };
         for (var scope : scopes) {
-            var frame = new Frame.Error(scope, null, -1, "failed", 0, null);
+            var frame = new Frame.Error(scope, null, -1, "failed", 0, null, null);
             String json = FrameCodec.encodeString(frame);
             assertEquals(frame, FrameCodec.decode(json));
             var tree = new ObjectMapper().readTree(json);
@@ -219,7 +219,7 @@ class FrameCodecTest {
     void textAndByteTransportsUseTheSameWireContract() {
         var heartbeat = new Frame.Heartbeat();
         assertEquals("{\"type\":\"heartbeat\"}", FrameCodec.encodeString(heartbeat));
-        Frame original = new Frame.Done("完成");
+        Frame original = new Frame.Done(new Scope.GlobalScope(), null, -1, "完成", null, 0);
         assertArrayEquals(
                 FrameCodec.encodeString(original).getBytes(StandardCharsets.UTF_8),
                 FrameCodec.encode(original));

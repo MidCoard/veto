@@ -8,7 +8,6 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.locks.ReentrantLock;
 import org.jspecify.annotations.NonNull;
@@ -79,9 +78,7 @@ public class SessionService {
     /** Serializes workspace claims through transaction completion on this backend host. */
     private final @NonNull ReentrantLock sessionCreation = new ReentrantLock();
 
-    /** Per-terminal active session id. Key = terminal id, value = session id. */
-    private final @NonNull ConcurrentHashMap<String, String> activeSessions =
-            new ConcurrentHashMap<>();
+    private final @NonNull AgentSessions runtime;
 
     /** Creates the service with its persistence, execution, admission and cleanup dependencies. */
     public SessionService(
@@ -98,7 +95,9 @@ public class SessionService {
             @NonNull PluginManager pluginManager,
             @NonNull EventManager eventManager,
             @NonNull PluginDataCleanup pluginDataCleanup,
-            @NonNull RequestContinuationStore continuations) {
+            @NonNull RequestContinuationStore continuations,
+            @NonNull AgentSessions runtime) {
+        this.runtime = runtime;
         this.sessions = sessions;
         this.agents = agents;
         this.patterns = patterns;
@@ -504,7 +503,7 @@ public class SessionService {
                 session.getToolResultPresentation());
         session.touch();
         sessions.save(session);
-        activeSessions.put(terminalId, session.getId());
+        runtime.select(terminalId, new Scope.SessionScope(userId, session.getId()));
 
         return Optional.of(llmConfig(resolved));
     }
@@ -528,7 +527,7 @@ public class SessionService {
 
     /** Detaches the terminal from its active session; the session itself persists. */
     public void deactivate(@NonNull String terminalId) {
-        activeSessions.remove(terminalId);
+        runtime.detach(terminalId);
     }
 
     /**
@@ -537,13 +536,7 @@ public class SessionService {
      * can be re-activated on re-login, but no terminal remains attached.
      */
     public void deactivateUser(@NonNull UUID userId) {
-        activeSessions
-                .entrySet()
-                .removeIf(
-                        e -> {
-                            SessionEntity session = sessions.findById(e.getValue()).orElse(null);
-                            return session == null || userId.equals(session.getUserId());
-                        });
+        runtime.detachUser(userId);
     }
 
     /**
@@ -564,7 +557,7 @@ public class SessionService {
         pluginDataCleanup.beforeSessionDeleted(userId, sessionId);
         Runnable stop =
                 () -> {
-                    activeSessions.entrySet().removeIf(e -> sessionId.equals(e.getValue()));
+                    runtime.close(new Scope.SessionScope(userId, sessionId));
                     eventManager.submit(
                             new SessionDeletedEvent(new Scope.SessionScope(userId, sessionId)));
                     sessionAgents.stopSession(UUID.fromString(sessionId));
@@ -586,9 +579,13 @@ public class SessionService {
         return true;
     }
 
+    public @NonNull AgentSession runtimeSession(@NonNull String sessionId, @NonNull UUID user) {
+        return runtime.requireOwned(sessionId, user);
+    }
+
     /** The id of the terminal's active session, if attached to one. */
     public @NonNull Optional<String> activeSession(@NonNull String terminalId) {
-        return Optional.ofNullable(activeSessions.get(terminalId));
+        return Optional.ofNullable(runtime.selected(terminalId));
     }
 
     /**
@@ -597,7 +594,7 @@ public class SessionService {
      * gone.
      */
     public @NonNull Optional<LlmConfig> resolveLlmConfig(@NonNull String terminalId) {
-        String sessionId = activeSessions.get(terminalId);
+        String sessionId = runtime.selected(terminalId);
         if (sessionId == null) return Optional.empty();
         SessionEntity session = sessions.findById(sessionId).orElse(null);
         if (session == null) return Optional.empty();
@@ -625,26 +622,21 @@ public class SessionService {
                 new SessionConfig(session.getId(), config, session.getToolResultPresentation()));
     }
 
-    /** A resolved session's id + LLM config, for the REST prompt path. */
+    /** A resolved session's identity, model configuration and tool presentation. */
     public record SessionConfig(
             @NonNull String sessionId,
             @NonNull LlmConfig config,
             @NonNull ToolResultPresentationMode toolResultPresentation) {}
 
     /**
-     * Activates a session for the REST prompt path (no terminal, no cwd scoping): resolves the
-     * session duplicate-tolerantly (most-recently-active wins, same as {@link #resolveByName}),
-     * get-or-creates its primary agent with the DB primary agent id + the session's workspace +
-     * replayed history - so HITL vetoes park under the id {@link #primaryAgentIdFor} reports and
-     * tools run against the session's roots - touches lastActiveAt, and returns the session id +
-     * LLM config. Empty when the session or its primary agent does not exist.
+     * Prepares the exact owned session for a connection request, restoring its primary agent,
+     * workspace and history. Missing or foreign sessions are unavailable.
      */
     @Transactional
-    public @NonNull Optional<SessionConfig> activateForRest(
-            @NonNull String name, @NonNull UUID userId) {
-        SessionEntity session =
-                sessions.findFirstByNameAndUserIdOrderByLastActiveAtDesc(name, userId).orElse(null);
-        if (session == null) return Optional.empty();
+    public @NonNull Optional<SessionConfig> prepare(
+            @NonNull String sessionId, @NonNull UUID userId) {
+        SessionEntity session = sessions.findById(sessionId).orElse(null);
+        if (session == null || !session.getUserId().equals(userId)) return Optional.empty();
         AgentEntity agent = primaryAgent(session);
         if (agent == null) return Optional.empty();
         ModelBinding resolved = tierRegistry.resolve(session.getUserId(), agent.getTier());
@@ -744,7 +736,7 @@ public class SessionService {
 
     /** The in-memory agent serving the terminal's active session, if one is running. */
     public @NonNull Optional<Agent> activeAgent(@NonNull String terminalId) {
-        String sessionId = activeSessions.get(terminalId);
+        String sessionId = runtime.selected(terminalId);
         if (sessionId == null) return Optional.empty();
         return Optional.ofNullable(sessionAgents.transportAgent(sessionId));
     }

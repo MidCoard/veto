@@ -12,6 +12,7 @@ import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import top.focess.veto.api.plugin.Scope;
 
 /**
  * Drives {@link ProtocolClient} end-to-end over an in-memory {@link ClientTransport} — no ZMQ. A
@@ -70,10 +71,13 @@ class InMemoryTransportTest {
                             List.of(new Frame.Completion("/login", "sign in", "auth")), c.seq()));
         } else if (frame instanceof Frame.Hint h) {
             transport.deliver(new Frame.HintResult(new Frame.HintInfo("<user>", null), h.seq()));
-        } else if (frame instanceof Frame.Request) {
+        } else if (frame instanceof Frame.Request request) {
+            transport.deliver(
+                    new Frame.RequestAccepted(request.seq(), new Scope.GlobalScope(), null));
             transport.deliver(Delta.message("hello "));
             transport.deliver(Delta.message("world"));
-            transport.deliver(new Frame.Done(null));
+            transport.deliver(
+                    new Frame.Done(new Scope.GlobalScope(), null, -1, null, null, request.seq()));
         }
         // Heartbeat / Bye / Cancel / Input: ignored by the responder.
     }
@@ -107,8 +111,12 @@ class InMemoryTransportTest {
 
     @Test
     void streamingRequestDeliversDeltaThenDone() throws InterruptedException {
-        conn.send(new Frame.Request("do something"));
-        // The responder emits Delta, Delta, Done. Receive them in order from the incoming queue.
+        long requestSeq = conn.nextSequence();
+        conn.send(new Frame.Request(requestSeq, null, null, "do something"));
+        var accepted =
+                assertInstanceOf(Frame.RequestAccepted.class, conn.receive(2, TimeUnit.SECONDS));
+        assertEquals(requestSeq, accepted.seq());
+        // Admission is separate from streaming and final settlement.
         Frame f1 =
                 requireValue(
                         conn.receive(2, TimeUnit.SECONDS), "first server frame should not be null");
@@ -121,7 +129,8 @@ class InMemoryTransportTest {
                         conn.receive(2, TimeUnit.SECONDS), "third server frame should not be null");
         assertInstanceOf(Objects.requireNonNull(Delta.class), f1);
         assertInstanceOf(Objects.requireNonNull(Delta.class), f2);
-        assertInstanceOf(Objects.requireNonNull(Frame.Done.class), f3);
+        assertEquals(
+                requestSeq, assertInstanceOf(Objects.requireNonNull(Frame.Done.class), f3).seq());
     }
 
     @Test

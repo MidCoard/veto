@@ -453,7 +453,7 @@ final class ModelSession {
 
     @NonNull Prepared userPrompt(@NonNull String prompt) {
         var request = runner.currentRequest();
-        prompt = hooks.captureUserPrompt(hooks.beforeInput(hooks.captureUserPrompt(prompt)));
+        prompt = hooks.captureUserPrompt(hooks.beforeInput(prompt));
         if (runner.control().waiting(Wait.INTERRUPTED)) {
             output.appendTurn(
                     new TurnRecord(

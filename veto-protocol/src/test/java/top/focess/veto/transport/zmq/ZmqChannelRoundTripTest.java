@@ -29,7 +29,12 @@ class ZmqChannelRoundTripTest {
     @Test
     void routerReportsUnknownRecipient() {
         assertThrows(
-                RuntimeException.class, () -> router().send("absent-peer", new Frame.Done(null)));
+                RuntimeException.class,
+                () ->
+                        router().send(
+                                        "absent-peer",
+                                        new Frame.Done(
+                                                new Scope.GlobalScope(), null, -1, null, null, 0)));
     }
 
     @Test
@@ -47,7 +52,15 @@ class ZmqChannelRoundTripTest {
                 boolean rejected = false;
                 for (int i = 0; i < 3000; i++) {
                     try {
-                        server.send("slow", new Frame.Done(Integer.toString(i)));
+                        server.send(
+                                "slow",
+                                new Frame.Done(
+                                        new Scope.GlobalScope(),
+                                        null,
+                                        -1,
+                                        Integer.toString(i),
+                                        null,
+                                        0));
                         accepted++;
                     } catch (RuntimeException failure) {
                         rejected = true;
@@ -55,7 +68,7 @@ class ZmqChannelRoundTripTest {
                     }
                 }
                 assertTrue(rejected, "A saturated peer must fail admission");
-                var done = new Frame.Done("healthy");
+                var done = new Frame.Done(new Scope.GlobalScope(), null, -1, "healthy", null, 0);
                 server.send("healthy", done);
                 assertEquals(
                         done,
@@ -64,7 +77,13 @@ class ZmqChannelRoundTripTest {
                                         healthy.recv(), "Missing healthy peer frame")));
                 for (int i = 0; i < accepted; i++)
                     assertEquals(
-                            new Frame.Done(Integer.toString(i)),
+                            new Frame.Done(
+                                    new Scope.GlobalScope(),
+                                    null,
+                                    -1,
+                                    Integer.toString(i),
+                                    null,
+                                    0),
                             FrameCodec.decode(
                                     Objects.requireNonNull(slow.recv(), "Missing accepted frame")));
                 assertNull(slow.recv(ZMQ.DONTWAIT));
@@ -159,7 +178,8 @@ class ZmqChannelRoundTripTest {
                         Instant.now(),
                         new Delta.ToolCall(null, usage, JsonNodeFactory.instance.objectNode(), 0));
         activeRouter.send(dealerId, event);
-        activeRouter.send(dealerId, new Frame.Done(null));
+        activeRouter.send(
+                dealerId, new Frame.Done(new Scope.GlobalScope(), null, -1, null, null, 0));
 
         // 4. DEALER receives both, in order.
         Frame f1 = activeDealer.recv(2_000);
@@ -218,13 +238,27 @@ class ZmqChannelRoundTripTest {
 
     @Test
     void rejectsFramesSentInTheWrongDirection() {
-        assertTrue(dealer().socket.send(FrameCodec.encode(new Frame.Done(null))));
+        assertTrue(
+                dealer().socket
+                        .send(
+                                FrameCodec.encode(
+                                        new Frame.Done(
+                                                new Scope.GlobalScope(),
+                                                null,
+                                                -1,
+                                                null,
+                                                null,
+                                                0))));
         assertNull(router().recv(2_000));
         dealer().send(new Frame.Heartbeat());
         var message = router().recv(2_000);
         if (message == null) throw new AssertionError("Missing heartbeat");
         assertTrue(router().socket.sendMore(message.identity()));
-        assertTrue(router().socket.send(FrameCodec.encode(new Frame.Request("wrong direction"))));
+        assertTrue(
+                router().socket
+                        .send(
+                                FrameCodec.encode(
+                                        new Frame.Request(2, null, null, "wrong direction"))));
         assertNull(dealer().recv(2_000));
         var ack = new Frame.HeartbeatAck(Instant.now());
         router().send(message.identity(), ack);
@@ -256,7 +290,7 @@ class ZmqChannelRoundTripTest {
 
     @Test
     void inputFrameToStringIsMasked() {
-        Frame.Input input = new Frame.Input("my-secret-key-123");
+        Frame.Input input = new Frame.Input("my-secret-key-123", 2);
         String str = input.toString();
         assertFalse(str.contains("my-secret-key-123"));
         assertTrue(str.contains("********"));

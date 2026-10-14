@@ -156,7 +156,7 @@ public class VetoTerminal {
         this.mainThread = Thread.currentThread();
         this.theme = new MordantTheme(t);
         this.renderer = new MordantRenderer(reader);
-        this.session = new ClientSession(new TerminalView());
+        this.session = new ClientSession(new TerminalView(), client::nextSequence);
         this.status = new TerminalStatus(reader.getTerminal(), session, theme);
         status.refresh();
 
@@ -245,10 +245,18 @@ public class VetoTerminal {
     }
 
     /** Returns false when idle cancellation means the REPL should exit. */
-    private boolean cancelCommand() {
+    private boolean cancelCommand(ClientSession.@NonNull PromptView displayed) {
         synchronized (interactionLock) {
-            if (!session.cancel()) return false;
-            client.cancel();
+            if (displayed.activePrompt() instanceof Frame.Veto veto) {
+                var refusal = session.declineApproval(veto);
+                if (refusal != null) client.send(refusal);
+                return true;
+            }
+            var current = session.promptView();
+            if (current.activePrompt() instanceof Frame.Veto) return true;
+            long targetSeq = session.cancel(displayed.requestSeq());
+            if (targetSeq == 0) return displayed.requestSeq() != 0 || current.requestSeq() != 0;
+            client.cancel(targetSeq);
             return true;
         }
     }
@@ -338,7 +346,7 @@ public class VetoTerminal {
                 // Flag false ⇒ not a swap ⇒ genuine Ctrl+C → cancel the in-flight request/prompt,
                 // or exit if idle (cancel returns null as the shutdown signal per IDLE ×
                 // cancel).
-                if (!cancelCommand()) {
+                if (!cancelCommand(view)) {
                     break; // idle → exit the REPL
                 }
                 continue;
@@ -354,8 +362,7 @@ public class VetoTerminal {
             // submit. An invalid choice re-renders the picker (the veto is still pending
             // server-side,
             // so the snapshot still shows PROMPTED + veto). Cancel-during-veto is handled by the
-            // UserInterruptException catch above, which sends Cancel - the server declines the
-            // veto.
+            // UserInterruptException catch above, which sends a refusal for that exact approval.
             if (activeVeto != null) {
                 String resolved = resolveVetoChoice(activeVeto, line);
                 if (resolved == null) {
@@ -624,11 +631,17 @@ public class VetoTerminal {
 
         @Override
         public void onPrompt(Frame.@NonNull ServerFrame prompt) {
-            // The session already set state=PROMPTED. Signal the main thread to re-render with the
-            // prompted prompt: set the flag FIRST, then interrupt readLine. The ordering matters —
-            // "interrupt fired" must imply "flag was set" so the catch can distinguish this
-            // swap-wake
-            // from a genuine Ctrl+C (see the UserInterruptException catch in repl).
+            refreshPrompt();
+        }
+
+        @Override
+        public void onPromptCleared() {
+            refreshPrompt();
+        }
+
+        private void refreshPrompt() {
+            // A user reply already returns to the REPL. Only an inbound update must wake readLine.
+            if (Thread.currentThread() == mainThread) return;
             promptSwapPending = true;
             mainThread.interrupt();
         }

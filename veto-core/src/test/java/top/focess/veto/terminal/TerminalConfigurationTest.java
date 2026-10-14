@@ -7,7 +7,6 @@ import java.net.ServerSocket;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
@@ -16,12 +15,14 @@ import org.springframework.beans.factory.BeanCreationException;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.zeromq.ZContext;
-import top.focess.veto.agent.AgentService;
-import top.focess.veto.bus.DeltaBroker;
 import top.focess.veto.command.CommandRegistry;
+import top.focess.veto.command.SessionCommandService;
 import top.focess.veto.contract.Frame;
 import top.focess.veto.contract.ServerTransport;
 import top.focess.veto.contract.Version;
+import top.focess.veto.session.AgentSessions;
+import top.focess.veto.session.SessionService;
+import top.focess.veto.session.TestAgentSessions;
 import top.focess.veto.transport.zmq.ZmqChannel;
 
 @Timeout(20)
@@ -44,42 +45,21 @@ class TerminalConfigurationTest {
 
     @Test
     void occupiedEndpointFailsApplicationStartup() throws Exception {
-        var broker = mock(DeltaBroker.class);
         try (var occupied = new ServerSocket(0)) {
-            runner("tcp://127.0.0.1:" + occupied.getLocalPort(), broker)
+            runner("tcp://127.0.0.1:" + occupied.getLocalPort())
                     .run(
                             context -> {
                                 assertInstanceOf(
                                         BeanCreationException.class, context.getStartupFailure());
-                                verify(broker, never()).subscribeAll(any());
                             });
         }
     }
 
     @Test
-    void springPublishesResourceBeansAndJoinsTheWorkerBeforeClosingTheSubscription()
-            throws Exception {
+    void springPublishesResourceBeansAndJoinsTheWorkerBeforeClosingTransport() throws Exception {
         var address = freeAddress();
-        var owner = new AtomicReference<Thread>();
         var ioWorker = new AtomicReference<Thread>();
-        var closes = new AtomicInteger();
-        var broker = mock(DeltaBroker.class);
-        when(broker.subscribeAll(any()))
-                .thenAnswer(
-                        invocation -> {
-                            owner.set(Thread.currentThread());
-                            return (AutoCloseable)
-                                    () -> {
-                                        var worker = ioWorker.get();
-                                        if (worker == null)
-                                            throw new AssertionError("Missing IO worker");
-                                        assertFalse(
-                                                worker.isAlive(),
-                                                "Stop IO before destroying dependencies");
-                                        closes.incrementAndGet();
-                                    };
-                        });
-        runner(address, broker)
+        runner(address)
                 .run(
                         context -> {
                             assertNull(context.getStartupFailure());
@@ -91,7 +71,7 @@ class TerminalConfigurationTest {
                             assertTrue(context.getBean("ipcContext") instanceof ZContext);
                             assertTrue(
                                     context.getBean("ipcTransport") instanceof ZmqChannel.Server);
-                            assertTrue(context.getBean("ipcSubscription") instanceof AutoCloseable);
+                            assertFalse(context.containsBean("ipcSubscription"));
                             var workerField = IpcServer.class.getDeclaredField("ioThread");
                             workerField.setAccessible(true);
                             var worker = (Thread) workerField.get(context.getBean(IpcServer.class));
@@ -106,55 +86,35 @@ class TerminalConfigurationTest {
                                 assertInstanceOf(Frame.Welcome.class, client.recv(2_000));
                             }
                         });
-        assertEquals(Thread.currentThread(), owner.get());
         var worker = ioWorker.get();
         if (worker == null) throw new AssertionError("Missing IO worker");
         assertFalse(worker.isAlive());
-        assertEquals(1, closes.get());
         assertEndpointReleased(address);
     }
 
     @Test
-    void subscriptionFailureAbortsStartupAndReleasesTheBoundEndpoint() throws Exception {
+    void dependencyFailureAbortsStartupAndReleasesResources() throws Exception {
         var address = freeAddress();
-        var owner = new AtomicReference<Thread>();
-        var broker = mock(DeltaBroker.class);
-        var unavailable = new IllegalStateException("subscription unavailable");
-        when(broker.subscribeAll(any()))
-                .thenAnswer(
-                        invocation -> {
-                            owner.set(Thread.currentThread());
+        var unavailable = new IllegalStateException("command registry unavailable");
+        new ApplicationContextRunner()
+                .withUserConfiguration(TerminalConfiguration.class)
+                .withPropertyValues("veto.terminal.bind-address=" + address)
+                .withBean(AgentSessions.class, TestAgentSessions::create)
+                .withBean(SessionService.class, () -> mock(SessionService.class))
+                .withBean(SessionCommandService.class, () -> mock(SessionCommandService.class))
+                .withBean(
+                        CommandRegistry.class,
+                        () -> {
                             throw unavailable;
-                        });
-        runner(address, broker)
+                        },
+                        definition -> definition.setDependsOn("ipcTransport"))
                 .run(
                         context -> {
-                            var failure = context.getStartupFailure();
-                            if (failure == null)
-                                throw new AssertionError("Subscription failure was swallowed");
-                            Throwable root = failure;
-                            while (root.getCause() instanceof Throwable cause) root = cause;
-                            assertSame(unavailable, root);
-                            assertEquals(Thread.currentThread(), owner.get());
-                            assertEndpointReleased(address);
-                        });
-    }
-
-    @Test
-    void fatalInitializationErrorsPropagateAndReleaseResources() throws Exception {
-        var address = freeAddress();
-        var broker = mock(DeltaBroker.class);
-        var fatal = new AssertionError("fatal initialization error");
-        when(broker.subscribeAll(any())).thenThrow(fatal);
-        runner(address, broker)
-                .run(
-                        context -> {
-                            var failure = context.getStartupFailure();
-                            if (failure == null)
-                                throw new AssertionError("Fatal startup error was swallowed");
-                            Throwable root = failure;
-                            while (root.getCause() instanceof Throwable cause) root = cause;
-                            assertSame(fatal, root);
+                            var failure =
+                                    assertInstanceOf(
+                                            BeanCreationException.class,
+                                            context.getStartupFailure());
+                            assertSame(unavailable, failure.getMostSpecificCause());
                         });
         assertEndpointReleased(address);
     }
@@ -175,7 +135,12 @@ class TerminalConfigurationTest {
                             return null;
                         });
         var server =
-                new IpcServer(mock(CommandRegistry.class), mock(AgentService.class), transport);
+                new IpcServer(
+                        mock(CommandRegistry.class),
+                        transport,
+                        TestAgentSessions.create(),
+                        mock(SessionService.class),
+                        mock(SessionCommandService.class));
         server.start();
         try {
             assertTrue(receiving.await(2, TimeUnit.SECONDS));
@@ -203,14 +168,14 @@ class TerminalConfigurationTest {
         }
     }
 
-    private static @NonNull ApplicationContextRunner runner(
-            @NonNull String address, @NonNull DeltaBroker broker) {
+    private static @NonNull ApplicationContextRunner runner(@NonNull String address) {
         return new ApplicationContextRunner()
                 .withUserConfiguration(TerminalConfiguration.class)
                 .withPropertyValues("veto.terminal.bind-address=" + address)
                 .withBean(CommandRegistry.class, () -> mock(CommandRegistry.class))
-                .withBean(AgentService.class, () -> mock(AgentService.class))
-                .withBean(DeltaBroker.class, () -> broker)
+                .withBean(AgentSessions.class, TestAgentSessions::create)
+                .withBean(SessionService.class, () -> mock(SessionService.class))
+                .withBean(SessionCommandService.class, () -> mock(SessionCommandService.class))
                 .withBean(EndpointConsumer.class);
     }
 

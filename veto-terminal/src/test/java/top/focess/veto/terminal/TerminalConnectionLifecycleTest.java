@@ -48,7 +48,7 @@ class TerminalConnectionLifecycleTest {
                     };
             var session = VetoTerminal.class.getDeclaredField("session");
             session.setAccessible(true);
-            session.set(terminal, new ClientSession(view));
+            session.set(terminal, new ClientSession(view, client::nextSequence));
             var running = VetoTerminal.class.getDeclaredField("running");
             running.setAccessible(true);
             running.setBoolean(terminal, true);

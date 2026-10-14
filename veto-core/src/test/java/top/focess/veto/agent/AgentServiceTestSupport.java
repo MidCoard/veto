@@ -18,7 +18,6 @@ import top.focess.veto.agent.screening.ProtectedSetResolver;
 import top.focess.veto.agent.screening.SlmScreeningProvider;
 import top.focess.veto.agent.tool.ToolEngine;
 import top.focess.veto.agent.workspace.Workspace;
-import top.focess.veto.bus.DeltaBroker;
 import top.focess.veto.bus.SessionActions;
 import top.focess.veto.event.EventManager;
 import top.focess.veto.integration.plugins.SessionPlugins;
@@ -29,6 +28,8 @@ import top.focess.veto.model.AgentInstanceRepository;
 import top.focess.veto.model.SessionRepository;
 import top.focess.veto.model.tier.ModelTierRegistry;
 import top.focess.veto.observability.ObservabilityConfiguration;
+import top.focess.veto.session.AgentSessions;
+import top.focess.veto.session.TestAgentSessions;
 import top.focess.veto.vault.CredentialVaultConfiguration;
 import top.focess.veto.vault.KeysteadVault;
 
@@ -144,7 +145,7 @@ public final class AgentServiceTestSupport {
             long maxCalls,
             @NonNull String policyRaw,
             @NonNull String screeningMode,
-            DeltaBroker broker,
+            AgentSessions runtime,
             TurnLogService history) {
         var policy = new DeployerPolicyConfiguration();
         policy.setDeployerPolicy(DeployerPolicy.parse(policyRaw));
@@ -165,7 +166,7 @@ public final class AgentServiceTestSupport {
                 maxCalls,
                 policy,
                 screeningMode,
-                broker == null ? new DeltaBroker() : broker,
+                runtime == null ? TestAgentSessions.create() : runtime,
                 selectedHistory,
                 new ProtectedSetResolver(
                         policy,

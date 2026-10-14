@@ -3,6 +3,7 @@ package top.focess.veto.terminal;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicLong;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -49,6 +50,7 @@ class LiveTestRunner {
 
     private static final @NonNull String ADDR = "tcp://127.0.0.1:15570";
 
+    private final @NonNull AtomicLong sequences = new AtomicLong();
     private ZContext ctx;
     private ZMQ.Socket dealer;
 
@@ -63,14 +65,16 @@ class LiveTestRunner {
         newDealer.setIdentity(UUID.randomUUID().toString().getBytes(StandardCharsets.UTF_8));
         newDealer.connect(ADDR);
         Thread.sleep(500);
+        sequences.set(0);
+        long helloSeq = sequences.incrementAndGet();
         send(
                 new Frame.Hello(
                         Frame.PROTOCOL_VERSION,
-                        1,
+                        helloSeq,
                         Version.UNKNOWN,
                         requireValue(System.getProperty("user.dir"), "user.dir is required")));
         Frame welcome = recv();
-        assert welcome instanceof Frame.Welcome && ((Frame.Welcome) welcome).seq() == 1;
+        assert welcome instanceof Frame.Welcome && ((Frame.Welcome) welcome).seq() == helloSeq;
     }
 
     private void disconnect() {
@@ -108,16 +112,19 @@ class LiveTestRunner {
     }
 
     private Frame exchange(@NonNull String cmd) throws Exception {
-        send(new Frame.Request(cmd));
+        long requestSeq = sequences.incrementAndGet();
+        send(new Frame.Request(requestSeq, null, null, cmd));
         int prompts = 0;
         while (true) {
             Frame f = recv();
             if (f == null) continue;
-            if (f instanceof Frame.Done || f instanceof Frame.Error || f instanceof Frame.Terminate)
-                return f;
-            if (f instanceof Frame.Prompt) {
+            if (f instanceof Frame.Terminate) return f;
+            if (f instanceof Frame.TurnOutcome
+                    && f instanceof Frame.SeqResponse response
+                    && response.seq() == requestSeq) return f;
+            if (f instanceof Frame.Prompt prompt && prompt.seq() == requestSeq) {
                 String reply = prompts == 0 ? "liveuser" : "livepass";
-                send(new Frame.Input(reply));
+                send(new Frame.Input(reply, prompt.seq()));
                 prompts++;
             }
         }
@@ -162,16 +169,18 @@ class LiveTestRunner {
             assert r instanceof Frame.Done : "/logout failed: " + r;
 
             // 6. Tab completion
-            send(new Frame.Complete("/log", 1));
+            long completionSeq = sequences.incrementAndGet();
+            send(new Frame.Complete("/log", completionSeq));
             Frame comp = recv();
             System.out.println("[COMPLETE /log] -> " + comp);
-            assert comp instanceof Frame.CompleteResult;
+            assert comp instanceof Frame.CompleteResult result && result.seq() == completionSeq;
 
             // 7. Hint
-            send(new Frame.Hint("/login ", 2));
+            long hintSeq = sequences.incrementAndGet();
+            send(new Frame.Hint("/login ", hintSeq));
             Frame hint = recv();
             System.out.println("[HINT /login ] -> " + hint);
-            assert hint instanceof Frame.HintResult;
+            assert hint instanceof Frame.HintResult result && result.seq() == hintSeq;
 
             // 8. Heartbeat
             send(new Frame.Heartbeat());

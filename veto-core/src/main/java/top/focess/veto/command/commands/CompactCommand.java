@@ -43,14 +43,8 @@ public class CompactCommand extends VetoCommand {
 
                     s.output("Initiating compaction on agent " + agent.name() + "...");
                     try {
-                        var result = commands.compact(agent);
-                        if (result.success()) {
-                            s.output("Compaction completed successfully.");
-                            return CommandResult.ALLOW;
-                        } else {
-                            s.output("Compaction failed: " + result.message());
-                            return CommandResult.REFUSE;
-                        }
+                        commands.compact(s);
+                        return CommandResult.ALLOW;
                     } catch (Exception e) {
                         s.output("Compaction failed: " + e.getMessage());
                         return CommandResult.REFUSE;

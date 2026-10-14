@@ -1,5 +1,6 @@
 package top.focess.veto.integration;
 
+import static org.apache.tomcat.websocket.Constants.BLOCKING_SEND_TIMEOUT_PROPERTY;
 import static org.apache.tomcat.websocket.Constants.READ_IDLE_TIMEOUT_MS;
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -36,11 +37,9 @@ import org.springframework.web.client.DefaultResponseErrorHandler;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.socket.WebSocketSession;
 import org.springframework.web.socket.adapter.NativeWebSocketSession;
-import org.springframework.web.socket.handler.WebSocketSessionDecorator;
 import top.focess.veto.VetoApplication;
 import top.focess.veto.agent.tool.ToolEngine;
 import top.focess.veto.agent.tool.ToolEngineImpl;
-import top.focess.veto.bus.DeltaBroker;
 import top.focess.veto.bus.VetoWebSocketAuthInterceptor;
 import top.focess.veto.bus.VetoWebSocketHandler;
 import top.focess.veto.contract.Frame;
@@ -49,6 +48,7 @@ import top.focess.veto.contract.Version;
 import top.focess.veto.integration.plugins.PluginManager;
 import top.focess.veto.memory.TurnLogService;
 import top.focess.veto.observability.AuditLogger;
+import top.focess.veto.session.AgentSessions;
 import top.focess.veto.vault.LoginSessionManager;
 import top.focess.veto.vault.UserRegistry;
 import top.focess.veto.veto.GBNFGrammarEngine;
@@ -122,9 +122,9 @@ class VetoApplicationTests {
     }
 
     @Test
-    void deltaBrokerIsInjected() {
-        DeltaBroker broker = context.getBean(DeltaBroker.class);
-        assertNotNull(broker, "DeltaBroker should be injected as a Spring bean");
+    void runtimeSessionsAreInjected() {
+        AgentSessions sessions = context.getBean(AgentSessions.class);
+        assertNotNull(sessions, "Runtime session owner should be a Spring bean");
     }
 
     @Test
@@ -349,6 +349,8 @@ class VetoApplicationTests {
                 assertInstanceOf(Frame.Welcome.class, nextWebSocketFrame(messages));
                 var session = nativeWebSocket(token);
                 assertEquals(90_000L, session.getUserProperties().get(READ_IDLE_TIMEOUT_MS));
+                assertEquals(
+                        10_000L, session.getUserProperties().get(BLOCKING_SEND_TIMEOUT_PROPERTY));
                 long oldRead = System.currentTimeMillis() - 80_000;
                 ReflectionTestUtils.setField(session, "lastActiveRead", oldRead);
                 socket.sendText(FrameCodec.encodeString(new Frame.Heartbeat()), true)
@@ -396,8 +398,7 @@ class VetoApplicationTests {
                     && token.equals(
                             socket.getAttributes()
                                     .get(VetoWebSocketAuthInterceptor.LOGIN_TOKEN_ATTRIBUTE))) {
-                var delegate = WebSocketSessionDecorator.unwrap(socket);
-                if (delegate instanceof NativeWebSocketSession nativeSocket
+                if (socket instanceof NativeWebSocketSession nativeSocket
                         && nativeSocket.getNativeSession() instanceof WsSession session)
                     return session;
             }

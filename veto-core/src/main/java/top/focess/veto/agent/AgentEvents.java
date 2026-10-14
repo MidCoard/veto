@@ -117,9 +117,9 @@ final class AgentEvents {
 
     void completed(String requestId, int turnNumber, boolean success, @NonNull String message) {
         if (success) {
-            publishFrame(new Frame.Done(scope, requestId, turnNumber, message, null));
+            publishFrame(new Frame.Done(scope, requestId, turnNumber, message, null, 0));
         } else {
-            publishFrame(new Frame.Error(scope, requestId, turnNumber, message, 0, null));
+            publishFrame(new Frame.Error(scope, requestId, turnNumber, message, 0, null, null));
         }
     }
 
@@ -197,7 +197,7 @@ final class AgentEvents {
         // Notify the veto emission seam: a transport renders a picker from a Veto frame and routes
         // the user's reply back to resolve the parked veto. The agent
         // parks in HitlRegistry regardless; a throwing listener is logged, not propagated.
-        vetoes.emit(
+        var prompt =
                 new VetoPrompt(
                         scope.agent(),
                         callId,
@@ -207,19 +207,12 @@ final class AgentEvents {
                         call.args(),
                         p.danger(),
                         p.relevance(),
-                        seq));
-        var danger = p.danger();
-        var relevance = p.relevance();
-        publishFrame(
-                new Frame.Veto(
-                        scope,
-                        callId,
-                        call.toolName(),
-                        p.scenario().name(),
-                        offered.stream().map(Enum::name).toList(),
-                        call.args(),
-                        danger,
-                        relevance,
-                        seq));
+                        seq);
+        vetoes.emit(prompt);
+        try {
+            eventSink.publish(scope, prompt);
+        } catch (RuntimeException failure) {
+            log.warn("Agent {} approval publication failed", scope.agent(), failure);
+        }
     }
 }

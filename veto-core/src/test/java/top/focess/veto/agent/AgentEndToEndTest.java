@@ -51,6 +51,7 @@ import top.focess.veto.api.plugin.contract.JsonValue;
 import top.focess.veto.builtin.planning.ActionsProgramParser;
 import top.focess.veto.builtin.planning.PlanProgram;
 import top.focess.veto.builtin.planning.ProgramValidator;
+import top.focess.veto.builtin.planning.SubmitPlanTool;
 import top.focess.veto.bus.SessionActions;
 import top.focess.veto.event.EventManager;
 import top.focess.veto.integration.plugins.SessionPlugins;
@@ -193,7 +194,13 @@ class AgentEndToEndTest {
                                     Mockito.any(),
                                     Mockito.anyString()))
                     .thenAnswer(
-                            call -> transforms.intent(call.getArgument(4), call.getArgument(6)));
+                            call -> {
+                                AgentProfile base = call.getArgument(4);
+                                String task = call.getArgument(6);
+                                if (base == null || task == null)
+                                    throw new AssertionError("Missing transformation context");
+                                return transforms.intent(base, task);
+                            });
             dependencies.plugins(selection).events(Mockito.mock(EventManager.class));
             var tiers = Mockito.mock(ModelTierRegistry.class);
             var model = transforms.leaderBinding;
@@ -569,7 +576,7 @@ class AgentEndToEndTest {
         var forward =
                 new VetoResponse(
                         null,
-                        java.util.List.of(
+                        List.of(
                                 new ToolCall(
                                         "submit_plan",
                                         Map.of(
@@ -583,7 +590,7 @@ class AgentEndToEndTest {
         var reverse =
                 new VetoResponse(
                         null,
-                        java.util.List.of(
+                        List.of(
                                 new ToolCall(
                                         "submit_plan",
                                         Map.of(
@@ -703,8 +710,11 @@ class AgentEndToEndTest {
 
     public record DisbandGroupArgs() {}
 
-    @SuppressWarnings("type.arguments.not.inferred")
     private static @NonNull ToolDefinition transformDefinition(@NonNull String name) {
+        // A Class<?> target avoids computing a generic common type for unrelated argument records.
+        Class<?> argsClass;
+        if ("create_group".equals(name)) argsClass = CreateGroupArgs.class;
+        else argsClass = DisbandGroupArgs.class;
         return new AgentToolDefinition(
                 name,
                 "transform stub",
@@ -713,7 +723,7 @@ class AgentEndToEndTest {
                         : ToolCapability.GROUP_CONTROL,
                 Danger.SAFE,
                 Object.class,
-                "create_group".equals(name) ? CreateGroupArgs.class : DisbandGroupArgs.class,
+                argsClass,
                 Map.of());
     }
 
@@ -726,10 +736,10 @@ class AgentEndToEndTest {
      */
     private static final class TransformToolEngine implements ToolEngine {
         static @NonNull AgentToolDefinition planDefinition() {
-            var tool = new top.focess.veto.builtin.planning.SubmitPlanTool();
+            var tool = new SubmitPlanTool();
             return AgentToolDefinition.from(
                     tool.getName(),
-                    top.focess.veto.builtin.planning.SubmitPlanTool.class,
+                    SubmitPlanTool.class,
                     tool.getArgsClass(),
                     tool.getCapability());
         }
@@ -748,7 +758,7 @@ class AgentEndToEndTest {
         AgentConfiguration.Intent intent(@NonNull AgentProfile base, @NonNull String task) {
             if (phase == 0) return null;
             boolean leading = phase == 1;
-            var names =
+            Set<@NonNull String> names =
                     leading
                             ? leaderTools.stream()
                                     .map(ToolDefinition::name)
@@ -790,7 +800,6 @@ class AgentEndToEndTest {
         }
 
         @Override
-        @SuppressWarnings("type.arguments.not.inferred")
         public ToolDefinition resolveDefinition(@NonNull String toolName) {
             if ("submit_plan".equals(toolName)) return planDefinition();
             if ("create_group".equals(toolName) || "disband_group".equals(toolName)) {

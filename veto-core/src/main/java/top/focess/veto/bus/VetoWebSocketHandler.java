@@ -1,13 +1,17 @@
 package top.focess.veto.bus;
 
+import static org.apache.tomcat.websocket.Constants.BLOCKING_SEND_TIMEOUT_PROPERTY;
 import static org.apache.tomcat.websocket.Constants.READ_IDLE_TIMEOUT_MS;
-import static top.focess.veto.util.LogValues.safe;
 
+import jakarta.annotation.PreDestroy;
 import jakarta.websocket.Session;
 import java.io.IOException;
-import java.time.Instant;
+import java.time.Duration;
+import java.util.List;
+import java.util.Locale;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -16,47 +20,43 @@ import org.springframework.web.socket.CloseStatus;
 import org.springframework.web.socket.TextMessage;
 import org.springframework.web.socket.WebSocketSession;
 import org.springframework.web.socket.adapter.NativeWebSocketSession;
-import org.springframework.web.socket.handler.ConcurrentWebSocketSessionDecorator;
 import org.springframework.web.socket.handler.TextWebSocketHandler;
-import top.focess.veto.VetoVersion;
-import top.focess.veto.agent.AgentService;
-import top.focess.veto.agent.intercept.HitlRegistry;
+import top.focess.veto.command.SessionCommandService;
 import top.focess.veto.contract.Frame;
 import top.focess.veto.contract.FrameCodec;
-import top.focess.veto.model.SessionRepository;
+import top.focess.veto.session.AgentSessions;
+import top.focess.veto.session.ProtocolConnection;
+import top.focess.veto.session.SessionService;
 import top.focess.veto.vault.LoginSessionManager;
 import top.focess.veto.vault.LoginSessionManager.LoginSession;
 
-/**
- * Authenticated browser endpoint registered by {@link WebSocketConfig} at /ws/veto/bus. Spring
- * callbacks decode shared frames directly; {@link DeltaBusBridge} supplies live session events.
- */
+/** Authenticated WebSocket adapter. Shared connections own application frame handling. */
 @Component
-public class VetoWebSocketHandler extends TextWebSocketHandler {
+public final class VetoWebSocketHandler extends TextWebSocketHandler {
     private static final @NonNull Logger log =
             LoggerFactory.getLogger("top.focess.veto.bus.VetoWebSocketHandler");
-
-    private final @NonNull AgentService agents;
-    private final @NonNull HitlRegistry approvals;
-    private final @NonNull SessionRepository sessionRepository;
+    private final @NonNull AgentSessions runtime;
+    private final @NonNull SessionService sessions;
+    private final @NonNull SessionCommandService commands;
     private final @NonNull LoginSessionManager loginSessions;
-    private final @NonNull ConcurrentHashMap<@NonNull String, @NonNull Connection> connections =
+    private final @NonNull ConcurrentHashMap<@NonNull String, @NonNull Peer> connections =
             new ConcurrentHashMap<>();
+    private boolean stopping;
 
     public VetoWebSocketHandler(
-            @NonNull SessionRepository sessionRepository,
+            @NonNull SessionService sessions,
+            @NonNull SessionCommandService commands,
             @NonNull LoginSessionManager loginSessions,
-            @NonNull AgentService agents,
-            @NonNull HitlRegistry approvals) {
-        this.agents = agents;
-        this.approvals = approvals;
-        this.sessionRepository = sessionRepository;
+            @NonNull AgentSessions runtime) {
+        this.sessions = sessions;
+        this.commands = commands;
         this.loginSessions = loginSessions;
+        this.runtime = runtime;
     }
 
     @Override
     public void afterConnectionEstablished(@NonNull WebSocketSession socket) throws IOException {
-        UUID user = authenticatedUser(socket);
+        var user = authenticatedUser(socket);
         if (user == null) {
             socket.close(CloseStatus.POLICY_VIOLATION.withReason("authentication required"));
             return;
@@ -64,97 +64,32 @@ public class VetoWebSocketHandler extends TextWebSocketHandler {
         if (!(socket instanceof NativeWebSocketSession nativeSocket)
                 || !(nativeSocket.getNativeSession() instanceof Session session))
             throw new IllegalStateException("Veto WebSocket requires a native Jakarta session");
-        // Tomcat tracks reads separately so outgoing events cannot keep a silent client alive.
         session.getUserProperties().put(READ_IDLE_TIMEOUT_MS, 90_000L);
-        var connection = new Connection(socket, user);
-        connections.put(socket.getId(), connection);
+        session.getUserProperties().put(BLOCKING_SEND_TIMEOUT_PROPERTY, 10_000L);
+        var peer = createPeer(socket, user);
+        boolean registered;
+        synchronized (this) {
+            registered = !stopping && connections.putIfAbsent(socket.getId(), peer) == null;
+            if (registered) peer.writer.start();
+        }
+        if (!registered) socket.close(CloseStatus.GOING_AWAY);
     }
 
     @Override
     protected void handleTextMessage(
             @NonNull WebSocketSession socket, @NonNull TextMessage message) {
-        var connection = connections.get(socket.getId());
-        if (connection == null || !isAuthenticated(connection)) return;
+        var peer = connections.get(socket.getId());
+        if (peer == null || peer.socket != socket || !peer.writer.isOpen()) return;
         var decoded = FrameCodec.decode(message.getPayload());
-        if (!(decoded instanceof Frame.ClientFrame frame)) {
-            send(connection, new Frame.Error("Invalid client frame", 0));
-            return;
-        }
-        if (frame instanceof Frame.Hello hello) {
-            if (connection.ready || hello.version() != Frame.PROTOCOL_VERSION) {
-                send(connection, new Frame.Error("Invalid protocol handshake", hello.seq()));
-                close(connection, CloseStatus.PROTOCOL_ERROR);
-                return;
-            }
-            send(
-                    connection,
-                    new Frame.Welcome(Frame.PROTOCOL_VERSION, hello.seq(), VetoVersion.VERSION));
-            connection.ready = true;
-            return;
-        }
-        if (!connection.ready) {
-            send(connection, new Frame.Error("Hello required before application frames", 0));
-            close(connection, CloseStatus.PROTOCOL_ERROR);
-            return;
-        }
-        switch (frame) {
-            case Frame.Bye ignored -> close(connection, CloseStatus.NORMAL);
-            case Frame.Heartbeat ignored -> send(connection, new Frame.HeartbeatAck(Instant.now()));
-            case Frame.VetoResult result -> resolveVeto(connection, result);
-            default ->
-                    send(
-                            connection,
-                            new Frame.Error(
-                                    "Unsupported frame on this connection",
-                                    frame instanceof Frame.SeqRequest request ? request.seq() : 0));
-        }
-    }
-
-    private void resolveVeto(@NonNull Connection connection, Frame.@NonNull VetoResult result) {
-        var scope = result.scope();
-        var session = sessionRepository.findById(scope.session()).orElse(null);
-        var primary = session == null ? null : session.getPrimaryAgentId();
-        if (session == null
-                || !connection.user.equals(scope.userId())
-                || !connection.user.equals(session.getUserId())
-                || primary == null
-                || !approvals.sessionAgents(primary).contains(result.scope().agent())) {
-            send(connection, new Frame.Error(scope, null, -1, "Approval not found", 0, null));
-            return;
-        }
-        Object token =
-                connection
-                        .socket
-                        .getAttributes()
-                        .get(VetoWebSocketAuthInterceptor.LOGIN_TOKEN_ATTRIBUTE);
-        if (result.option().isBlank()
-                || !(token instanceof String text)
-                || !loginSessions.whileAuthenticated(
-                        text,
-                        connection.user,
-                        () ->
-                                agents.resolveVeto(
-                                        result.scope().agent(),
-                                        result.callId(),
-                                        result.option(),
-                                        result.seq()))) {
-            send(
-                    connection,
-                    new Frame.Error(scope, null, -1, "Approval no longer pending", 0, null));
-            return;
-        }
-        // Tool execution or refusal produces the normal tool-result deltas.
+        if (decoded instanceof Frame.ClientFrame frame) peer.connection.receive(frame);
+        else peer.connection.send(new Frame.Error("Invalid client frame", 0));
     }
 
     @Override
     public void afterConnectionClosed(
             @NonNull WebSocketSession socket, @NonNull CloseStatus status) {
-        connections.remove(socket.getId());
-        log.debug(
-                "WS Bus: Client '{}' disconnected (code={}, reason='{}')",
-                socket.getId(),
-                status.getCode(),
-                safe(status.getReason()));
+        var peer = connections.get(socket.getId());
+        if (peer != null && peer.socket == socket) peer.close(status);
     }
 
     @Override
@@ -163,91 +98,103 @@ public class VetoWebSocketHandler extends TextWebSocketHandler {
                 "WS Bus: Transport error for '{}' ({})",
                 socket.getId(),
                 failure.getClass().getSimpleName());
-        var connection = connections.get(socket.getId());
-        if (connection != null) close(connection, CloseStatus.SERVER_ERROR);
+        var peer = connections.get(socket.getId());
+        if (peer != null && peer.socket == socket) peer.close(CloseStatus.SERVER_ERROR);
     }
 
-    /** Sends session events only to authenticated connections belonging to the session owner. */
-    public void sendFrame(Frame.@NonNull ScopedFrame frame) {
-        if (!(frame instanceof Frame.ServerFrame outgoing))
-            throw new IllegalArgumentException("Only server frames can be published to clients");
-        UUID sessionId = frame.sessionId();
-        if (sessionId == null) return;
-        UUID user =
-                sessionRepository
-                        .findById(sessionId.toString())
-                        .map(session -> session.getUserId())
-                        .orElse(null);
-        var scope = frame.scope();
-        if (user == null || !user.equals(scope.userId())) return;
-        for (var connection : connections.values()) {
-            if (connection.ready && user.equals(connection.user)) send(connection, outgoing);
+    @PreDestroy
+    void stop() {
+        List<@NonNull Peer> closing;
+        synchronized (this) {
+            stopping = true;
+            closing = List.copyOf(connections.values());
         }
-    }
-
-    private void send(@NonNull Connection connection, Frame.@NonNull ServerFrame frame) {
-        var socket = connection.socket;
-        if (connections.get(socket.getId()) != connection) return;
-        if (!socket.isOpen()) {
-            connections.remove(socket.getId(), connection);
-            return;
-        }
-        if (!isAuthenticated(connection)) return;
-        try {
-            socket.sendMessage(new TextMessage(FrameCodec.encodeString(frame)));
-        } catch (IOException | RuntimeException failure) {
-            log.warn(
-                    "WS Bus: Failed to send to '{}' ({})",
-                    socket.getId(),
-                    failure.getClass().getSimpleName());
-            close(connection, CloseStatus.SERVER_ERROR);
-        }
-    }
-
-    private boolean isAuthenticated(@NonNull Connection connection) {
-        if (connection.user.equals(authenticatedUser(connection.socket))) return true;
-        close(connection, CloseStatus.POLICY_VIOLATION.withReason("authentication expired"));
-        return false;
-    }
-
-    private void close(@NonNull Connection connection, @NonNull CloseStatus status) {
-        if (!connections.remove(connection.socket.getId(), connection)) return;
-        try {
-            connection.socket.close(status);
-        } catch (IOException | RuntimeException failure) {
-            log.debug(
-                    "WS Bus: Could not close '{}' ({})",
-                    connection.socket.getId(),
-                    failure.getClass().getSimpleName());
+        for (var peer : closing) peer.close(CloseStatus.GOING_AWAY);
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(12);
+        for (var peer : closing) {
+            try {
+                long remaining = deadline - System.nanoTime();
+                if (remaining <= 0 || !peer.writer.awaitTermination(Duration.ofNanos(remaining))) {
+                    log.warn("WS Bus: Output writers did not stop before shutdown deadline");
+                    break;
+                }
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+                break;
+            }
         }
     }
 
     public int getActiveSessionCount() {
-        return (int) connections.values().stream().filter(c -> c.socket.isOpen()).count();
+        return (int)
+                connections.values().stream()
+                        .filter(peer -> peer.writer.isOpen() && peer.socket.isOpen())
+                        .count();
     }
 
     private UUID authenticatedUser(@NonNull WebSocketSession socket) {
-        Object value =
+        var value =
                 socket.getAttributes()
                         .get(VetoWebSocketAuthInterceptor.AUTHENTICATED_USER_ATTRIBUTE);
-        Object token =
-                socket.getAttributes().get(VetoWebSocketAuthInterceptor.LOGIN_TOKEN_ATTRIBUTE);
+        var token = socket.getAttributes().get(VetoWebSocketAuthInterceptor.LOGIN_TOKEN_ATTRIBUTE);
         if (!(value instanceof UUID user) || !(token instanceof String text)) return null;
         return loginSessions
                 .validateToken(text)
-                .filter(authenticated -> user.equals(authenticated.userId()))
+                .filter(login -> user.equals(login.userId()))
                 .map(LoginSession::userId)
                 .orElse(null);
     }
 
-    private static final class Connection {
-        private final @NonNull WebSocketSession socket;
-        private final @NonNull UUID user;
-        private volatile boolean ready;
+    private @NonNull Peer createPeer(@NonNull WebSocketSession socket, @NonNull UUID user) {
+        var token = socket.getAttributes().get(VetoWebSocketAuthInterceptor.LOGIN_TOKEN_ATTRIBUTE);
+        if (!(token instanceof String text))
+            throw new IllegalArgumentException("Login token required");
+        var writer =
+                new WebSocketWriter(
+                        socket, () -> user.equals(authenticatedUser(socket)), this::removed);
+        var headers = socket.getHandshakeHeaders();
+        var languages = headers == null ? List.<Locale>of() : headers.getAcceptLanguageAsLocales();
+        var locale = languages.isEmpty() ? Locale.getDefault() : languages.getFirst();
+        var connection =
+                new ProtocolConnection(
+                        socket.getId(),
+                        runtime,
+                        sessions,
+                        commands,
+                        null,
+                        user,
+                        () -> authenticated(user, socket, writer),
+                        operation -> loginSessions.whileAuthenticated(text, user, operation),
+                        (frame, version, attached) -> writer.send(frame, attached),
+                        drain -> {
+                            if (drain) writer.finish(CloseStatus.PROTOCOL_ERROR);
+                            else writer.close(CloseStatus.NORMAL);
+                        },
+                        locale);
+        return new Peer(socket, connection, writer);
+    }
 
-        private Connection(@NonNull WebSocketSession socket, @NonNull UUID user) {
-            this.socket = new ConcurrentWebSocketSessionDecorator(socket, 10_000, 1024 * 1024);
-            this.user = user;
+    private boolean authenticated(
+            @NonNull UUID user, @NonNull WebSocketSession socket, @NonNull WebSocketWriter writer) {
+        if (user.equals(authenticatedUser(socket))) return true;
+        writer.close(CloseStatus.POLICY_VIOLATION.withReason("authentication expired"));
+        return false;
+    }
+
+    private void removed(@NonNull WebSocketWriter writer) {
+        var peer = connections.get(writer.socket.getId());
+        if (peer != null
+                && peer.writer == writer
+                && connections.remove(writer.socket.getId(), peer)) peer.connection.close();
+    }
+
+    private record Peer(
+            @NonNull WebSocketSession socket,
+            @NonNull ProtocolConnection connection,
+            @NonNull WebSocketWriter writer) {
+        void close(@NonNull CloseStatus status) {
+            writer.close(status);
+            connection.close();
         }
     }
 }

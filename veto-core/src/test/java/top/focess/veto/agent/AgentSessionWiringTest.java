@@ -26,31 +26,32 @@ import top.focess.veto.api.llm.LlmSystemUsage;
 import top.focess.veto.api.llm.ProviderType;
 import top.focess.veto.api.llm.ToolCall;
 import top.focess.veto.api.llm.VetoResponse;
-import top.focess.veto.bus.DeltaBroker;
 import top.focess.veto.bus.SessionActions;
 import top.focess.veto.contract.Delta;
 import top.focess.veto.contract.Frame;
 import top.focess.veto.llm.core.ToolResultPresenter;
 import top.focess.veto.llm.core.UniformLLMCaller;
+import top.focess.veto.session.AgentSessions;
+import top.focess.veto.session.TestAgentSessions;
+import top.focess.veto.session.TestConnection;
 import top.focess.veto.vault.TestUsers;
 
 /**
  * Verifies the Part-8 emission seam: an agent's user-facing message is published as a per-session
- * {@link Delta} to the {@link DeltaBroker} (which the {@code DeltaBusBridge} then forwards to
- * WebSocket clients). The broker assigns a monotonic sequence; the frame text is the message
- * verbatim.
+ * {@link Delta} to the {@link AgentSessions} attachment runtime. The owning session assigns a
+ * monotonic sequence; the frame text is the message verbatim.
  */
-class DeltaBrokerWiringTest {
+class AgentSessionWiringTest {
 
     private static final Duration EPISODE_TIMEOUT = Duration.ofSeconds(10);
 
-    private static @NonNull AgentService serviceWithBroker(
-            @NonNull UniformLLMCaller caller, @NonNull DeltaBroker broker) {
-        return serviceWithBroker(caller, broker, 50L);
+    private static @NonNull AgentService serviceWithSession(
+            @NonNull UniformLLMCaller caller, @NonNull AgentSessions runtime) {
+        return serviceWithSession(caller, runtime, 50L);
     }
 
-    private static @NonNull AgentService serviceWithBroker(
-            @NonNull UniformLLMCaller caller, @NonNull DeltaBroker broker, long budget) {
+    private static @NonNull AgentService serviceWithSession(
+            @NonNull UniformLLMCaller caller, @NonNull AgentSessions runtime, long budget) {
         ObjectMapper mapper = new ObjectMapper();
         PromptCompiler compiler =
                 new PromptCompiler(
@@ -75,7 +76,7 @@ class DeltaBrokerWiringTest {
                 budget,
                 "FULL_ACCESS",
                 "STRICT",
-                broker,
+                runtime,
                 null);
     }
 
@@ -102,23 +103,27 @@ class DeltaBrokerWiringTest {
 
     @Test
     void executionActionsArriveBeforeModelWorkAndAfterCompletion() throws Exception {
-        var broker = new DeltaBroker();
+        var runtime = TestAgentSessions.create();
         var frames = new CopyOnWriteArrayList<Frame.ScopedFrame>();
         var idleUpdate = new CountDownLatch(1);
-        broker.subscribeAll(
-                frame -> {
-                    frames.add(frame);
-                    if (frame instanceof Frame.Action
-                            && frames.stream().anyMatch(Frame.Done.class::isInstance))
-                        idleUpdate.countDown();
-                });
+        runtime.connectBrowser(
+                new TestConnection(
+                                TestUsers.OWNER,
+                                frame -> {
+                                    frames.add(frame);
+                                    if (frame instanceof Frame.Action
+                                            && frames.stream()
+                                                    .anyMatch(Frame.Done.class::isInstance))
+                                        idleUpdate.countDown();
+                                })
+                        .connection());
         var service =
-                serviceWithBroker(
+                serviceWithSession(
                         (request, session) -> {
                             assertTrue(frames.stream().anyMatch(Frame.Action.class::isInstance));
                             return thoughtOn(null, "done");
                         },
-                        broker);
+                        runtime);
         try {
             assertTrue(
                     service.submit(
@@ -147,17 +152,17 @@ class DeltaBrokerWiringTest {
 
     @Test
     void measuredModelCallsPublishUsageBeforeCompletion() throws Exception {
-        var broker = new DeltaBroker();
+        var runtime = TestAgentSessions.create();
         var frames = new CopyOnWriteArrayList<Frame.ScopedFrame>();
-        broker.subscribeAll(frames::add);
+        runtime.connectBrowser(new TestConnection(TestUsers.OWNER, frames::add).connection());
         var service =
-                serviceWithBroker(
+                serviceWithSession(
                         (request, session) -> {
                             LlmSystemUsage.set(100, 20, 30L, null);
                             LlmSystemUsage.set(140, 25);
                             return thoughtOn(null, "answer");
                         },
-                        broker);
+                        runtime);
         try {
             assertTrue(
                     service.submit(
@@ -199,18 +204,18 @@ class DeltaBrokerWiringTest {
 
     @Test
     void breakerPublishesNoticeThenDoneAndWaitsForTheNextUserRequest() throws Exception {
-        var broker = new DeltaBroker();
+        var runtime = TestAgentSessions.create();
         var frames = new CopyOnWriteArrayList<Frame.ScopedFrame>();
-        broker.subscribeAll(frames::add);
+        runtime.connectBrowser(new TestConnection(TestUsers.OWNER, frames::add).connection());
         var service =
-                serviceWithBroker(
+                serviceWithSession(
                         scripted(
                                 new VetoResponse(
                                         null,
                                         List.of(new ToolCall("missing", Map.of(), "call")),
                                         null),
                                 thoughtOn(null, "resumed")),
-                        broker,
+                        runtime,
                         1L);
         var result =
                 service.submit(
@@ -245,15 +250,15 @@ class DeltaBrokerWiringTest {
 
     @Test
     void failedEpisodePublishesErrorWithoutDone() throws Exception {
-        var broker = new DeltaBroker();
+        var runtime = TestAgentSessions.create();
         var frames = new CopyOnWriteArrayList<Frame.ScopedFrame>();
-        broker.subscribeAll(frames::add);
+        runtime.connectBrowser(new TestConnection(TestUsers.OWNER, frames::add).connection());
         var service =
-                serviceWithBroker(
+                serviceWithSession(
                         (request, modelSessionId) -> {
                             throw new IllegalStateException("test provider failure");
                         },
-                        broker);
+                        runtime);
         var result =
                 service.submit("failed-wire", "Hi", binding(""), EPISODE_TIMEOUT, TestUsers.OWNER);
         assertFalse(result.success());
@@ -268,12 +273,12 @@ class DeltaBrokerWiringTest {
 
     @Test
     void emitMessagePublishesDeltaToBroker() throws Exception {
-        DeltaBroker broker = new DeltaBroker();
+        var runtime = TestAgentSessions.create();
         List<Frame.ScopedFrame> frames = new CopyOnWriteArrayList<>();
-        broker.subscribeAll(frames::add);
+        runtime.connectBrowser(new TestConnection(TestUsers.OWNER, frames::add).connection());
 
         AgentService service =
-                serviceWithBroker(scripted(thoughtOn("2 + 2 = 4.", "The answer is 4.")), broker);
+                serviceWithSession(scripted(thoughtOn("2 + 2 = 4.", "The answer is 4.")), runtime);
         AgentResult result =
                 service.submit(
                         "delta-wire",

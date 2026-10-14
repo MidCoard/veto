@@ -63,6 +63,9 @@ public interface ClientView {
     /** Backend requests input. The view should swap its prompt to the prompted shape. */
     void onPrompt(Frame.@NonNull ServerFrame prompt);
 
+    /** The displayed interaction resolved; restore the ordinary command prompt. */
+    default void onPromptCleared() {}
+
     /**
      * Fatal error, already wrapped in a {@link StyledText} (typically {@link StyleToken#ERROR}).
      */

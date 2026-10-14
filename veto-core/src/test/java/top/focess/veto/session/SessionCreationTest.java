@@ -80,7 +80,8 @@ class SessionCreationTest {
                     plugins,
                     mock(EventManager.class),
                     mock(PluginDataCleanup.class),
-                    mock(RequestContinuationStore.class));
+                    mock(RequestContinuationStore.class),
+                    TestAgentSessions.create(sessions, mock(AgentService.class)));
 
     @Test
     void tenantFilesystemFailureDoesNotRevealHostMapping(@TempDir @NonNull Path base)

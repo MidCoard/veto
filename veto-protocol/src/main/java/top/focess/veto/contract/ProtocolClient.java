@@ -201,8 +201,13 @@ public final class ProtocolClient implements AutoCloseable {
     }
 
     /** Queues cancellation with a connection-owned sequence; CancelResult arrives on receive(). */
-    public void cancel() {
-        state.cancel();
+    public void cancel(long targetSeq) {
+        state.cancel(targetSeq);
+    }
+
+    /** Allocates an operation identity shared with this connection's queries and controls. */
+    public long nextSequence() {
+        return state.nextSequence();
     }
 
     /**
@@ -308,8 +313,15 @@ public final class ProtocolClient implements AutoCloseable {
             return outgoing.pollFirst();
         }
 
-        private synchronized void cancel() {
-            send(new Frame.Cancel(sequence++));
+        private synchronized long nextSequence() {
+            if (phase != Phase.OPEN)
+                throw new IllegalStateException("Protocol connection is not open");
+            if (sequence <= 0) throw new IllegalStateException("Protocol sequence exhausted");
+            return sequence++;
+        }
+
+        private synchronized void cancel(long targetSeq) {
+            send(new Frame.Cancel(nextSequence(), targetSeq));
         }
 
         private <R extends Frame.SeqRequest & Frame.ClientFrame> Frame.SeqResponse exchange(
@@ -318,7 +330,7 @@ public final class ProtocolClient implements AutoCloseable {
             long seq;
             synchronized (this) {
                 if (phase != Phase.OPEN || outgoing.size() == CAPACITY) return null;
-                seq = sequence++;
+                seq = nextSequence();
                 var frame = request.apply(seq);
                 pending.put(seq, response);
                 outgoing.addLast(frame);

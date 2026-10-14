@@ -218,9 +218,11 @@ class AgentRunnerTest {
             assertNotSame(active.result(), following.result());
             assertFalse(active.settled().isDone());
             var foreign = new RequestHandle(new Object());
+            assertFalse(foreign.requestCancellation());
             assertFalse(agent.cancelTask(foreign, Duration.ZERO));
             assertFalse(foreign.result().isDone());
             assertFalse(foreign.settled().isDone());
+            assertTrue(cancelled.requestCancellation());
             assertTrue(agent.cancelTask(cancelled, Duration.ofSeconds(1)));
             assertFalse(cancelled.await(EPISODE_TIMEOUT).success());
             assertTrue(cancelled.settled().isDone());
@@ -329,6 +331,7 @@ class AgentRunnerTest {
                             });
             assertTrue(entered.await(5, TimeUnit.SECONDS));
             assertTrue(task.result().isDone());
+            assertFalse(task.requestCancellation());
             assertFalse(agent.cancelTask(task, Duration.ofMillis(20)));
             release.countDown();
             assertTrue(agent.cancelTask(task, Duration.ofSeconds(5)));
@@ -465,6 +468,8 @@ class AgentRunnerTest {
                             "cancel-task", "First task", binding("System"), TestUsers.OWNER);
             var agent = requireAgent(service.agent("cancel-task"));
             assertTrue(entered.await(5, TimeUnit.SECONDS));
+            assertTrue(first.requestCancellation());
+            assertFalse(first.settled().isDone());
             assertFalse(agent.cancelTask(first, Duration.ofMillis(20)));
             assertTrue(interrupted.await(5, TimeUnit.SECONDS));
             assertFalse(agent.cancelTask(first, Duration.ofMillis(20)));
@@ -478,6 +483,7 @@ class AgentRunnerTest {
             release.countDown();
             assertTrue(agent.cancelTask(first, Duration.ofSeconds(5)));
             assertFalse(first.await(EPISODE_TIMEOUT).success());
+            assertFalse(first.requestCancellation());
             assertTrue(
                     agent.history().stream()
                             .anyMatch(

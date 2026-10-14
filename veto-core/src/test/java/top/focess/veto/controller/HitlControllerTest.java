@@ -11,7 +11,6 @@ import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
-import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import top.focess.veto.agent.AgentService;
 import top.focess.veto.agent.intercept.HitlRegistry;
@@ -20,21 +19,24 @@ import top.focess.veto.api.agent.screening.Danger;
 import top.focess.veto.api.llm.ToolCall;
 import top.focess.veto.bus.SessionActions;
 import top.focess.veto.session.SessionService;
+import top.focess.veto.session.TestAgentSessions;
 import top.focess.veto.vault.KeysteadVault;
 import top.focess.veto.vault.TestUsers;
 
 class HitlControllerTest {
     @Test
-    void parentSessionCanListResolveAndCancelMateVetoesWithoutCrossingSessions() throws Exception {
+    void readOnlySnapshotsIncludeMateVetoesWithoutCrossingSessions() throws Exception {
         var registry = new HitlRegistry(null, Mockito.mock(SessionActions.class));
         var sessions = mock(SessionService.class);
         var service = mock(AgentService.class);
         var vault = mock(KeysteadVault.class);
+        when(service.hasApprovalAgent(anyString(), eq("leader"))).thenReturn(true);
+        when(service.hasApprovalAgent(anyString(), eq("mate"))).thenReturn(true);
         var mvc =
-                MockMvcBuilders.standaloneSetup(
-                                new HitlController(sessions, service, registry, vault))
+                MockMvcBuilders.standaloneSetup(new HitlController(sessions, registry, vault))
                         .build();
         UUID sessionId = UUID.randomUUID();
+        var runtime = TestAgentSessions.bind(sessions, service);
         registry.setSession("leader", sessionId);
         registry.setSession("mate", sessionId);
         registry.setSession("outsider", UUID.randomUUID());
@@ -60,44 +62,10 @@ class HitlControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.length()").value(1))
                 .andExpect(jsonPath("$[0].agentId").value("mate"));
-        mvc.perform(
-                        post("/api/sessions/session/vetoes/foreign")
-                                .contentType(MediaType.APPLICATION_JSON)
-                                .content("{\"option\":\"ACCEPT_READ\"}"))
-                .andExpect(status().isNotFound());
-        assertFalse(foreign.isDone());
-        var collision =
-                registry.register(
-                        "leader",
-                        read.callId(),
-                        read,
-                        null,
-                        List.of(VetoOption.ACCEPT_READ, VetoOption.READ_DECLINE),
-                        Danger.SAFE);
-        mvc.perform(
-                        post("/api/sessions/session/vetoes/" + read.callId())
-                                .contentType(MediaType.APPLICATION_JSON)
-                                .content("{\"option\":\"ACCEPT_READ\"}"))
-                .andExpect(status().isConflict());
-        assertFalse(collision.isDone());
         assertFalse(pending.isDone());
-        registry.declineOption("leader", read.callId());
-        mvc.perform(
-                        post("/api/sessions/session/vetoes/" + read.callId())
-                                .contentType(MediaType.APPLICATION_JSON)
-                                .content("{\"option\":\"ACCEPT_READ\"}"))
-                .andExpect(status().isNoContent());
-        assertTrue(pending.isDone());
-        var cancelled = registry.register("mate", "cancel-me");
-        mvc.perform(post("/api/sessions/session/cancel"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.declined").value(1));
-        assertTrue(cancelled.isDone());
         assertFalse(foreign.isDone());
-        var terminated = registry.register("mate", "terminate-me");
-        registry.clear("mate");
-        assertTrue(terminated.isDone(), "Terminating a parked Mate must release its wait");
-        assertEquals(List.of("leader"), registry.sessionAgents("leader"));
+        mvc.perform(get("/api/sessions/session/veto-history")).andExpect(status().isOk());
+        mvc.perform(post("/api/sessions/session/cancel")).andExpect(status().isNotFound());
         when(vault.currentUser()).thenReturn(null);
         mvc.perform(get("/api/sessions/session/vetoes")).andExpect(status().isUnauthorized());
     }

@@ -11,6 +11,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.function.Supplier;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.agent.intercept.ApprovalReceipt;
 import top.focess.veto.api.agent.AgentResult;
@@ -27,6 +28,14 @@ import top.focess.veto.api.llm.LlmBinding;
  * before execution exits. Ordinary admitted completion callbacks execute on the Agent thread.
  */
 public final class RequestHandle {
+    /** Guards the final runner enqueue after potentially blocking input protection completes. */
+    @FunctionalInterface
+    public interface Admission {
+        @NonNull Admission DIRECT = Supplier::get;
+
+        @NonNull RequestHandle enqueue(@NonNull Supplier<@NonNull RequestHandle> commit);
+    }
+
     final @NonNull Object owner;
     final @NonNull RequestEpisode episode;
     final LlmBinding binding;
@@ -110,6 +119,11 @@ public final class RequestHandle {
     /** Completes once execution can no longer produce effects for this request. */
     public @NonNull CompletableFuture<Boolean> settled() {
         return settled;
+    }
+
+    /** Requests cancellation from the owning runner without waiting for execution settlement. */
+    public boolean requestCancellation() {
+        return owner instanceof AgentRunner runner && runner.requestCancellation(this);
     }
 
     /**

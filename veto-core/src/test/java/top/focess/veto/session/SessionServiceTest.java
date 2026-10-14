@@ -113,7 +113,8 @@ class SessionServiceTest {
                             mock(PluginManager.class),
                             mock(EventManager.class),
                             mock(PluginDataCleanup.class),
-                            mock(RequestContinuationStore.class));
+                            mock(RequestContinuationStore.class),
+                            TestAgentSessions.create(sessions, mock(AgentService.class)));
             assertTrue(service.delete(TestUsers.ALICE, session.getId()));
             assertTrue(registry.agents(sessionId).isEmpty());
             verify(peer).terminate();
@@ -146,7 +147,8 @@ class SessionServiceTest {
                         mock(PluginManager.class),
                         events,
                         mock(PluginDataCleanup.class),
-                        mock(RequestContinuationStore.class));
+                        mock(RequestContinuationStore.class),
+                        TestAgentSessions.create(sessions, agentService));
 
         TransactionSynchronizationManager.initSynchronization();
         TransactionSynchronizationManager.setActualTransactionActive(true);
@@ -205,7 +207,8 @@ class SessionServiceTest {
                         mock(PluginManager.class),
                         mock(EventManager.class),
                         mock(PluginDataCleanup.class),
-                        mock(RequestContinuationStore.class));
+                        mock(RequestContinuationStore.class),
+                        TestAgentSessions.create(sessions, runtime));
         UUID id = UUID.fromString(session.getId());
         assertFalse(service.activateForObservation(id, TestUsers.BOB, primary.getId()));
         assertFalse(service.activateForObservation(id, TestUsers.ALICE, primary.getId()));
@@ -307,6 +310,69 @@ class SessionServiceTest {
     }
 
     @Test
+    void connectionPreparationRestoresExactOwnedSessionWithoutResolvingItsName() {
+        var sessions = mock(SessionRepository.class);
+        var agents = mock(AgentInstanceRepository.class);
+        var execution = mock(AgentService.class);
+        var history = mock(SessionHistoryLoader.class);
+        var session = new SessionEntity(TestUsers.ALICE, "duplicate-name");
+        var primary =
+                new AgentEntity(
+                        session.getId(),
+                        null,
+                        AgentEntity.Role.PRIMARY,
+                        "Primary",
+                        "DEEPSEEK",
+                        "model",
+                        "key");
+        session.setPrimaryAgentId(primary.getId());
+        when(sessions.findById(session.getId())).thenReturn(Optional.of(session));
+        when(agents.findById(primary.getId())).thenReturn(Optional.of(primary));
+        var turns = List.of(TurnRecord.userPrompt(1, "Previous task"));
+        when(history.load(session.getId(), primary.getId())).thenReturn(turns);
+        var service =
+                new SessionService(
+                        sessions,
+                        agents,
+                        mock(AgentPatternRepository.class),
+                        execution,
+                        liveAgents,
+                        history,
+                        tierRegistry,
+                        new WorkspaceAdmissionPolicy(
+                                new DeployerPolicyConfiguration(),
+                                mock(ProtectedSetResolver.class),
+                                TestUsers.registry()),
+                        mock(ScopedPluginStorage.class),
+                        mock(HitlRecordRepository.class),
+                        mock(PluginManager.class),
+                        mock(EventManager.class),
+                        mock(PluginDataCleanup.class),
+                        mock(RequestContinuationStore.class),
+                        TestAgentSessions.create(sessions, execution));
+
+        assertTrue(service.prepare(session.getId(), TestUsers.BOB).isEmpty());
+        assertTrue(service.prepare("missing", TestUsers.ALICE).isEmpty());
+        verifyNoInteractions(execution, history, agents);
+        var prepared = service.prepare(session.getId(), TestUsers.ALICE).orElseThrow();
+        assertEquals(session.getId(), prepared.sessionId());
+        assertEquals("deepseek-chat", prepared.config().model());
+        verify(execution)
+                .getOrCreateAgent(
+                        eq(session.getId()),
+                        eq(primary.getId()),
+                        any(),
+                        eq(turns),
+                        eq(TestUsers.ALICE),
+                        eq(session.getWorkspaceRoots()),
+                        eq(session.getCurrentWorkspaceRootIndex()),
+                        eq(session.getToolResultPresentation()));
+        verify(sessions).save(session);
+        verify(sessions, never())
+                .findFirstByNameAndUserIdOrderByLastActiveAtDesc(anyString(), any());
+    }
+
+    @Test
     void createSessionBuildsPrimaryAgent() {
         SessionRepository sessions = mock(SessionRepository.class);
         AgentInstanceRepository agents = mock(AgentInstanceRepository.class);
@@ -342,7 +408,8 @@ class SessionServiceTest {
                         mock(PluginManager.class),
                         mock(EventManager.class),
                         mock(PluginDataCleanup.class),
-                        mock(RequestContinuationStore.class));
+                        mock(RequestContinuationStore.class),
+                        TestAgentSessions.create(sessions, agentService));
 
         SessionEntity session = service.createSession(TestUsers.ALICE, "coder");
         assertEquals(ToolResultPresentationMode.BASIC, session.getToolResultPresentation());
@@ -387,7 +454,8 @@ class SessionServiceTest {
                         mock(PluginManager.class),
                         mock(EventManager.class),
                         mock(PluginDataCleanup.class),
-                        mock(RequestContinuationStore.class));
+                        mock(RequestContinuationStore.class),
+                        TestAgentSessions.create(sessions, agentService));
 
         SessionEntity session =
                 service.createSession(
@@ -440,7 +508,8 @@ class SessionServiceTest {
                         mock(PluginManager.class),
                         mock(EventManager.class),
                         mock(PluginDataCleanup.class),
-                        mock(RequestContinuationStore.class));
+                        mock(RequestContinuationStore.class),
+                        TestAgentSessions.create(sessions, agentService));
 
         SessionEntity session = service.createSession(TestUsers.ALICE, "coder", null, List.of(CWD));
         assertTrue(
@@ -498,7 +567,8 @@ class SessionServiceTest {
                         mock(PluginManager.class),
                         mock(EventManager.class),
                         mock(PluginDataCleanup.class),
-                        mock(RequestContinuationStore.class));
+                        mock(RequestContinuationStore.class),
+                        TestAgentSessions.create(sessions, agentService));
 
         Optional<LlmConfig> cfg = service.activate("term-1", "coder", TestUsers.ALICE, CWD);
         assertTrue(cfg.isPresent());
@@ -557,7 +627,8 @@ class SessionServiceTest {
                         mock(PluginManager.class),
                         mock(EventManager.class),
                         mock(PluginDataCleanup.class),
-                        mock(RequestContinuationStore.class));
+                        mock(RequestContinuationStore.class),
+                        TestAgentSessions.create(sessions, agentService));
         service.activate("term-1", "coder", TestUsers.ALICE, CWD);
         service.deactivate("term-1");
         assertTrue(service.activeSession("term-1").isEmpty());
@@ -610,7 +681,8 @@ class SessionServiceTest {
                         mock(PluginManager.class),
                         mock(EventManager.class),
                         mock(PluginDataCleanup.class),
-                        mock(RequestContinuationStore.class));
+                        mock(RequestContinuationStore.class),
+                        TestAgentSessions.create(sessions, agentService));
         service.activate("term-1", "coder", TestUsers.ALICE, CWD);
         assertTrue(service.activeSession("term-1").isPresent());
 
@@ -667,7 +739,8 @@ class SessionServiceTest {
                         mock(PluginManager.class),
                         mock(EventManager.class),
                         mock(PluginDataCleanup.class),
-                        mock(RequestContinuationStore.class));
+                        mock(RequestContinuationStore.class),
+                        TestAgentSessions.create(sessions, agentService));
 
         Optional<LlmConfig> cfg = service.resumeLastSession("term-1", TestUsers.ALICE, CWD);
         assertTrue(cfg.isPresent(), "last session auto-resumed");
@@ -701,7 +774,8 @@ class SessionServiceTest {
                         mock(PluginManager.class),
                         mock(EventManager.class),
                         mock(PluginDataCleanup.class),
-                        mock(RequestContinuationStore.class));
+                        mock(RequestContinuationStore.class),
+                        TestAgentSessions.create(sessions, agentService));
         assertTrue(service.resumeLastSession("term-1", TestUsers.ALICE, CWD).isEmpty());
         assertTrue(service.activeSession("term-1").isEmpty());
     }
@@ -733,7 +807,8 @@ class SessionServiceTest {
                         mock(PluginManager.class),
                         mock(EventManager.class),
                         mock(PluginDataCleanup.class),
-                        mock(RequestContinuationStore.class));
+                        mock(RequestContinuationStore.class),
+                        TestAgentSessions.create(sessions, agentService));
         assertThrows(
                 IllegalArgumentException.class,
                 () -> service.createSession(TestUsers.ALICE, "nope"));
@@ -795,7 +870,8 @@ class SessionServiceTest {
                             mock(PluginManager.class),
                             events,
                             cleanup,
-                            mock(RequestContinuationStore.class));
+                            mock(RequestContinuationStore.class),
+                            TestAgentSessions.create(sessions, agentService));
             service.activate("term-1", "coder", TestUsers.ALICE, CWD);
             assertTrue(service.activeSession("term-1").isPresent());
             String captured =
@@ -881,7 +957,8 @@ class SessionServiceTest {
                         mock(PluginManager.class),
                         mock(EventManager.class),
                         mock(PluginDataCleanup.class),
-                        mock(RequestContinuationStore.class));
+                        mock(RequestContinuationStore.class),
+                        TestAgentSessions.create(sessions, agentService));
         assertFalse(service.delete(TestUsers.ALICE, "nope"));
         verify(liveAgents, never()).stopSession(any());
     }
@@ -943,7 +1020,8 @@ class SessionServiceTest {
                         mock(PluginManager.class),
                         mock(EventManager.class),
                         mock(PluginDataCleanup.class),
-                        mock(RequestContinuationStore.class));
+                        mock(RequestContinuationStore.class),
+                        TestAgentSessions.create(sessions, agentService));
         service.activate("term-1", "coder", TestUsers.ALICE, CWD);
 
         // The replayed history loaded from the durable log is threaded into getOrCreateAgent so the
@@ -998,7 +1076,8 @@ class SessionServiceTest {
                         mock(PluginManager.class),
                         mock(EventManager.class),
                         mock(PluginDataCleanup.class),
-                        mock(RequestContinuationStore.class));
+                        mock(RequestContinuationStore.class),
+                        TestAgentSessions.create(sessions, agentService));
 
         SessionEntity created =
                 service.createSession(
@@ -1043,7 +1122,8 @@ class SessionServiceTest {
                         mock(PluginManager.class),
                         mock(EventManager.class),
                         mock(PluginDataCleanup.class),
-                        mock(RequestContinuationStore.class));
+                        mock(RequestContinuationStore.class),
+                        TestAgentSessions.create(sessions, agentService));
 
         IllegalArgumentException failure =
                 assertThrows(
@@ -1118,7 +1198,8 @@ class SessionServiceTest {
                         mock(PluginManager.class),
                         mock(EventManager.class),
                         mock(PluginDataCleanup.class),
-                        mock(RequestContinuationStore.class));
+                        mock(RequestContinuationStore.class),
+                        TestAgentSessions.create(sessions, agentService));
 
         // Terminal in projectA: sees inA (exact) + legacy (null = any) — NOT inB.
         List<SessionEntity> seenInA = service.listSessions(TestUsers.ALICE, projectA);
@@ -1179,7 +1260,8 @@ class SessionServiceTest {
                             mock(PluginManager.class),
                             mock(EventManager.class),
                             mock(PluginDataCleanup.class),
-                            mock(RequestContinuationStore.class));
+                            mock(RequestContinuationStore.class),
+                            TestAgentSessions.create(sessions, mock(AgentService.class)));
             assertEquals(List.of(session), service.listSessions(TestUsers.ALICE, alias.toString()));
             // A session without its primary agent resolves its workspace, then returns empty.
             assertTrue(
@@ -1222,7 +1304,8 @@ class SessionServiceTest {
                         mock(PluginManager.class),
                         mock(EventManager.class),
                         mock(PluginDataCleanup.class),
-                        mock(RequestContinuationStore.class));
+                        mock(RequestContinuationStore.class),
+                        TestAgentSessions.create(sessions, agentService));
 
         // Single-arg REST-style list returns every session regardless of binding.
         assertEquals(2, service.listSessions(TestUsers.ALICE).size());
@@ -1260,7 +1343,8 @@ class SessionServiceTest {
                         mock(PluginManager.class),
                         mock(EventManager.class),
                         mock(PluginDataCleanup.class),
-                        mock(RequestContinuationStore.class));
+                        mock(RequestContinuationStore.class),
+                        TestAgentSessions.create(sessions, agentService));
 
         IllegalArgumentException ex =
                 assertThrows(
@@ -1328,7 +1412,8 @@ class SessionServiceTest {
                         mock(PluginManager.class),
                         mock(EventManager.class),
                         mock(PluginDataCleanup.class),
-                        mock(RequestContinuationStore.class));
+                        mock(RequestContinuationStore.class),
+                        TestAgentSessions.create(sessions, agentService));
 
         // Subdirectory of the bound workspace: still in-scope.
         Optional<LlmConfig> cfg = service.activate("term-1", "alpha", TestUsers.ALICE, projectASub);
@@ -1375,7 +1460,8 @@ class SessionServiceTest {
                         mock(PluginManager.class),
                         mock(EventManager.class),
                         mock(PluginDataCleanup.class),
-                        mock(RequestContinuationStore.class));
+                        mock(RequestContinuationStore.class),
+                        TestAgentSessions.create(sessions, agentService));
 
         Optional<LlmConfig> cfg = service.resumeLastSession("term-1", TestUsers.ALICE, projectB);
         assertTrue(
@@ -1449,7 +1535,8 @@ class SessionServiceTest {
                         mock(PluginManager.class),
                         mock(EventManager.class),
                         mock(PluginDataCleanup.class),
-                        mock(RequestContinuationStore.class));
+                        mock(RequestContinuationStore.class),
+                        TestAgentSessions.create(sessions, agentService));
 
         Optional<LlmConfig> cfg = service.resumeLastSession("term-1", TestUsers.ALICE, projectA);
         assertTrue(cfg.isPresent());
@@ -1501,7 +1588,8 @@ class SessionServiceTest {
                         mock(PluginManager.class),
                         mock(EventManager.class),
                         mock(PluginDataCleanup.class),
-                        mock(RequestContinuationStore.class));
+                        mock(RequestContinuationStore.class),
+                        TestAgentSessions.create(sessions, agentService));
 
         SessionEntity created =
                 service.createSession(TestUsers.ALICE, "coder", null, List.of(projectB));
@@ -1561,7 +1649,8 @@ class SessionServiceTest {
                         mock(PluginManager.class),
                         mock(EventManager.class),
                         mock(PluginDataCleanup.class),
-                        mock(RequestContinuationStore.class));
+                        mock(RequestContinuationStore.class),
+                        TestAgentSessions.create(sessions, agentService));
 
         IllegalArgumentException ex =
                 assertThrows(
@@ -1622,7 +1711,8 @@ class SessionServiceTest {
                         mock(PluginManager.class),
                         mock(EventManager.class),
                         mock(PluginDataCleanup.class),
-                        mock(RequestContinuationStore.class));
+                        mock(RequestContinuationStore.class),
+                        TestAgentSessions.create(sessions, agentService));
 
         SessionEntity created =
                 service.createSession(TestUsers.ALICE, "coder", null, List.of(projectA));
@@ -1684,7 +1774,8 @@ class SessionServiceTest {
                         mock(PluginManager.class),
                         mock(EventManager.class),
                         mock(PluginDataCleanup.class),
-                        mock(RequestContinuationStore.class));
+                        mock(RequestContinuationStore.class),
+                        TestAgentSessions.create(sessions, agentService));
 
         Optional<LlmConfig> cfg = service.activate("term-1", "ds", TestUsers.ALICE, projectA);
         assertTrue(cfg.isPresent());
@@ -1728,7 +1819,8 @@ class SessionServiceTest {
                         mock(PluginManager.class),
                         mock(EventManager.class),
                         mock(PluginDataCleanup.class),
-                        mock(RequestContinuationStore.class));
+                        mock(RequestContinuationStore.class),
+                        TestAgentSessions.create(sessions, agentService));
 
         when(sessions.findById(inA.getId())).thenReturn(Optional.of(inA));
         assertTrue(service.delete(TestUsers.ALICE, inA.getId()));

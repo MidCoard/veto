@@ -23,8 +23,11 @@ class ProtocolClientLifecycleTest {
     void cancellationUsesTheConnectionSequenceAndDoesNotConsumeQueryReplies() throws Exception {
         var peer = new Peer();
         try (var client = new ProtocolClient(() -> peer)) {
-            client.cancel();
+            long operation = client.nextSequence();
+            client.cancel(operation);
             var cancel = assertInstanceOf(Frame.Cancel.class, peer.sent.poll(1, TimeUnit.SECONDS));
+            assertEquals(operation, cancel.targetSeq());
+            assertTrue(cancel.seq() > operation);
             var answer = new CompletableFuture<Frame.@Nullable HintResult>();
             Thread.ofVirtual()
                     .start(() -> answer.complete(client.hint("command", 5, TimeUnit.SECONDS)));
@@ -37,7 +40,7 @@ class ProtocolClientLifecycleTest {
             var reply = new Frame.HintResult(new Frame.HintInfo("hint", null), hint.seq());
             assertTrue(peer.incoming.offer(reply));
             assertEquals(reply, answer.get(1, TimeUnit.SECONDS));
-            client.cancel();
+            client.cancel(2);
             var next = assertInstanceOf(Frame.Cancel.class, peer.sent.poll(1, TimeUnit.SECONDS));
             assertTrue(next.seq() > hint.seq());
         }
@@ -124,6 +127,7 @@ class ProtocolClientLifecycleTest {
                                     });
             var request = peer.sent.poll(1, TimeUnit.SECONDS);
             assertTrue(request instanceof Frame.Hint frame && frame.seq() > 1);
+            var unsent = new Frame.Request(client.nextSequence(), null, null, "late");
             client.close();
             assertNull(hint.get(1, TimeUnit.SECONDS));
             assertNull(stream.get(1, TimeUnit.SECONDS));
@@ -131,7 +135,8 @@ class ProtocolClientLifecycleTest {
             reader.join(1_000);
             assertFalse(requester.isAlive());
             assertFalse(reader.isAlive());
-            assertThrows(IllegalStateException.class, () -> client.send(new Frame.Request("late")));
+            assertThrows(IllegalStateException.class, () -> client.send(unsent));
+            assertThrows(IllegalStateException.class, client::nextSequence);
         } finally {
             client.close();
         }
@@ -143,9 +148,14 @@ class ProtocolClientLifecycleTest {
         peer.block = true;
         try (var client = new ProtocolClient(() -> peer)) {
             assertTrue(peer.receiving.await(1, TimeUnit.SECONDS));
-            for (int i = 0; i < 256; i++) client.send(new Frame.Request("queued"));
+            for (int i = 0; i < 256; i++)
+                client.send(new Frame.Request(client.nextSequence(), null, null, "queued"));
             assertThrows(
-                    IllegalStateException.class, () -> client.send(new Frame.Request("overflow")));
+                    IllegalStateException.class,
+                    () ->
+                            client.send(
+                                    new Frame.Request(
+                                            client.nextSequence(), null, null, "overflow")));
             peer.release.countDown();
         } finally {
             peer.release.countDown();
@@ -176,9 +186,11 @@ class ProtocolClientLifecycleTest {
                     .start(() -> hint.complete(client.hint("pending", 30, TimeUnit.SECONDS)));
             assertTrue(peer.sent.poll(1, TimeUnit.SECONDS) instanceof Frame.Hint);
             peer.blockSend = true;
-            client.send(new Frame.Request("in-flight"));
+            var inFlight = new Frame.Request(client.nextSequence(), null, null, "in-flight");
+            client.send(inFlight);
             assertTrue(peer.sending.await(1, TimeUnit.SECONDS));
-            for (int i = 0; i < 100; i++) client.send(new Frame.Request("unsent"));
+            for (int i = 0; i < 100; i++)
+                client.send(new Frame.Request(client.nextSequence(), null, null, "unsent"));
             var closing = new CompletableFuture<Void>();
             Thread.ofVirtual()
                     .start(
@@ -193,7 +205,7 @@ class ProtocolClientLifecycleTest {
             peer.release.countDown();
             closing.get(2, TimeUnit.SECONDS);
             assertTrue(peer.closed.await(1, TimeUnit.SECONDS));
-            assertEquals(new Frame.Request("in-flight"), peer.sent.poll());
+            assertEquals(inFlight, peer.sent.poll());
             assertTrue(peer.sent.poll() instanceof Frame.Bye);
             assertTrue(peer.sent.isEmpty(), "close must not drain unsent application frames");
         } finally {

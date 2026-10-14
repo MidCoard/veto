@@ -5,7 +5,6 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import top.focess.veto.agent.AgentService;
 import top.focess.veto.agent.workspace.WorkspaceAdmissionPolicy;
-import top.focess.veto.bus.DeltaBroker;
 import top.focess.veto.command.commands.*;
 import top.focess.veto.model.AgentPatternRepository;
 import top.focess.veto.model.tier.ModelTierProfileService;
@@ -41,9 +40,8 @@ public class CommandConfiguration {
     public @NonNull PromptHandler promptHandler(
             @NonNull KeysteadVault vault,
             @NonNull AgentService agentService,
-            @NonNull SessionService sessionService,
-            @NonNull DeltaBroker broker) {
-        return new PromptHandler(vault, agentService, sessionService, broker);
+            @NonNull SessionService sessionService) {
+        return new PromptHandler(vault, agentService, sessionService);
     }
 
     /**

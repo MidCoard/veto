@@ -75,6 +75,12 @@ final class AgentPluginHooks {
      */
     private void dispatch(@NonNull EventManager manager, @NonNull WorkflowEvent event) {
         checkCancellation();
+        dispatchSubmission(manager, event);
+        checkCancellation();
+    }
+
+    /** Admission belongs to a new request, independent of the currently executing request. */
+    private void dispatchSubmission(@NonNull EventManager manager, @NonNull WorkflowEvent event) {
         var identity = event.scope();
         var invocation = new PluginInvocationContext(identity.userId(), identity.session());
         try {
@@ -82,7 +88,6 @@ final class AgentPluginHooks {
         } finally {
             invocation.close();
         }
-        checkCancellation();
     }
 
     private BeforeToolEvent.@NonNull Invocation invocation(@NonNull ToolCall call) {
@@ -156,7 +161,15 @@ final class AgentPluginHooks {
         return selected == null ? List.of() : selected.responsePolicies(sessionId);
     }
 
+    @NonNull String captureSubmittedPrompt(@NonNull String prompt) {
+        return capturePrompt(prompt, false);
+    }
+
     @NonNull String captureUserPrompt(@NonNull String prompt) {
+        return capturePrompt(prompt, true);
+    }
+
+    private @NonNull String capturePrompt(@NonNull String prompt, boolean executing) {
         var manager = events.get();
         if (manager == null) return prompt;
         if (!alive.getAsBoolean()) throw new ProtectedInputException();
@@ -167,8 +180,9 @@ final class AgentPluginHooks {
                             BeforeTextCommitEvent.Phase.INPUT,
                             UUID.randomUUID().toString(),
                             prompt);
-            dispatch(manager, event);
-            if (event.isCancelled()) throw new ProtectedInputException();
+            if (executing) dispatch(manager, event);
+            else dispatchSubmission(manager, event);
+            if (event.isCancelled() || !alive.getAsBoolean()) throw new ProtectedInputException();
             return event.text();
         } catch (RuntimeException failure) {
             throw new ProtectedInputException();

@@ -34,7 +34,7 @@ public class HintTest {
         System.out.println("Complete '/log'    -> " + comp);
 
         // Test /help
-        t.send(new Frame.Request("/help"));
+        t.send(new Frame.Request(t.nextSequence(), null, null, "/help"));
         Frame reply = t.receive();
         while (!(reply instanceof Frame.Done) && !(reply instanceof Frame.Error)) {
             reply = t.receive();

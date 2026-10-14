@@ -5,6 +5,8 @@ import java.util.ArrayList;
 import java.util.Deque;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
+import java.util.function.LongSupplier;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -22,13 +24,14 @@ import top.focess.veto.contract.ProtocolClient;
  * <ul>
  *   <li><b>{@code IDLE}</b> — no command in flight.
  *   <li><b>{@code RUNNING}</b> — one command in flight; streaming and terminal frames may arrive.
- *   <li><b>{@code PROMPTED}</b> — one command in flight <em>and</em> the backend awaits an {@link
- *       Frame.Input}.
+ *   <li><b>{@code PROMPTED}</b> — a command input or session approval is displayed.
  * </ul>
  *
  * <p>Deltas render in every state, including connection-local messages without a session or agent.
- * Interaction requests require an active command. At IDLE, Done stays idle and Error displays its
- * message without starting a command. Terminate tears down from any state.
+ * Command input requires an active command; session approvals can arrive independently and are
+ * queued in arrival order. Command input takes display priority without discarding approvals. Done
+ * and Error settle only the matching positive request sequence. Terminate tears down from any
+ * state.
  *
  * <h3>Thread model</h3>
  *
@@ -39,7 +42,7 @@ import top.focess.veto.contract.ProtocolClient;
  * without deadlock and the critical section stays short.
  *
  * <p>The session never sends frames itself — {@link #submit}/{@link #onFrame}/{@link #cancel}
- * <b>return</b> the {@link Frame} to send (or {@code null}); the caller owns the {@link
+ * <b>return</b> the frame to send, or the exact cancellation target; the caller owns the {@link
  * ProtocolClient} and does the send. This keeps the core free of the transport and avoids holding
  * the monitor across a bounded-outbox {@code offer}.
  *
@@ -54,6 +57,15 @@ public final class ClientSession {
 
     private static final @NonNull Logger log =
             LoggerFactory.getLogger("top.focess.veto.terminal.client.ClientSession");
+
+    private static final @NonNull Set<@NonNull String> REFUSAL_OPTIONS =
+            Set.of(
+                    "READ_DECLINE",
+                    "ABORT_WRITE",
+                    "BLOCK",
+                    "EXEC_DECLINE",
+                    "GENERIC_DECLINE",
+                    "DECLINE_AND_CONTINUE");
 
     /** Session interaction state — IDLE / RUNNING / PROMPTED. */
     public enum State {
@@ -70,14 +82,17 @@ public final class ClientSession {
      * state, the active server prompt (when {@link State#PROMPTED}), and the username (to pick the
      * logged-in/out prompt marker).
      *
-     * <p>Captured atomically by {@link #promptView} so the three fields describe a single
-     * consistent moment. Reading them via separate {@code state} / {@code activePrompt} calls would
-     * be a time-of-check/time-of-use race — the consumer thread can transition the state machine
-     * (e.g. a {@link Frame.Prompt} arriving) between the reads, so the renderer could act on a
-     * {@code state} and an {@code activePrompt} that never coexisted.
+     * <p>Captured atomically by {@link #promptView} so all fields describe a single consistent
+     * moment. Reading them via separate {@code state} / {@code activePrompt} calls would be a
+     * time-of-check/time-of-use race — the consumer thread can transition the state machine (e.g. a
+     * {@link Frame.Prompt} arriving) between the reads, so the renderer could act on a {@code
+     * state} and an {@code activePrompt} that never coexisted.
      */
     public record PromptView(
-            @NonNull State state, Frame.ServerFrame activePrompt, String username) {}
+            @NonNull State state,
+            Frame.ServerFrame activePrompt,
+            String username,
+            long requestSeq) {}
 
     /**
      * Immutable snapshot of everything the status bar renders at one instant: session metadata and
@@ -92,11 +107,13 @@ public final class ClientSession {
     public record StatusView(String username, int turnCount, @NonNull List<String> pending) {}
 
     private final @NonNull ClientView view;
+    private final @NonNull LongSupplier sequences;
     private final @NonNull Object lock = new Object();
     private final @NonNull Deque<@NonNull String> pendingRequests = new ArrayDeque<>();
 
-    private @NonNull State state = State.IDLE;
-    private Frame.ServerFrame activePrompt;
+    private long activeRequestSeq;
+    private Frame.Prompt commandPrompt;
+    private final @NonNull Deque<Frame.@NonNull Veto> approvals = new ArrayDeque<>();
     private String username;
     private int turnCount;
     private String sessionId;
@@ -106,8 +123,9 @@ public final class ClientSession {
      *
      * @param view the presentation seam receiving render events (fired outside the session lock)
      */
-    public ClientSession(@NonNull ClientView view) {
+    public ClientSession(@NonNull ClientView view, @NonNull LongSupplier sequences) {
         this.view = view;
+        this.sequences = sequences;
     }
 
     /**
@@ -125,26 +143,18 @@ public final class ClientSession {
         Frame.ClientFrame frame;
         synchronized (lock) {
             if (displayedInteraction != null) {
-                if (state != State.PROMPTED || activePrompt != displayedInteraction) return null;
-                frame =
-                        displayedInteraction instanceof Frame.Veto veto
-                                ? new Frame.VetoResult(
-                                        veto.scope(), veto.callId(), line, veto.seq())
-                                : new Frame.Input(line);
-                activePrompt = null;
-                state = State.RUNNING;
-                events.add(view::onRunning);
+                if (activePrompt() != displayedInteraction) return null;
+                if (displayedInteraction instanceof Frame.Veto veto) {
+                    frame = new Frame.VetoResult(veto.scope(), veto.callId(), line, veto.seq());
+                    approvals.removeFirst();
+                } else {
+                    frame = new Frame.Input(line, ((Frame.Prompt) displayedInteraction).seq());
+                    commandPrompt = null;
+                }
+                showInteraction(events, displayedInteraction);
             } else {
                 pendingRequests.addLast(line);
-                if (state == State.IDLE) {
-                    String first = pendingRequests.removeFirst();
-                    state = State.RUNNING;
-                    events.add(view::onRunning);
-                    events.add(() -> view.onCommandDispatched(first));
-                    frame = new Frame.Request(first);
-                } else {
-                    frame = null; // enqueued; dispatched when the in-flight request completes
-                }
+                frame = activeRequestSeq != 0 ? null : dispatchNextOrIdle(events);
             }
         }
         fire(events);
@@ -152,34 +162,50 @@ public final class ClientSession {
     }
 
     /**
-     * Prepares cancellation of the in-flight command. The state stays {@code RUNNING} awaiting the
-     * command's terminal {@link Frame.Done}/{@link Frame.Error}, after which dispatch-next-or-idle
-     * runs the next queued request or goes {@code IDLE}.
-     *
-     * <p>The pending-request queue is <b>preserved</b> (: dispatch-next-or-idle may still dispatch
-     * a queued request after the cancelled command's terminal frame) — cancelling one command does
-     * not drop the rest of the queue. A {@code PROMPTED} prompt is cleared.
-     *
-     * <p>Returns {@code false} when idle with an empty queue — a shutdown signal ( IDLE × cancel =
-     * shutdown); the caller exits / enqueues a shutdown event.
-     *
-     * @return whether the caller should send Cancel; false signals shutdown
+     * Refuses only the approval the user saw. A stale display cannot cancel a replacement approval
+     * or a local command. A server approval without a known offered refusal stays visible.
      */
-    public boolean cancel() {
-        List<Runnable> events = new ArrayList<>();
+    public Frame.VetoResult declineApproval(Frame.@NonNull Veto displayed) {
         synchronized (lock) {
-            if (state == State.IDLE) {
-                return false; // nothing to cancel — signal the caller to shut down
-            }
-            boolean wasPrompted = state == State.PROMPTED;
-            activePrompt = null;
-            state = State.RUNNING; // await the command's terminal frame
-            if (wasPrompted) {
-                events.add(view::onRunning);
-            }
+            if (activePrompt() != displayed) return null;
+        }
+        String refusal =
+                displayed.options().stream()
+                        .filter(REFUSAL_OPTIONS::contains)
+                        .findFirst()
+                        .orElse(null);
+        if (refusal == null) {
+            fire(
+                    List.of(
+                            () ->
+                                    view.onError(
+                                            StyledText.error(
+                                                    "This approval has no supported refusal option; choose an offered option."))));
+            return null;
+        }
+        var reply = submit(refusal, displayed);
+        return reply instanceof Frame.VetoResult result ? result : null;
+    }
+
+    /**
+     * Cancels the local command or its input prompt. Approval cancellation must instead identify
+     * the exact displayed approval through declineApproval. A command still waits for Done/Error
+     * before advancing its queue. Returns its exact sequence, or zero when no command is eligible.
+     */
+    public long cancel(long displayedRequestSeq) {
+        List<Runnable> events = new ArrayList<>();
+        long target;
+        synchronized (lock) {
+            var displayed = activePrompt();
+            if (displayed instanceof Frame.Veto
+                    || activeRequestSeq == 0
+                    || displayedRequestSeq != activeRequestSeq) return 0;
+            target = activeRequestSeq;
+            commandPrompt = null;
+            if (displayed != null) showInteraction(events, displayed);
         }
         fire(events);
-        return true;
+        return target;
     }
 
     /**
@@ -198,8 +224,11 @@ public final class ClientSession {
         List<Runnable> events = new ArrayList<>();
         Frame.ClientFrame reply = null;
         synchronized (lock) {
+            var previousInteraction = activePrompt();
             if (frame instanceof Frame.TurnOutcome outcome
-                    && !(frame instanceof Frame.Error error && error.seq() != 0)) {
+                    && frame instanceof Frame.SeqResponse response
+                    && activeRequestSeq != 0
+                    && response.seq() == activeRequestSeq) {
                 var snapshot = applyOutcome(outcome);
                 if (snapshot != null) events.add(() -> view.onMetaChanged(snapshot));
             }
@@ -255,7 +284,15 @@ public final class ClientSession {
                                                                                                 .purpose()
                                                                                         + ")"))));
                         case Delta.ToolCall call -> events.add(() -> view.onToolCall(call));
-                        case Delta.ToolResult result -> events.add(() -> view.onToolResult(result));
+                        case Delta.ToolResult result -> {
+                            var previous = activePrompt();
+                            approvals.removeIf(
+                                    veto ->
+                                            veto.scope().equals(event.scope())
+                                                    && veto.callId().equals(result.callId()));
+                            events.add(() -> view.onToolResult(result));
+                            if (previous != activePrompt()) showInteraction(events, previous);
+                        }
                         default -> {}
                     }
                 }
@@ -263,6 +300,7 @@ public final class ClientSession {
                 case Frame.Action ignored -> {}
                 // Admission acknowledgement never settles a command or a replacement prompt.
                 case Frame.CancelResult ignored -> {}
+                case Frame.RequestAccepted ignored -> {}
                 case Frame.PluginAction event ->
                         events.add(
                                 () ->
@@ -270,28 +308,37 @@ public final class ClientSession {
                                                 event.topic()
                                                         + ": "
                                                         + event.data().toPrettyString()));
-                case Frame.Prompt prompt -> awaitInput(prompt, events);
-                case Frame.Veto veto -> awaitInput(veto, events);
+                case Frame.Prompt prompt -> {
+                    if (activeRequestSeq == 0 || prompt.seq() != activeRequestSeq) {
+                        log.warn("Command prompt arrived without a command in flight; dropping");
+                        break;
+                    }
+                    var previous = activePrompt();
+                    commandPrompt = prompt;
+                    showInteraction(events, previous);
+                }
+                case Frame.Veto veto -> {
+                    if (approvals.stream().anyMatch(pending -> sameApproval(pending, veto))) break;
+                    var previous = activePrompt();
+                    approvals.addLast(veto);
+                    if (previous == null) showInteraction(events, null);
+                }
 
                 // ── terminal ────────────────────────────────────────────────────
                 case Frame.Done done -> {
                     // Only command completion advances the input queue; display state is separate.
-                    if (state != State.IDLE) {
-                        if (state == State.PROMPTED) {
-                            activePrompt = null; // clear the prompt the terminal frame resolved
-                        }
+                    if (activeRequestSeq != 0 && done.seq() == activeRequestSeq) {
+                        commandPrompt = null;
                         reply = dispatchNextOrIdle(events);
                     }
                 }
                 case Frame.Error e -> {
                     events.add(() -> view.onError(StyledText.error("Error: " + e.content())));
                     // Query failures, including late replies, never complete a command.
-                    if (e.seq() != 0) break;
+                    if (e.seq() == 0 || e.seq() != activeRequestSeq) break;
                     // An IDLE client only displays the late error; active requests also advance.
-                    if (state != State.IDLE) {
-                        if (state == State.PROMPTED) {
-                            activePrompt = null;
-                        }
+                    if (activeRequestSeq != 0) {
+                        commandPrompt = null;
                         reply = dispatchNextOrIdle(events);
                     }
                 }
@@ -301,7 +348,9 @@ public final class ClientSession {
                             receivedReason != null
                                     ? receivedReason
                                     : "Server terminated the session.";
-                    activePrompt = null; // teardown — no stale prompt in a final snapshot
+                    commandPrompt = null;
+                    approvals.clear();
+                    activeRequestSeq = 0;
                     events.add(() -> view.onTerminate(StyledText.muted(reason)));
                 }
 
@@ -310,54 +359,53 @@ public final class ClientSession {
                                 "Unexpected server frame {} — ignoring",
                                 frame.getClass().getSimpleName());
             }
+            if (frame instanceof Frame.TurnOutcome
+                    && previousInteraction != null
+                    && activePrompt() == null) events.add(view::onPromptCleared);
         }
         fire(events);
         return reply;
     }
 
-    private void awaitInput(Frame.@NonNull ServerFrame pr, @NonNull List<Runnable> events) {
-        switch (state) {
-            case IDLE -> rejectOrphan(pr, "Prompt");
-            case RUNNING -> {
-                activePrompt = pr;
-                state = State.PROMPTED;
-                events.add(view::onPrompted);
-                events.add(() -> view.onPrompt(pr));
-            }
-            case PROMPTED -> {
-                activePrompt = pr; // replace the outstanding prompt
-                events.add(() -> view.onPrompt(pr));
-            }
+    private static boolean sameApproval(Frame.@NonNull Veto first, Frame.@NonNull Veto second) {
+        return first.scope().equals(second.scope())
+                && first.callId().equals(second.callId())
+                && first.seq() == second.seq();
+    }
+
+    /** All interaction state is derived under lock; approval queues never own command progress. */
+    private Frame.ServerFrame activePrompt() {
+        return commandPrompt != null ? commandPrompt : approvals.peekFirst();
+    }
+
+    private @NonNull State currentState() {
+        return activePrompt() != null
+                ? State.PROMPTED
+                : activeRequestSeq != 0 ? State.RUNNING : State.IDLE;
+    }
+
+    private void showInteraction(@NonNull List<Runnable> events, Frame.ServerFrame previous) {
+        var displayed = activePrompt();
+        if (displayed != null) {
+            if (previous == null) events.add(view::onPrompted);
+            events.add(() -> view.onPrompt(displayed));
+        } else {
+            if (previous != null) events.add(view::onPromptCleared);
+            events.add(activeRequestSeq != 0 ? view::onRunning : view::onIdle);
         }
     }
 
-    /**
-     * Logs an orphan streaming frame that arrived at {@code IDLE} (a protocol violation under 1:1)
-     * and drops it — never displayed. Must hold {@link #lock}.
-     */
-    private void rejectOrphan(@NonNull Frame frame, @NonNull String kind) {
-        log.warn(
-                "Orphan {} frame at IDLE — no command in flight; dropping (protocol violation)",
-                kind);
-    }
-
-    /**
-     * Dispatches the next queued request (→ {@code RUNNING}) or goes {@code IDLE} (
-     * dispatch-next-or-idle). Must hold {@link #lock}.
-     *
-     * @param events the event list to append a state-transition signal to
-     * @return the next Request to send, or {@code null} if idle
-     */
+    /** Only a command completion or idle command submission advances this queue. */
     private Frame.ClientFrame dispatchNextOrIdle(@NonNull List<Runnable> events) {
         if (!pendingRequests.isEmpty()) {
             String next = pendingRequests.removeFirst();
-            state = State.RUNNING;
-            events.add(view::onRunning);
+            activeRequestSeq = sequences.getAsLong();
+            showInteraction(events, null);
             events.add(() -> view.onCommandDispatched(next));
-            return new Frame.Request(next);
+            return new Frame.Request(activeRequestSeq, null, null, next);
         }
-        state = State.IDLE;
-        events.add(view::onIdle);
+        activeRequestSeq = 0;
+        showInteraction(events, null);
         return null;
     }
 
@@ -374,6 +422,11 @@ public final class ClientSession {
         if (Objects.equals(username, outcome.username())
                 && Objects.equals(sessionId, session)
                 && turnCount == turns) return null;
+        if (!Objects.equals(username, outcome.username()) || !Objects.equals(sessionId, session))
+            approvals.removeIf(
+                    approval ->
+                            !Objects.equals(approval.scope().userId(), scope.userId())
+                                    || !Objects.equals(approval.scope().session(), session));
         username = outcome.username();
         sessionId = session;
         turnCount = turns;
@@ -396,7 +449,7 @@ public final class ClientSession {
 
     public @NonNull State state() {
         synchronized (lock) {
-            return state;
+            return currentState();
         }
     }
 
@@ -407,7 +460,7 @@ public final class ClientSession {
      */
     public @NonNull PromptView promptView() {
         synchronized (lock) {
-            return new PromptView(state, activePrompt, username);
+            return new PromptView(currentState(), activePrompt(), username, activeRequestSeq);
         }
     }
 

@@ -450,18 +450,38 @@ is generated output and must not be committed.
 On the backend, `TerminalConfiguration` initializes the IPC resource beans before starting `IpcServer`.
 When terminal IPC is enabled, initialization failures abort Spring startup and Spring closes the resources already created.
 Set `veto.terminal.enabled=false` to disable IPC explicitly. On shutdown, Spring stops the server before closing its resources.
-  `IpcServer` owns the context, router and broker subscription on one virtual IO worker. Each terminal mailbox owns
-  its request lifecycle; command workers only post results. Cancellation releases that request only
-  after its body exits, so a later command cannot overlap stale output or account changes.
-  Cancel carries a positive sequence; CancelResult echoes it with ACCEPTED, REJECTED or NO_ACTIVE_REQUEST.
-  This reports the cancellation operation immediately; Done/Error still settle the worker after exit.
-  Done has no cancellation flag, and CancelResult never advances the terminal command queue.
-  Client transports receive server frames directly; server transports alone carry peer identities.
-  The browser entry point is `veto-ui/src/state/SessionContext.tsx`, which connects `VetoBus`
-  to `/ws/veto/bus` on the backend HTTP port. `WebSocketConfig` registers the authenticated native WebSocket
-  endpoint; `VetoWebSocketHandler` decodes frames directly in Spring callbacks and owns socket
-  authentication, Hello admission and owner-based recipient routing. Agent output follows
-  `DeltaBroker -> DeltaBusBridge -> VetoWebSocketHandler -> VetoBus`.
+  Spring owns the context and router; one `IpcServer` virtual IO worker uses the router.
+  Both terminal IPC and browser WebSocket frames enter the same concrete `ProtocolConnection`,
+  then an owned `AgentSession`, then the existing virtual-thread `AgentRunner`. `AgentSessions`
+  owns attachments under one lock: one selected session per terminal and all owned sessions per
+  browser connection, including sessions created later. `VetoCommandSender` adapts only terminal
+  commands. Browser primary and child prompts use WebSocket; HTTP remains for management and
+  authoritative snapshots, with no prompt or approval-mutation HTTP fallback.
+  `Request` carries a positive connection-local sequence and optional session/agent target;
+  browser requests require the exact session UUID. `RequestAccepted` confirms admission before a
+  draft is cleared. Final `Done`/`Error` echo that sequence only after result and execution settlement.
+  Session-wide observations use sequence zero. Episode IDs remain distinct from operation sequences.
+  `Cancel(cancelSeq, targetSeq)` addresses one operation and `CancelResult` reports ACCEPTED,
+  REJECTED or NO_ACTIVE_REQUEST immediately; the final reply follows settlement. Exact `VetoResult`
+  refuses or approves one offered call. `DeclineVetoes` refuses all pending approvals in an owned
+  session and returns a correlated scoped Done; it does not cancel arbitrary running execution.
+  Agent output follows `AgentSession -> ProtocolConnection -> IPC outbox / WebSocketWriter`.
+  AgentSession numbers deltas and supplies scope-checked agent sinks. Existing domain values such
+  as VetoPrompt become frames at the connection; the transport encodes and writes them. Queue
+  delivery rechecks authority and attachment identity after switches, logout and deletion.
+  Terminal commands remain serial; agent execution uses callbacks rather than a waiting command
+  worker. Database/session preparation and protected-input capture finish before the short guarded
+  runner enqueue. Revocation cannot cross that admission boundary. Connection pending work and
+  control admission are bounded; 65,536 unique exchange sequences require a fresh connection.
+  Sequences may arrive out of order, but duplicates close the connection without replay. Browser
+  reconnect discards unconfirmed exchanges, keeps drafts and refreshes authoritative snapshots.
+  Each WebSocket connection has one virtual writer and a bounded outbox: at most 256 queued messages
+  and 1 MiB of queued UTF-8 payload, plus one in-flight message of at most 1 MiB. Publishers do not
+  wait for socket writes; slow peers exceeding the buffer limit are disconnected. The native write
+  deadline is 10 seconds, and queued sends recheck authentication. Closing a connection discards
+  pending output; protocol rejection replies drain before orderly close.
+  Each `VetoAgent` already uses one virtual execution thread, parked on its action queue when idle.
+  Virtual threads reduce the cost of waiting; they do not remove CPU, model-provider or memory limits.
   Advance the protocol number only for major protocol revisions; individual frame changes share the development baseline.
   Protocol v5 requires clients to send Hello before application traffic; Welcome echoes its sequence.
   Heartbeat and HeartbeatAck carry no sequence; the browser allows one outstanding heartbeat and
@@ -476,7 +496,7 @@ Set `veto.terminal.enabled=false` to disable IPC explicitly. On shutdown, Spring
   one exclusive owner for send, receive and close; a thread start/join handoff may transfer ownership.
   Prompt/Input is terminal-only text interaction. Veto/VetoResult carries human approvals on both
   transports, while gateway enforcement remains backend-owned. Approval
-  frames originate in the agent and pass through the same owner-scoped broker; pending
+  frames originate in the agent and pass through the owning runtime session; pending
   approval snapshots remain available for reconnect recovery. Delta carries a typed nested payload
   (thought, message, tool call/result, notice or resource update); Done ends a completed request,
   while Error ends a failed request. Application output carries the same Scope used by plugin

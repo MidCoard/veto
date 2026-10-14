@@ -10,6 +10,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
+import top.focess.veto.api.plugin.Scope;
 import top.focess.veto.contract.ClientTransport;
 import top.focess.veto.contract.Frame;
 import top.focess.veto.contract.ProtocolClient;
@@ -59,14 +60,16 @@ class TerminalInteractionOrderingTest {
                                         throw new AssertionError(interrupted);
                                     }
                                 }
-                            });
+                            },
+                            client::nextSequence);
             var sessionField = VetoTerminal.class.getDeclaredField("session");
             sessionField.setAccessible(true);
             sessionField.set(terminal, session);
             terminal.submitInput("first", null);
-            assertEquals(new Frame.Request("first"), peer.sent.poll(2, TimeUnit.SECONDS));
+            assertEquals(
+                    new Frame.Request(2, null, null, "first"), peer.sent.poll(2, TimeUnit.SECONDS));
             terminal.submitInput("second", null);
-            var prompt = new Frame.Prompt("Password:", true);
+            var prompt = new Frame.Prompt("Password:", true, 2);
             terminal.acceptFrame(prompt);
             pauseReply.set(true);
             var submitting =
@@ -85,7 +88,14 @@ class TerminalInteractionOrderingTest {
                             () -> {
                                 completionStarted.countDown();
                                 try {
-                                    terminal.acceptFrame(new Frame.Done(null));
+                                    terminal.acceptFrame(
+                                            new Frame.Done(
+                                                    new Scope.GlobalScope(),
+                                                    null,
+                                                    -1,
+                                                    null,
+                                                    null,
+                                                    2));
                                 } catch (Throwable error) {
                                     failure.set(error);
                                 } finally {
@@ -107,8 +117,11 @@ class TerminalInteractionOrderingTest {
             assertFalse(submitting.isAlive());
             assertFalse(completing.isAlive());
             assertNull(failure.get());
-            assertEquals(new Frame.Input("synthetic-secret"), peer.sent.poll(2, TimeUnit.SECONDS));
-            assertEquals(new Frame.Request("second"), peer.sent.poll(2, TimeUnit.SECONDS));
+            assertEquals(
+                    new Frame.Input("synthetic-secret", 2), peer.sent.poll(2, TimeUnit.SECONDS));
+            assertEquals(
+                    new Frame.Request(3, null, null, "second"),
+                    peer.sent.poll(2, TimeUnit.SECONDS));
         }
     }
 

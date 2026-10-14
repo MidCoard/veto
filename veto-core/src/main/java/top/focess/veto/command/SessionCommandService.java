@@ -1,43 +1,27 @@
 package top.focess.veto.command;
 
-import java.time.Duration;
+import java.util.Locale;
 import java.util.Set;
 import java.util.UUID;
-import java.util.concurrent.TimeoutException;
 import org.jspecify.annotations.NonNull;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import top.focess.command.CommandManager;
-import top.focess.veto.agent.Agent;
-import top.focess.veto.agent.AgentService;
-import top.focess.veto.api.agent.AgentResult;
 import top.focess.veto.api.plugin.Scope;
-import top.focess.veto.bus.DeltaBroker;
 import top.focess.veto.contract.Delta;
 import top.focess.veto.i18n.Msg;
+import top.focess.veto.session.AgentSessions;
 import top.focess.veto.session.SessionService;
 
-/**
- * Selected-session operations exposed to the web UI; account and terminal commands stay separate.
- */
+/** Session command recognition and presentation shared by connection input paths. */
 @Service
 public class SessionCommandService {
-    private static final @NonNull Logger log =
-            LoggerFactory.getLogger("top.focess.veto.command.SessionCommandService");
     private static final @NonNull Set<@NonNull String> COMMANDS = Set.of("compact");
     private final @NonNull SessionService sessions;
-    private final @NonNull AgentService agents;
+    private final @NonNull AgentSessions runtime;
 
-    private final @NonNull DeltaBroker broker;
-
-    public SessionCommandService(
-            @NonNull SessionService sessions,
-            @NonNull AgentService agents,
-            @NonNull DeltaBroker broker) {
+    public SessionCommandService(@NonNull SessionService sessions, @NonNull AgentSessions runtime) {
         this.sessions = sessions;
-        this.agents = agents;
-        this.broker = broker;
+        this.runtime = runtime;
     }
 
     /** Backend command recognition, independent of terminal and account command registration. */
@@ -48,48 +32,49 @@ public class SessionCommandService {
         return tokens.length > 0 && COMMANDS.contains(tokens[0]);
     }
 
-    /** Enqueues a recognized operation; completion is delivered by the normal agent bus. */
-    public @NonNull String enqueue(@NonNull String name, @NonNull UUID owner) {
-        var session =
-                sessions.activateForRest(name, owner).orElseThrow(SessionNotFoundException::new);
-        var agent = agents.agentsView().get(session.sessionId());
-        if (agent == null) throw new IllegalStateException("Session agent is unavailable");
-        var request = agent.compact();
-        log.debug(
-                "Compaction queued for session {} (request {})",
-                session.sessionId(),
-                request.requestId());
-        return session.sessionId();
-    }
-
     /** Plain presentation feedback, never a model-context or account-command operation. */
     public void notice(
             @NonNull UUID userId,
             @NonNull String sessionId,
             String agentId,
-            @NonNull String prompt) {
+            @NonNull String prompt,
+            @NonNull Locale locale) {
         if (!prompt.strip().startsWith("/")) return;
-        publishNotice(userId, sessionId, agentId, Msg.get("input.command.asPrompt"));
+        publishNotice(userId, sessionId, agentId, Msg.get(locale, "input.command.asPrompt"));
     }
 
     public void primaryNotice(
-            @NonNull UUID userId, @NonNull String sessionId, @NonNull String agentId) {
-        publishNotice(userId, sessionId, agentId, Msg.get("input.command.primaryCompaction"));
+            @NonNull UUID userId,
+            @NonNull String sessionId,
+            @NonNull String agentId,
+            @NonNull Locale locale) {
+        publishNotice(
+                userId, sessionId, agentId, Msg.get(locale, "input.command.primaryCompaction"));
     }
 
     private void publishNotice(
             @NonNull UUID userId, @NonNull String sessionId, String agentId, @NonNull String text) {
+        var sessionScope = new Scope.SessionScope(userId, sessionId);
         Scope scope =
-                agentId == null
-                        ? new Scope.SessionScope(userId, sessionId)
-                        : new Scope.AgentScope(userId, sessionId, agentId);
-        broker.publish(new Delta(scope, new Delta.Notice(text, Delta.Level.INFO)));
+                agentId == null ? sessionScope : new Scope.AgentScope(userId, sessionId, agentId);
+        runtime.session(sessionScope)
+                .send(new Delta(scope, new Delta.Notice(text, Delta.Level.INFO)));
     }
 
-    /** Terminal compaction wait; web input returns as soon as execution is queued. */
-    public @NonNull AgentResult compact(@NonNull Agent agent)
-            throws TimeoutException, InterruptedException {
-        return agent.compact().await(Duration.ofMinutes(2));
+    /** The connection follows the request handle and emits its final reply after settlement. */
+    public void compact(@NonNull VetoCommandSender sender) {
+        var id =
+                sessions.activeSession(sender.terminalId())
+                        .orElseThrow(SessionNotFoundException::new);
+        var user = sender.requireUserId();
+        var session = sessions.runtimeSession(id, user);
+        var agent = session.primary(user);
+        var connection = sender.connection();
+        var locale = connection.locale();
+        connection.submitAgent(
+                session,
+                new Scope.AgentScope(user, id, agent.id()),
+                admission -> session.compact(user, locale, admission));
     }
 
     public static final class SessionNotFoundException extends IllegalArgumentException {

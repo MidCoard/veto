@@ -83,16 +83,16 @@ public class CommandRegistry {
      */
     public Frame.@NonNull ServerFrame dispatch(@NonNull VetoCommandSender sender, String raw) {
         if (raw == null || raw.isEmpty()) {
-            return new Frame.Done(null);
+            return new Frame.Done(new Scope.GlobalScope(), null, -1, null, null, 0);
         }
 
         String trimmed = raw.trim();
         if (trimmed.isEmpty()) {
-            return new Frame.Done(null);
+            return new Frame.Done(new Scope.GlobalScope(), null, -1, null, null, 0);
         }
 
         if (!trimmed.startsWith("/")) {
-            return dispatchAgentPrompt(sender, trimmed);
+            return dispatchAgentPrompt(sender, raw);
         } else {
             return dispatchSlashCommand(sender, trimmed);
         }
@@ -127,14 +127,14 @@ public class CommandRegistry {
                     return new Frame.Terminate(((TerminateException) exc).getReason());
                 }
                 if (exc instanceof LogoutException) {
-                    return new Frame.Done(null);
+                    return new Frame.Done(new Scope.GlobalScope(), null, -1, null, null, 0);
                 }
                 String msg = result.getMessage().orElse("Command failed.");
                 return Frame.Error.ofError(msg);
             }
 
             // Success case
-            return new Frame.Done(null);
+            return new Frame.Done(new Scope.GlobalScope(), null, -1, null, null, 0);
         } catch (Exception e) {
             // Exception messages and causes can echo command arguments, including secrets.
             log.error(
@@ -171,7 +171,8 @@ public class CommandRegistry {
                             done.requestId(),
                             done.turnNumber(),
                             done.content(),
-                            sender.username());
+                            sender.username(),
+                            done.seq());
             case Frame.Error error ->
                     new Frame.Error(
                             scope,
@@ -179,7 +180,8 @@ public class CommandRegistry {
                             error.turnNumber(),
                             error.content(),
                             error.seq(),
-                            sender.username());
+                            sender.username(),
+                            error.code());
         };
     }
 

@@ -1,19 +1,13 @@
 package top.focess.veto.command;
 
-import java.time.Duration;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
-import java.util.concurrent.TimeoutException;
 import org.jspecify.annotations.NonNull;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import top.focess.veto.agent.Agent;
 import top.focess.veto.agent.AgentService;
-import top.focess.veto.api.agent.AgentResult;
 import top.focess.veto.api.llm.LlmBinding;
 import top.focess.veto.api.plugin.Scope;
-import top.focess.veto.bus.DeltaBroker;
 import top.focess.veto.contract.Frame;
 import top.focess.veto.session.LlmConfig;
 import top.focess.veto.session.SessionService;
@@ -35,14 +29,7 @@ import top.focess.veto.vault.KeysteadVault;
  */
 public class PromptHandler {
 
-    private static final @NonNull Logger log =
-            LoggerFactory.getLogger("top.focess.veto.command.PromptHandler");
-
-    /** How long to block for one agent episode before timing the terminal out. */
-    private static final @NonNull Duration EPISODE_TIMEOUT = Duration.ofMinutes(5);
-
     private final @NonNull KeysteadVault vault;
-    private final @NonNull DeltaBroker broker;
     private final @NonNull AgentService agentService;
     private final @NonNull SessionService sessionService;
 
@@ -57,10 +44,8 @@ public class PromptHandler {
     public PromptHandler(
             @NonNull KeysteadVault vault,
             @NonNull AgentService agentService,
-            @NonNull SessionService sessionService,
-            @NonNull DeltaBroker broker) {
+            @NonNull SessionService sessionService) {
         this.vault = vault;
-        this.broker = broker;
         this.agentService = agentService;
         this.sessionService = sessionService;
     }
@@ -97,15 +82,7 @@ public class PromptHandler {
         sessionService.deactivateUser(userId);
     }
 
-    /**
-     * Handle a plain-text prompt by delegating to {@link AgentService}, streaming the agent's
-     * user-facing messages to the sender as they are emitted, and returning the terminal frame.
-     *
-     * <p>Never returns {@code null} - always {@link Frame.Done} on success or {@link Frame.Error}
-     * on failure. Must not throw for any recoverable failure (every {@code Exception} is caught and
-     * returned as an {@link Frame.Error}).
-     */
-    @SuppressWarnings("try") // Subscription is owned here solely for guaranteed scope cleanup.
+    /** Prepares a terminal prompt and lets its connection follow the admitted request handle. */
     public Frame.@NonNull TurnOutcome handle(
             @NonNull String prompt, @NonNull String terminalId, @NonNull VetoCommandSender sender) {
         UUID user = sender.userId();
@@ -142,45 +119,15 @@ public class PromptHandler {
                         config.baseUrl());
 
         var owner = user;
-        try (var subscription = broker.subscribe(UUID.fromString(sessionId), sender::sendEvent)) {
-            // Forward canonical broker events while waiting for the episode result.
-            AgentResult result =
-                    agentService.submit(
-                            sessionId,
-                            prompt,
-                            binding,
-                            EPISODE_TIMEOUT,
-                            null,
-                            veto -> sender.sendVetoPrompt(owner, UUID.fromString(sessionId), veto),
-                            user);
-
-            var scope = new Scope.SessionScope(owner, sessionId);
-
-            if (result.success() || Boolean.TRUE.equals(result.metadata().get("breakerTrip"))) {
-                // Content was already streamed; this completes the terminal request.
-                return new Frame.Done(scope, null, turnsOf(result), null, null);
-            }
-            // Execution failures surface in Error; a breaker already emitted its notice.
-            String resultMessage = result.message();
-            String reason = resultMessage.isBlank() ? "Agent failed." : resultMessage;
-            return new Frame.Error(scope, null, turnsOf(result), reason, 0, null);
-        } catch (TimeoutException e) {
-            log.warn("Agent episode timed out for session {}", sessionId);
-            return Frame.Error.ofError("Agent timed out.");
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            return Frame.Error.ofError("Interrupted.");
-        } catch (Exception e) {
-            log.error("Prompt failed for session {}", sessionId, e);
-            return Frame.Error.ofError("Agent failed: " + e.getMessage());
-        }
-    }
-
-    /**
-     * Reads the episode's turn count from the result metadata ({@code turns}, set by the runner).
-     */
-    private static int turnsOf(@NonNull AgentResult result) {
-        Object v = result.metadata().get("turns");
-        return v instanceof Number n ? n.intValue() : 0;
+        var session = sessionService.runtimeSession(sessionId, owner);
+        var agent = session.primary(owner);
+        var connection = sender.connection();
+        var locale = connection.locale();
+        connection.submitAgent(
+                session,
+                new Scope.AgentScope(owner, sessionId, agent.id()),
+                admission -> session.submit(owner, prompt, binding, locale, admission));
+        // Command dispatch returns immediately; the connection settles the bound agent request.
+        return new Frame.Done(new Scope.SessionScope(owner, sessionId), null, -1, null, null, 0);
     }
 }

@@ -20,18 +20,19 @@ import top.focess.veto.api.agent.screening.Danger;
 import top.focess.veto.api.agent.screening.Relevance;
 import top.focess.veto.api.llm.ToolCall;
 import top.focess.veto.api.plugin.Scope;
-import top.focess.veto.bus.DeltaBroker;
 import top.focess.veto.contract.Delta;
 import top.focess.veto.contract.Frame;
+import top.focess.veto.session.TestAgentSessions;
+import top.focess.veto.session.TestConnection;
 
 class AgentEventsTest {
     @Test
     void executionActionsKeepTheAgentSessionOwnershipBoundary() {
         var scope = new Scope.AgentScope(UUID.randomUUID(), UUID.randomUUID().toString(), "agent");
         var frames = new ArrayList<Frame.ScopedFrame>();
-        var broker = new DeltaBroker();
-        broker.subscribeAll(frames::add);
-        var sink = new DeltaBrokerEventSink(scope, broker);
+        var runtime = TestAgentSessions.create();
+        runtime.connectBrowser(new TestConnection(scope.userId(), frames::add).connection());
+        var sink = runtime.session(scope.sessionScope()).sink(scope);
         var action = new Frame.Action(scope.sessionScope(), List.of("agents", "execution"));
         sink.publish(action);
         assertEquals(List.of(action), frames);
@@ -102,6 +103,7 @@ class AgentEventsTest {
                                 7,
                                 "failed",
                                 0,
+                                null,
                                 null)),
                 frames);
         frames.clear();
@@ -116,7 +118,8 @@ class AgentEventsTest {
                                 "successful-request",
                                 8,
                                 "ok",
-                                null)),
+                                null,
+                                0)),
                 frames);
     }
 

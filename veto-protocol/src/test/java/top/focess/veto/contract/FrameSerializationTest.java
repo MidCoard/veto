@@ -18,9 +18,51 @@ class FrameSerializationTest {
     private static final @NonNull ObjectMapper JSON = new ObjectMapper();
 
     @Test
+    void operationSequencesAreRequiredAndAdmissionIsDistinctFromCompletion() throws Exception {
+        Frame[] frames = {
+            new Frame.Request(2, null, null, "prompt"),
+            new Frame.RequestAccepted(2, new Scope.GlobalScope(), "episode"),
+            new Frame.DeclineVetoes(3, UUID.randomUUID()),
+            new Frame.Cancel(4, 2),
+            new Frame.Prompt("Password", true, 2),
+            new Frame.Input("private", 2),
+            new Frame.Done(new Scope.GlobalScope(), "episode", 1, null, null, 2)
+        };
+        for (var frame : frames) {
+            var tree = (ObjectNode) JSON.readTree(FrameCodec.encodeString(frame));
+            assertEquals(frame, FrameCodec.decode(tree.toString()));
+            tree.remove("seq");
+            assertNull(FrameCodec.decode(tree.toString()));
+            tree.put("seq", -1);
+            assertNull(FrameCodec.decode(tree.toString()));
+            tree.put("seq", 0);
+            if (frame instanceof Frame.Done)
+                assertInstanceOf(Frame.Done.class, FrameCodec.decode(tree.toString()));
+            else assertNull(FrameCodec.decode(tree.toString()));
+        }
+        var cancel = (ObjectNode) JSON.readTree(FrameCodec.encodeString(new Frame.Cancel(3, 2)));
+        cancel.remove("targetSeq");
+        assertNull(FrameCodec.decode(cancel.toString()));
+        cancel.put("targetSeq", 0);
+        assertNull(FrameCodec.decode(cancel.toString()));
+        var failure =
+                new Frame.Error(
+                        new Scope.GlobalScope(),
+                        null,
+                        -1,
+                        "Rejected input",
+                        2,
+                        null,
+                        "PROTECTED_INPUT");
+        assertEquals(failure, FrameCodec.decode(FrameCodec.encode(failure)));
+    }
+
+    @Test
     void everyGeneralOutputRequiresExplicitScope() throws Exception {
         Frame[] frames = {
-            new Frame.Done("ok"), Frame.Error.ofError("failed"), Delta.message("text")
+            new Frame.Done(new Scope.GlobalScope(), null, -1, "ok", null, 0),
+            Frame.Error.ofError("failed"),
+            Delta.message("text")
         };
         for (var frame : frames) {
             var json = (ObjectNode) JSON.readTree(FrameCodec.encodeString(frame));
@@ -38,9 +80,12 @@ class FrameSerializationTest {
         var now = Instant.parse("2026-10-10T00:00:00Z");
         Frame[] frames = {
             new Frame.Hello(Frame.PROTOCOL_VERSION, 1, Version.parse("1.0.100"), "/workspace"),
-            new Frame.Request("hello"),
-            new Frame.Input("test input"),
-            new Frame.Cancel(4),
+            new Frame.Request(2, null, null, "hello"),
+            new Frame.Request(7, UUID.randomUUID(), "child", " exact prompt "),
+            new Frame.RequestAccepted(7, new Scope.GlobalScope(), "episode"),
+            new Frame.DeclineVetoes(8, UUID.randomUUID()),
+            new Frame.Input("test input", 2),
+            new Frame.Cancel(4, 2),
             new Frame.CancelResult(Frame.CancelStatus.ACCEPTED, 4),
             new Frame.CancelResult(Frame.CancelStatus.REJECTED, 5),
             new Frame.CancelResult(Frame.CancelStatus.NO_ACTIVE_REQUEST, 6),
@@ -51,7 +96,7 @@ class FrameSerializationTest {
             new Frame.Hint("/login ", 3),
             new Frame.CompleteResult(List.of(new Frame.Completion("/login", null, null)), 2),
             new Frame.HintResult(new Frame.HintInfo("<user>", null), 3),
-            new Frame.Done(null),
+            new Frame.Done(new Scope.GlobalScope(), null, -1, null, null, 0),
             new Frame.Error(
                     new Scope.AgentScope(
                             UUID.fromString("00000000-0000-0000-0000-000000000010"),
@@ -61,10 +106,11 @@ class FrameSerializationTest {
                     7,
                     "failed",
                     0,
+                    null,
                     null),
             new Frame.Error("failed", 0),
             new Delta(new Scope.GlobalScope(), new Delta.Progress("working", -1)),
-            new Frame.Prompt("Name", false),
+            new Frame.Prompt("Name", false, 2),
             new Frame.Veto(
                     new Scope.AgentScope(
                             UUID.fromString("00000000-0000-0000-0000-000000000010"),
@@ -108,14 +154,16 @@ class FrameSerializationTest {
 
     @Test
     void commandInputAndCompletionHaveExplicitContracts() throws Exception {
-        var prompt = JSON.readTree(FrameCodec.encodeString(new Frame.Prompt("Password", true)));
+        var prompt = JSON.readTree(FrameCodec.encodeString(new Frame.Prompt("Password", true, 2)));
         assertFalse(prompt.has("scope"));
+        assertEquals(2, prompt.path("seq").asLong());
         var done =
                 JSON.readTree(
                         FrameCodec.encodeString(
-                                new Frame.Done(new Scope.GlobalScope(), null, 3, null, null)));
+                                new Frame.Done(new Scope.GlobalScope(), null, 3, null, null, 0)));
         assertFalse(done.has("meta"));
         assertEquals(3, done.path("turnNumber").asInt());
+        assertEquals(0, done.path("seq").asLong());
         assertFalse(done.has("cancelled"));
         assertTrue(
                 List.of(Frame.ServerFrame.class.getPermittedSubclasses())
@@ -146,13 +194,14 @@ class FrameSerializationTest {
             tree.putNull("scope");
             assertNull(FrameCodec.decode(tree.toString()));
         }
-        assertEquals(-1, new Frame.Done(null).turnNumber());
+        assertEquals(
+                -1, new Frame.Done(new Scope.GlobalScope(), null, -1, null, null, 0).turnNumber());
         assertEquals(-1, Frame.Error.ofError("command").turnNumber());
     }
 
     @Test
     void invalidRequiredFieldsAndOldFormatsAreRejected() {
-        assertNull(FrameCodec.decode("{\"type\":\"request\",\"raw\":null}"));
+        assertNull(FrameCodec.decode("{\"type\":\"request\",\"seq\":2,\"raw\":null}"));
         assertNull(FrameCodec.decode("{\"type\":\"process\"}"));
         assertNull(FrameCodec.decode("{\"type\":\"error\",\"content\":\"bad\",\"seq\":null}"));
         assertNull(FrameCodec.decode("{\"type\":\"delta\",\"content\":\"old\"}"));
@@ -163,12 +212,12 @@ class FrameSerializationTest {
     @Test
     void scalarTypesAreNotCoerced() {
         String[] payloads = {
-            "{\"type\":\"request\",\"raw\":123}",
-            "{\"type\":\"request\",\"raw\":true}",
+            "{\"type\":\"request\",\"seq\":2,\"raw\":123}",
+            "{\"type\":\"request\",\"seq\":2,\"raw\":true}",
             "{\"type\":\"error\",\"content\":\"bad\",\"seq\":\"1\"}",
             "{\"type\":\"error\",\"content\":\"bad\",\"seq\":1.5}",
-            "{\"type\":\"prompt\",\"content\":\"Name\",\"mask\":1}",
-            "{\"type\":\"prompt\",\"content\":\"Name\",\"mask\":\"true\"}"
+            "{\"type\":\"prompt\",\"seq\":2,\"content\":\"Name\",\"mask\":1}",
+            "{\"type\":\"prompt\",\"seq\":2,\"content\":\"Name\",\"mask\":\"true\"}"
         };
         for (var payload : payloads) {
             assertNull(FrameCodec.decode(payload));

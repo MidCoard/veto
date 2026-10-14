@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicLong;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -39,17 +40,18 @@ class TerminalInputTest {
                             public void onCommandDispatched(@NonNull String line) {
                                 echoed.add(line);
                             }
-                        });
+                        },
+                        new AtomicLong(1)::incrementAndGet);
         assertEquals(
-                new Frame.Request("/login"),
+                new Frame.Request(2, null, null, "/login"),
                 session.submit(VetoTerminal.normalizeInput("  /login  ", null), null));
-        var prompt = new Frame.Prompt("Password:", true);
+        var prompt = new Frame.Prompt("Password:", true, 2);
         session.onFrame(prompt);
         echoed.clear();
 
         String prepared = VetoTerminal.normalizeInput(secret, prompt);
         assertFalse(prepared.isEmpty(), "Whitespace-only nonempty passwords must be submitted");
-        assertEquals(new Frame.Input(secret), session.submit(prepared, prompt));
+        assertEquals(new Frame.Input(secret, 2), session.submit(prepared, prompt));
         assertTrue(echoed.isEmpty());
         assertTrue(session.pendingQueue().isEmpty());
     }

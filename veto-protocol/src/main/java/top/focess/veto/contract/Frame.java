@@ -42,9 +42,9 @@ import top.focess.veto.api.plugin.Scope;
  * responses echo that sequence. Receiving a request never completes a locally pending request.
  * Endpoints decide which application operations they accept, independently of these wire types.
  *
- * <p>Frames with indeterminate output (e.g. {@link Request} which may produce 0, 1, or many
- * streaming frames) do <b>not</b> carry a {@code seq}. Fire-and-forget frames ({@link Bye}, {@link
- * Input}) also omit it.
+ * <p>Request admission and settlement are separate: RequestAccepted confirms admission, while
+ * Done/Error echoes the same request sequence after settlement. Session broadcasts use sequence
+ * zero and cannot complete a connection-local request. Prompt/Input echo the owning request.
  *
  * <p>Discriminated by the {@code type} field in JSON.
  */
@@ -52,6 +52,8 @@ import top.focess.veto.api.plugin.Scope;
 @JsonSubTypes({
     @JsonSubTypes.Type(value = Frame.Hello.class, name = "hello"),
     @JsonSubTypes.Type(value = Frame.Request.class, name = "request"),
+    @JsonSubTypes.Type(value = Frame.RequestAccepted.class, name = "request_accepted"),
+    @JsonSubTypes.Type(value = Frame.DeclineVetoes.class, name = "decline_vetoes"),
     @JsonSubTypes.Type(value = Frame.Complete.class, name = "complete"),
     @JsonSubTypes.Type(value = Frame.Hint.class, name = "hint"),
     @JsonSubTypes.Type(value = Frame.Input.class, name = "input"),
@@ -82,11 +84,21 @@ public sealed interface Frame
 
     /** Frames sent by a client: both client requests and replies to server requests. */
     sealed interface ClientFrame extends Frame
-            permits Hello, Request, Complete, Hint, Input, Cancel, Bye, Heartbeat, VetoResult {}
+            permits Hello,
+                    Request,
+                    DeclineVetoes,
+                    Complete,
+                    Hint,
+                    Input,
+                    Cancel,
+                    Bye,
+                    Heartbeat,
+                    VetoResult {}
 
     /** Frames sent by the backend: both server requests and replies to client requests. */
     sealed interface ServerFrame extends Frame
             permits Welcome,
+                    RequestAccepted,
                     CompleteResult,
                     HintResult,
                     CancelResult,
@@ -105,7 +117,8 @@ public sealed interface Frame
     int PROTOCOL_VERSION = 5;
 
     /** A request initiated by either peer. */
-    sealed interface SeqRequest extends Frame permits Hello, Complete, Hint, Cancel, Veto {
+    sealed interface SeqRequest extends Frame
+            permits Hello, Request, DeclineVetoes, Complete, Hint, Cancel, Prompt, Veto {
         /**
          * Returns the sequence number associated with this request.
          *
@@ -147,17 +160,44 @@ public sealed interface Frame
         }
     }
 
-    /**
-     * User typed a command or plain-text prompt.
-     *
-     * <p>The response is <b>indeterminate</b> — the backend may emit zero or more {@link Delta},
-     * {@link Prompt} frames before a terminal {@link Done} or {@link Error}. Because there is no
-     * single determined response, this frame does <b>not</b> carry a {@code seq}.
-     */
+    /** An explicitly correlated command or prompt; browser requests identify their session. */
     record Request(
+            @JsonProperty(value = "seq", required = true) @JsonSetter(nulls = Nulls.FAIL) long seq,
+            UUID sessionId,
+            String agentId,
             @JsonProperty(value = "raw", required = true) @JsonSetter(nulls = Nulls.FAIL)
                     @NonNull String raw)
-            implements ClientFrame {}
+            implements ClientFrame, SeqRequest {
+        public Request {
+            if (seq <= 0) throw new IllegalArgumentException("Request sequence must be positive");
+            Objects.requireNonNull(raw, "raw");
+        }
+    }
+
+    /** Admission acknowledgement; never substitutes for the operation's final Done/Error. */
+    record RequestAccepted(
+            @JsonProperty(value = "seq", required = true) @JsonSetter(nulls = Nulls.FAIL) long seq,
+            @JsonProperty(value = "scope", required = true) @JsonSetter(nulls = Nulls.FAIL)
+                    @NonNull Scope scope,
+            String requestId)
+            implements ServerFrame, SeqResponse, ScopedFrame {
+        public RequestAccepted {
+            if (seq <= 0) throw new IllegalArgumentException("Request sequence must be positive");
+            Objects.requireNonNull(scope, "scope");
+        }
+    }
+
+    /** Refuses pending approvals across one owned session; acknowledged with Done or Error. */
+    record DeclineVetoes(
+            @JsonProperty(value = "seq", required = true) @JsonSetter(nulls = Nulls.FAIL) long seq,
+            @JsonProperty(value = "sessionId", required = true) @JsonSetter(nulls = Nulls.FAIL)
+                    @NonNull UUID sessionId)
+            implements ClientFrame, SeqRequest {
+        public DeclineVetoes {
+            if (seq <= 0) throw new IllegalArgumentException("Request sequence must be positive");
+            Objects.requireNonNull(sessionId, "sessionId");
+        }
+    }
 
     /**
      * Tab-completion query. Backend responds with exactly one {@link CompleteResult} carrying
@@ -194,11 +234,16 @@ public sealed interface Frame
         }
     }
 
-    /** User replied to a backend-issued {@link Prompt}. Fire-and-forget. */
+    /** User replied to the Prompt belonging to the echoed request sequence. */
     record Input(
             @JsonProperty(value = "raw", required = true) @JsonSetter(nulls = Nulls.FAIL)
-                    @NonNull String raw)
-            implements ClientFrame {
+                    @NonNull String raw,
+            @JsonProperty(value = "seq", required = true) @JsonSetter(nulls = Nulls.FAIL) long seq)
+            implements ClientFrame, SeqResponse {
+        public Input {
+            if (seq <= 0) throw new IllegalArgumentException("Request sequence must be positive");
+        }
+
         @Override
         @NonNull
         public String toString() {
@@ -207,13 +252,16 @@ public sealed interface Frame
     }
 
     /**
-     * Requests cancellation of the current interaction or command; acknowledged by CancelResult.
+     * Requests cancellation of the exact operation identified by targetSeq; acknowledged by
+     * CancelResult.
      */
     record Cancel(
-            @JsonProperty(value = "seq", required = true) @JsonSetter(nulls = Nulls.FAIL) long seq)
+            @JsonProperty(value = "seq", required = true) @JsonSetter(nulls = Nulls.FAIL) long seq,
+            @JsonProperty(value = "targetSeq", required = true) @JsonSetter(nulls = Nulls.FAIL)
+                    long targetSeq)
             implements ClientFrame, SeqRequest {
         public Cancel {
-            if (seq <= 0)
+            if (seq <= 0 || targetSeq <= 0)
                 throw new IllegalArgumentException("Sequence must be positive; 0 is uncorrelated");
         }
     }
@@ -242,7 +290,7 @@ public sealed interface Frame
         ACCEPTED,
         /** The cancellation operation could not be carried out. */
         REJECTED,
-        /** No pending interaction or command exists on this connection. */
+        /** The target operation is no longer active on this connection. */
         NO_ACTIVE_REQUEST
     }
 
@@ -254,7 +302,7 @@ public sealed interface Frame
 
     /** Application output with an explicit scope; connection-local output uses GlobalScope. */
     sealed interface ScopedFrame extends Frame
-            permits Delta, Action, PluginAction, TurnOutcome, Veto, VetoResult {
+            permits Delta, Action, PluginAction, RequestAccepted, TurnOutcome, Veto, VetoResult {
         @NonNull Scope scope();
 
         @JsonIgnore
@@ -273,12 +321,19 @@ public sealed interface Frame
 
     /** A response to a request initiated by either peer. */
     sealed interface SeqResponse extends Frame
-            permits Welcome, CompleteResult, HintResult, CancelResult, Error, VetoResult {
+            permits Welcome,
+                    RequestAccepted,
+                    CompleteResult,
+                    HintResult,
+                    CancelResult,
+                    Done,
+                    Error,
+                    Input,
+                    VetoResult {
         /**
          * Returns the sequence number echoed from the initiating sequenced request.
          *
-         * @return the sequence number; {@code 0} when not correlated to a sequenced request (e.g.
-         *     an {@link Error} replying to a {@link Request})
+         * @return the request sequence, or zero for a session-wide observation
          */
         long seq();
     }
@@ -395,22 +450,19 @@ public sealed interface Frame
             @JsonProperty(value = "turnNumber", required = true) @JsonSetter(nulls = Nulls.FAIL)
                     int turnNumber,
             String content,
-            String username)
-            implements TurnOutcome {
+            String username,
+            @JsonProperty(value = "seq", required = true) @JsonSetter(nulls = Nulls.FAIL) long seq)
+            implements TurnOutcome, SeqResponse {
         public Done {
             Objects.requireNonNull(scope, "scope");
-        }
-
-        public Done(String content) {
-            this(new Scope.GlobalScope(), null, -1, content, null);
+            if (seq < 0) throw new IllegalArgumentException("Sequence cannot be negative");
         }
     }
 
     /**
      * Fatal — terminates the exchange with an error message.
      *
-     * <p>Echoes the {@code seq} from the initiating frame. When emitted in response to a {@link
-     * Request} (which has no seq), use {@code seq = 0}.
+     * <p>Echoes the initiating operation sequence; zero identifies a session-wide observation.
      *
      * @param content error description
      * @param seq echoed from the initiating frame; 0 when not correlated to a sequenced request
@@ -424,19 +476,20 @@ public sealed interface Frame
             @JsonProperty(value = "content", required = true) @JsonSetter(nulls = Nulls.FAIL)
                     @NonNull String content,
             @JsonProperty(value = "seq", required = true) @JsonSetter(nulls = Nulls.FAIL) long seq,
-            String username)
+            String username,
+            String code)
             implements SeqResponse, TurnOutcome {
         public Error {
             Objects.requireNonNull(scope, "scope");
+            if (seq < 0) throw new IllegalArgumentException("Sequence cannot be negative");
         }
 
         public Error(@NonNull String content, long seq) {
-            this(new Scope.GlobalScope(), null, -1, content, seq, null);
+            this(new Scope.GlobalScope(), null, -1, content, seq, null, null);
         }
 
         /**
-         * Creates an uncorrelated error ({@code seq = 0}), e.g. a reply to a {@link Request} which
-         * carries no sequence number.
+         * Creates a session-wide observation error ({@code seq = 0}).
          *
          * @param content error description
          * @return the error frame
@@ -451,8 +504,13 @@ public sealed interface Frame
             @JsonProperty(value = "content", required = true) @JsonSetter(nulls = Nulls.FAIL)
                     @NonNull String content,
             @JsonProperty(value = "mask", required = true) @JsonSetter(nulls = Nulls.FAIL)
-                    boolean mask)
-            implements ServerFrame {}
+                    boolean mask,
+            @JsonProperty(value = "seq", required = true) @JsonSetter(nulls = Nulls.FAIL) long seq)
+            implements ServerFrame, SeqRequest {
+        public Prompt {
+            if (seq <= 0) throw new IllegalArgumentException("Request sequence must be positive");
+        }
+    }
 
     /**
      * Approval request shared by browser and terminal; both clients use the actual agent scope.

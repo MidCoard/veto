@@ -66,12 +66,27 @@ public class VetoAgent implements Agent {
         return userInteractionEnabled;
     }
 
-    /** User commands are queued independently of a workflow request handle. */
-    public void submitUserPrompt(@NonNull String prompt) {
+    /** User commands return the handle for their own queued execution. */
+    public @NonNull RequestHandle submitUserPrompt(
+            @NonNull String prompt,
+            @NonNull Locale locale,
+            RequestHandle.@NonNull Admission admission) {
         if (!userInteractionEnabled) throw new IllegalStateException("Agent is read-only");
         if (state() == AgentState.TERMINATED)
             throw new IllegalStateException("Agent has terminated");
-        runner.startTask(null, new AgentAction.UserPromptAction(prompt));
+        return runner.startTask(null, new AgentAction.UserPromptAction(prompt), locale, admission);
+    }
+
+    /** User prompts from internal callers retain the runner's current locale. */
+    public @NonNull RequestHandle submitUserPrompt(@NonNull String prompt) {
+        if (!userInteractionEnabled) throw new IllegalStateException("Agent is read-only");
+        return runner.startTask(null, new AgentAction.UserPromptAction(prompt));
+    }
+
+    /** Compaction uses the initiating connection's captured message locale. */
+    public @NonNull RequestHandle compact(
+            @NonNull Locale locale, RequestHandle.@NonNull Admission admission) {
+        return runner.startTask(null, new AgentAction.CompactAction(), locale, admission);
     }
 
     /** Attaches the plugin work source the agent polls for autonomous observations. */
@@ -128,6 +143,17 @@ public class VetoAgent implements Agent {
             Consumer<AgentResult> callback) {
         return runner.startTask(
                 callback, new AgentAction.UserPromptAction(prompt), binding, locale);
+    }
+
+    /** Protects input before the connection's final authority check and runner enqueue. */
+    public @NonNull RequestHandle submitRequest(
+            @NonNull String prompt,
+            @NonNull LlmBinding binding,
+            @NonNull Locale locale,
+            Consumer<AgentResult> callback,
+            RequestHandle.@NonNull Admission admission) {
+        return runner.startTask(
+                callback, new AgentAction.UserPromptAction(prompt), binding, locale, admission);
     }
 
     /** Registers a callback run once when the agent's execution thread terminates. */

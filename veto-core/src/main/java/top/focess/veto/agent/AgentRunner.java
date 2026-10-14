@@ -67,6 +67,7 @@ public final class AgentRunner {
     private final @NonNull String agentId;
     private final @NonNull UUID sessionId;
     private final @NonNull ToolEngine toolEngine;
+    private final @NonNull AgentPluginHooks hooks;
     final @NonNull ToolExecutionBoundary toolBoundary;
     private final @NonNull AgentPersona persona;
     // The execution thread applies queued inputs; volatile publishes them to external queries.
@@ -155,7 +156,7 @@ public final class AgentRunner {
                         new ToolResultPresenter(objectMapper),
                         toolEngine,
                         this::outputView);
-        var hooks =
+        hooks =
                 new AgentPluginHooks(
                         userId,
                         sessionId.toString(),
@@ -224,25 +225,21 @@ public final class AgentRunner {
     }
 
     /**
-     * Cancels the task identified by its request handle and waits for its execution to exit.
-     *
-     * @return whether the task settled within {@code timeout}; false if it is not owned by this
-     *     runner or did not settle in time
+     * Admits cancellation without waiting for execution to exit. Repeated cancellation remains
+     * accepted until settlement; a foreign or already completed request is not cancellable.
      */
-    public boolean cancelTask(@NonNull RequestHandle task, @NonNull Duration timeout)
-            throws InterruptedException {
+    public boolean requestCancellation(@NonNull RequestHandle task) {
         boolean queuedCancellation = false;
         synchronized (this) {
-            if (task.owner != this) return false;
-            if (!task.resultClaimed && !task.result.isDone()) task.cancelled = true;
-            if (task.cancelled && !task.resultClaimed && task != control.request()) {
+            if (task.owner != this || task.settled.isDone()) return false;
+            if (task.cancelled) return true;
+            if (task.resultClaimed || task.result.isDone()) return false;
+            task.cancelled = true;
+            if (task != control.request()) {
                 // Admission uses this same gate: this handle cannot start after this intent.
                 task.resultClaimed = true;
                 queuedCancellation = true;
-            } else if (task.cancelled
-                    && !task.resultClaimed
-                    && task == control.request()
-                    && !task.interruptSent) {
+            } else if (!task.interruptSent) {
                 task.interruptSent = true;
                 toolBoundary.declineAll();
                 var thread = executionThread;
@@ -253,6 +250,19 @@ public final class AgentRunner {
             task.result.complete(AgentResult.failure("Task cancelled", Map.of()));
             task.settled.complete(true);
         }
+        return true;
+    }
+
+    /**
+     * Cancels the task identified by its request handle and waits for its execution to exit.
+     *
+     * @return whether the task settled within {@code timeout}; false if it is not owned by this
+     *     runner or did not settle in time
+     */
+    public boolean cancelTask(@NonNull RequestHandle task, @NonNull Duration timeout)
+            throws InterruptedException {
+        if (task.owner != this) return false;
+        log.debug("Task cancellation admitted: {}", requestCancellation(task));
         try {
             return task.settled.get(Math.max(0, timeout.toNanos()), TimeUnit.NANOSECONDS);
         } catch (TimeoutException e) {
@@ -462,15 +472,50 @@ public final class AgentRunner {
         return startTask(callback, action, inputs.binding(), inputs.locale());
     }
 
-    /**
-     * Admits explicit request inputs atomically with the prompt, independent of later submissions.
-     */
+    /** Uses the current submission binding with this caller's captured message locale. */
+    public @NonNull RequestHandle startTask(
+            Consumer<AgentResult> callback,
+            @NonNull AgentAction action,
+            @NonNull Locale locale,
+            RequestHandle.@NonNull Admission admission) {
+        RunnerCommand.Inputs inputs;
+        synchronized (this) {
+            inputs = submissionInputs;
+        }
+        return startTask(callback, action, inputs.binding(), locale, admission);
+    }
+
+    /** Admits an internal request with its explicit model and locale. */
     public @NonNull RequestHandle startTask(
             Consumer<AgentResult> callback,
             @NonNull AgentAction action,
             @NonNull LlmBinding binding,
             @NonNull Locale locale) {
-        RequestHandle handle;
+        return startTask(callback, action, binding, locale, RequestHandle.Admission.DIRECT);
+    }
+
+    /** Protects input before the caller's authority guard admits the final queue mutation. */
+    public @NonNull RequestHandle startTask(
+            Consumer<AgentResult> callback,
+            @NonNull AgentAction action,
+            @NonNull LlmBinding binding,
+            @NonNull Locale locale,
+            RequestHandle.@NonNull Admission admission) {
+        AgentAction prepared =
+                action instanceof AgentAction.UserPromptAction prompt
+                        ? new AgentAction.UserPromptAction(
+                                hooks.captureSubmittedPrompt(prompt.prompt()))
+                        : action;
+        var handle = admission.enqueue(() -> enqueue(callback, prepared, binding, locale));
+        output.events.executionChanged();
+        return handle;
+    }
+
+    private @NonNull RequestHandle enqueue(
+            Consumer<AgentResult> callback,
+            @NonNull AgentAction action,
+            @NonNull LlmBinding binding,
+            @NonNull Locale locale) {
         synchronized (this) {
             if (stopReason != null || !control.open())
                 throw new IllegalStateException("Agent has terminated");
@@ -484,15 +529,14 @@ public final class AgentRunner {
                     control.waiting(Wait.BREAKER)
                             && promptText != null
                             && "continue".equalsIgnoreCase(promptText.strip());
-            handle =
+            var handle =
                     continuation && previous != null
                             ? new RequestHandle(this, previous.episode, binding, locale)
                             : new RequestHandle(this, continuations.newEpisode(), binding, locale);
             if (callback != null) handle.result.thenAccept(callback);
             actionQueue.add(new QueuedRequest(action, handle));
+            return handle;
         }
-        output.events.executionChanged();
-        return handle;
     }
 
     /** Replaces the base model binding used for subsequent configuration resolution. */

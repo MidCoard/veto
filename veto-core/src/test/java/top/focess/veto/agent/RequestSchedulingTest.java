@@ -1,6 +1,7 @@
 package top.focess.veto.agent;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.AdditionalAnswers.answerVoid;
 import static org.mockito.Mockito.*;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -11,6 +12,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.LinkedBlockingQueue;
@@ -20,6 +22,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
 import org.mockito.Mockito;
+import org.springframework.test.util.ReflectionTestUtils;
 import top.focess.veto.agent.ExecutionControl.Wait;
 import top.focess.veto.agent.drift.ReadHistory;
 import top.focess.veto.agent.identity.AgentPersona;
@@ -31,15 +34,92 @@ import top.focess.veto.agent.tool.ToolEngine;
 import top.focess.veto.api.agent.AgentAction;
 import top.focess.veto.api.agent.AgentResult;
 import top.focess.veto.api.agent.AgentState;
+import top.focess.veto.api.event.BeforeTextCommitEvent;
 import top.focess.veto.api.llm.LlmBinding;
 import top.focess.veto.api.llm.LlmOptions;
 import top.focess.veto.api.llm.ProviderType;
 import top.focess.veto.api.llm.VetoResponse;
 import top.focess.veto.bus.SessionActions;
 import top.focess.veto.contract.Frame;
+import top.focess.veto.event.EventManager;
 import top.focess.veto.vault.TestUsers;
 
 class RequestSchedulingTest {
+    @Test
+    void protectedInputRejectionOccursBeforeAdmission() {
+        var runner = runner();
+        var events = mock(EventManager.class);
+        doAnswer(answerVoid((@NonNull BeforeTextCommitEvent event) -> event.setCancelled(true)))
+                .when(events)
+                .submit(any(BeforeTextCommitEvent.class));
+        runner.attachEventManager(events);
+        assertThrows(
+                ProtectedInputException.class,
+                () -> runner.startTask(null, new AgentAction.UserPromptAction("protected input")));
+        assertFalse(runner.hasPendingWork());
+        verify(events).submit(any(BeforeTextCommitEvent.class));
+    }
+
+    @Test
+    void authorityGuardRunsAfterProtectionAndCanRejectWithoutEnqueueing() {
+        var runner = runner();
+        var events = mock(EventManager.class);
+        doAnswer(
+                        answerVoid(
+                                (@NonNull BeforeTextCommitEvent event) ->
+                                        event.setText("protected reference")))
+                .when(events)
+                .submit(any(BeforeTextCommitEvent.class));
+        runner.attachEventManager(events);
+        assertThrows(
+                IllegalStateException.class,
+                () ->
+                        runner.startTask(
+                                null,
+                                new AgentAction.UserPromptAction("raw secret"),
+                                Locale.GERMAN,
+                                commit -> {
+                                    verify(events).submit(any(BeforeTextCommitEvent.class));
+                                    assertFalse(runner.hasPendingWork());
+                                    throw new IllegalStateException(
+                                            "Authority revoked during protection");
+                                }));
+        assertFalse(runner.hasPendingWork());
+    }
+
+    @Test
+    void queuedPromptIsProtectedBeforeAdmissionAndIgnoresEarlierCancellation() {
+        var runner = runner();
+        var previousAction = new AgentAction.UserPromptAction("previous");
+        var previous = runner.startTask(null, previousAction);
+        assertTrue(runner.beginRequest(new QueuedRequest(previousAction, previous)));
+        previous.cancelled = true;
+        var events = mock(EventManager.class);
+        doAnswer(
+                        answerVoid(
+                                (@NonNull BeforeTextCommitEvent event) ->
+                                        event.setText("protected reference")))
+                .when(events)
+                .submit(any(BeforeTextCommitEvent.class));
+        runner.attachEventManager(events);
+        var request = runner.startTask(null, new AgentAction.UserPromptAction("raw secret"));
+        var value = ReflectionTestUtils.getField(runner, "actionQueue");
+        if (!(value instanceof BlockingQueue<?> queue))
+            throw new AssertionError("Missing action queue");
+        boolean found =
+                queue.stream()
+                        .anyMatch(
+                                item ->
+                                        item instanceof QueuedRequest queued
+                                                && queued.handle() == request
+                                                && queued.action()
+                                                        instanceof
+                                                        AgentAction.UserPromptAction prompt
+                                                && prompt.prompt().equals("protected reference"));
+        assertTrue(found);
+        verify(events).submit(any(BeforeTextCommitEvent.class));
+    }
+
     @ParameterizedTest
     @EnumSource(Wait.class)
     void completionReleasesTransientWaitsButKeepsContinuationBarriers(@NonNull Wait reason) {

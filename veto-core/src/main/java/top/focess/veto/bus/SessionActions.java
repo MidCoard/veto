@@ -15,13 +15,14 @@ import top.focess.veto.api.plugin.Scope;
 import top.focess.veto.contract.Frame;
 import top.focess.veto.model.AgentInstanceRepository;
 import top.focess.veto.model.SessionRepository;
+import top.focess.veto.session.AgentSessions;
 
 /**
  * Best-effort invalidations after readable state changes; never sends sockets under registry locks.
  */
 @Component
 public class SessionActions {
-    private final @NonNull DeltaBroker broker;
+    private final @NonNull AgentSessions runtime;
     private final @NonNull SessionRepository sessions;
     private final @NonNull AgentInstanceRepository agents;
     private final @NonNull ThreadPoolExecutor delivery =
@@ -33,12 +34,12 @@ public class SessionActions {
                     new ArrayBlockingQueue<>(512),
                     Thread.ofPlatform().daemon().name("session-actions").factory());
 
-    /** Creates the resource publisher on top of the frame broker and agent registry. */
+    /** Creates the resource publisher on top of runtime sessions and the agent registry. */
     public SessionActions(
-            @NonNull DeltaBroker broker,
+            @NonNull AgentSessions runtime,
             @NonNull AgentInstanceRepository agents,
             @NonNull SessionRepository sessions) {
-        this.broker = broker;
+        this.runtime = runtime;
         this.agents = agents;
         this.sessions = sessions;
     }
@@ -70,16 +71,24 @@ public class SessionActions {
         sessions.findById(sessionId.toString())
                 .ifPresent(
                         session ->
-                                broker.publish(
-                                        new Frame.Action(
+                                runtime.session(
                                                 new Scope.SessionScope(
-                                                        session.getUserId(), sessionId.toString()),
-                                                List.of(resources))));
+                                                        session.getUserId(), sessionId.toString()))
+                                        .send(
+                                                new Frame.Action(
+                                                        new Scope.SessionScope(
+                                                                session.getUserId(),
+                                                                sessionId.toString()),
+                                                        List.of(resources))));
     }
 
     /** Queues a scoped publication after commit, without sending under caller locks. */
     public void publish(Frame.@NonNull ScopedFrame frame) {
-        afterCommit(() -> broker.publish(frame));
+        var user = frame.scope().userId();
+        var sessionId = frame.scope().session();
+        if (user == null || sessionId == null)
+            throw new IllegalArgumentException("Session output requires an owner and session");
+        afterCommit(() -> runtime.session(new Scope.SessionScope(user, sessionId)).send(frame));
     }
 
     private void afterCommit(@NonNull Runnable action) {

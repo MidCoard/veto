@@ -5,20 +5,17 @@ import static org.mockito.Mockito.*;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
-import java.util.Optional;
+import java.util.Locale;
 import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import top.focess.veto.agent.AgentService;
-import top.focess.veto.agent.RequestHandle;
-import top.focess.veto.agent.VetoAgent;
-import top.focess.veto.bus.DeltaBroker;
 import top.focess.veto.contract.Delta;
 import top.focess.veto.session.SessionService;
-import top.focess.veto.session.SessionService.SessionConfig;
+import top.focess.veto.session.TestAgentSessions;
+import top.focess.veto.session.TestConnection;
 import top.focess.veto.vault.TestUsers;
 
 class SessionCommandServiceTest {
@@ -39,8 +36,7 @@ class SessionCommandServiceTest {
             })
     void nonSessionSyntaxIsNotACommand(@NonNull String input) {
         var service =
-                new SessionCommandService(
-                        mock(SessionService.class), mock(AgentService.class), new DeltaBroker());
+                new SessionCommandService(mock(SessionService.class), TestAgentSessions.create());
         assertFalse(service.supports(input));
     }
 
@@ -59,60 +55,35 @@ class SessionCommandServiceTest {
             })
     void firstCommandTokenSelectsCompaction(@NonNull String input) {
         var service =
-                new SessionCommandService(
-                        mock(SessionService.class), mock(AgentService.class), new DeltaBroker());
+                new SessionCommandService(mock(SessionService.class), TestAgentSessions.create());
         assertTrue(service.supports(input));
     }
 
     @Test
-    void foreignSessionCannotEnqueueCompaction() {
-        var sessions = mock(SessionService.class);
-        var agents = mock(AgentService.class);
-        when(sessions.activateForRest("foreign", TestUsers.OWNER)).thenReturn(Optional.empty());
-        var service = new SessionCommandService(sessions, agents, new DeltaBroker());
-        assertThrows(
-                SessionCommandService.SessionNotFoundException.class,
-                () -> service.enqueue("foreign", TestUsers.OWNER));
-        verifyNoInteractions(agents);
-    }
-
-    @Test
-    void enqueueReturnsWithoutWaitingForTheAgentResult() {
-        var sessions = mock(SessionService.class);
-        var agents = mock(AgentService.class);
-        var owned = mock(SessionConfig.class);
-        var agent = mock(VetoAgent.class);
-        var request = mock(RequestHandle.class);
-        String sessionId = UUID.randomUUID().toString();
-        when(request.requestId()).thenReturn("queued-request");
-        when(owned.sessionId()).thenReturn(sessionId);
-        when(sessions.activateForRest("private", TestUsers.OWNER)).thenReturn(Optional.of(owned));
-        when(agents.agentsView()).thenReturn(Map.of(sessionId, agent));
-        when(agent.compact()).thenReturn(request);
-        var service = new SessionCommandService(sessions, agents, new DeltaBroker());
-        assertEquals(sessionId, service.enqueue("private", TestUsers.OWNER));
-        verify(agent).compact();
-        verify(request).requestId();
-        verifyNoMoreInteractions(request);
-    }
-
-    @Test
     void backendNoticeUsesTheAgentAndNeverEchoesPotentialCredentials() throws Exception {
-        var broker = new DeltaBroker();
+        var runtime = TestAgentSessions.create();
         var sessions = mock(SessionService.class);
         var agents = mock(AgentService.class);
-        var service = new SessionCommandService(sessions, agents, broker);
+        TestAgentSessions.bind(sessions, agents);
+        var service = new SessionCommandService(sessions, runtime);
         var id = UUID.randomUUID();
         List<@NonNull Delta> frames = new ArrayList<>();
-        var subscription =
-                broker.subscribe(
-                        id,
+        var connection =
+                new TestConnection(
+                        TestUsers.OWNER,
                         frame -> {
                             if (frame instanceof Delta delta) frames.add(delta);
                         });
+        runtime.connectBrowser(connection.connection());
         try {
-            service.notice(TestUsers.OWNER, id.toString(), "child", "/signup secret-password");
-            service.notice(TestUsers.OWNER, id.toString(), "child", "ordinary prompt");
+            service.notice(
+                    TestUsers.OWNER,
+                    id.toString(),
+                    "child",
+                    "/signup secret-password",
+                    Locale.ENGLISH);
+            service.notice(
+                    TestUsers.OWNER, id.toString(), "child", "ordinary prompt", Locale.ENGLISH);
             assertEquals(1, frames.size());
             var frame = frames.getFirst();
             assertInstanceOf(Delta.Notice.class, frame.data());
@@ -122,9 +93,9 @@ class SessionCommandServiceTest {
             assertFalse(((Delta.Notice) frame.data()).text().contains("secret-password"));
             assertTrue(((Delta.Notice) frame.data()).text().contains("message"));
         } finally {
-            subscription.close();
+            runtime.disconnect(connection.connection());
         }
-        service.notice(TestUsers.OWNER, id.toString(), "child", "/unknown");
+        service.notice(TestUsers.OWNER, id.toString(), "child", "/unknown", Locale.ENGLISH);
         assertEquals(1, frames.size());
         verifyNoInteractions(sessions, agents);
     }

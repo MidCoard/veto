@@ -42,9 +42,6 @@ import top.focess.veto.api.llm.LlmBinding;
 import top.focess.veto.api.llm.ToolResultPresentationMode;
 import top.focess.veto.api.plugin.Scope;
 import top.focess.veto.api.plugin.agent.AgentProfile;
-import top.focess.veto.bus.DeltaBroker;
-import top.focess.veto.contract.Delta;
-import top.focess.veto.contract.Frame.Done;
 import top.focess.veto.event.EventManager;
 import top.focess.veto.i18n.Msg;
 import top.focess.veto.integration.plugins.SessionPlugins;
@@ -54,18 +51,14 @@ import top.focess.veto.memory.TurnLogService;
 import top.focess.veto.model.SessionEntity;
 import top.focess.veto.model.SessionRepository;
 import top.focess.veto.model.tier.ModelTierRegistry;
+import top.focess.veto.session.AgentSessions;
 import top.focess.veto.util.Nullness;
 import top.focess.veto.vault.KeysteadVault;
 
 /**
- * The shared agent service ("Multi-Client Unification"). Both the ZMQ terminal ({@code
- * PromptHandler}) and the REST controllers are thin facades that delegate here — loop execution is
- * hosted exclusively in {@code veto-core}, asynchronously on virtual threads via {@link
- * AgentRunner} managed per {@link VetoAgent}.
- *
- * <p>Resolves (or creates) an agent per transport identity, binds its model configuration, submits
- * a prompt, and blocks for the request's result. {@link SessionAgentRegistry} owns live membership;
- * this service assembles agents and resolves vetoes.
+ * Assembles agents and resolves approvals. SessionAgentRegistry owns live membership; each
+ * VetoAgent runs on its own virtual thread. Connections submit through AgentSession and observe
+ * request handles, while in-process callers may use the synchronous helpers.
  */
 @Service
 @SuppressWarnings(
@@ -103,7 +96,7 @@ public class AgentService {
     private final @NonNull DeployerPolicyConfiguration configuration;
     private final @NonNull SessionRepository sessions;
     // Event-stream sink shared by created AgentRunners.
-    private final @NonNull DeltaBroker deltaBroker;
+    private final @NonNull AgentSessions runtime;
     // Durable turn log shared by created AgentRunners.
     private final @NonNull TurnLogService turnLogService;
     private final @NonNull ProtectedSetResolver protectedSetResolver;
@@ -122,7 +115,7 @@ public class AgentService {
             @Value("${veto.breaker.max_calls_per_episode}") long maxCallsPerEpisode,
             @NonNull DeployerPolicyConfiguration deployerPolicyConfiguration,
             @Value("${veto.security.screening-mode}") @NonNull String screeningModeRaw,
-            @NonNull DeltaBroker deltaBroker,
+            @NonNull AgentSessions runtime,
             @NonNull TurnLogService turnLogService,
             @NonNull ProtectedSetResolver protectedSetResolver,
             @NonNull SlmScreeningProvider slmScreeningProvider,
@@ -163,7 +156,7 @@ public class AgentService {
         // openPluginAgent); the default covers legacy paths that bypass session creation.
         this.hitlRegistry.setScreeningMode(parseScreeningMode(screeningModeRaw));
         this.hitlRegistry.setDefaultWorkspace(this.defaultWorkspace);
-        this.deltaBroker = deltaBroker;
+        this.runtime = runtime;
         this.turnLogService = turnLogService;
         this.protectedSetResolver = protectedSetResolver;
         this.slmScreeningProvider = slmScreeningProvider;
@@ -194,14 +187,7 @@ public class AgentService {
         }
     }
 
-    /**
-     * Fire-and-forget submit: resolves (or creates) the agent, binds the model configuration, and
-     * starts the episode, returning as soon as the run is enqueued. The episode's progress and
-     * outcome travel as {@link Delta} updates and {@link Done} completion on the {@code
-     * DeltaBroker} (session-scoped), and the durable result lands in the turn log — callers
-     * subscribe and read, they do not block here. This is the transport shape the web UI uses: REST
-     * submits, WebSocket streams, REST GET history stays the authoritative read.
-     */
+    /** Resolves an agent and queues an internal caller's request without waiting for its result. */
     public @NonNull RequestHandle submitNow(
             @NonNull String agentKey,
             @NonNull String prompt,
@@ -213,7 +199,7 @@ public class AgentService {
         return agent.submitRequest(prompt, binding, LocaleContextHolder.getLocale(), null);
     }
 
-    /** Synchronous submit with a live result message (for the terminal path). */
+    /** Synchronous submission for in-process callers. */
     public @NonNull AgentResult submit(
             @NonNull String agentKey,
             @NonNull String prompt,
@@ -232,9 +218,8 @@ public class AgentService {
      * Synchronous submit that streams each user-facing {@code response.message} the agent emits to
      * {@code messageSink} while the loop runs (the emission seam), then returns the final result.
      * The sink is attached before the prompt is enqueued (no missed messages) and detached in the
-     * finally (no leak across episodes / stale senders). A JVM EventBus + ZmqServer Delta-frame
-     * broker will eventually sit between the agent and the wire; this is the direct in-process
-     * handoff for the terminal path until then.
+     * finally (no leak across episodes / stale senders). Connections use AgentSession submission
+     * and follow the returned handle independently.
      */
     public @NonNull AgentResult submit(
             @NonNull String agentKey,
@@ -528,7 +513,25 @@ public class AgentService {
         return hitlRegistry.declineAll(agentId);
     }
 
-    /** The live agent for a transport id (for history / state inspection). */
+    /** Declines session approvals using the concurrent approval registry membership. */
+    public int declineSessionVetoes(@NonNull String sessionId) {
+        return hitlRegistry.declineSession(UUID.fromString(sessionId));
+    }
+
+    /** Approval membership is independent of agent lifecycle locks and model execution. */
+    public boolean hasApprovalAgent(@NonNull String sessionId, @NonNull String agentId) {
+        return hitlRegistry.belongsToSession(agentId, UUID.fromString(sessionId));
+    }
+
+    public @NonNull VetoAgent sessionAgent(@NonNull String sessionId, @NonNull String agentId) {
+        return sessionAgents.agents(UUID.fromString(sessionId)).stream()
+                .map(SessionAgentRegistry.Entry::agent)
+                .filter(agent -> agent.id().equals(agentId))
+                .findFirst()
+                .orElseThrow(() -> new IllegalArgumentException("Agent not found in session"));
+    }
+
+    /** The live primary agent for a transport id; never creates one. */
     public VetoAgent agent(@NonNull String agentKey) {
         return sessionAgents.transportAgent(agentKey);
     }
@@ -616,9 +619,10 @@ public class AgentService {
                         objectMapper,
                         maxCallsPerEpisode,
                         binding,
-                        new DeltaBrokerEventSink(
-                                new Scope.AgentScope(userId, sessionId.toString(), persona.id()),
-                                deltaBroker),
+                        runtime.session(new Scope.SessionScope(userId, sessionId.toString()))
+                                .sink(
+                                        new Scope.AgentScope(
+                                                userId, sessionId.toString(), persona.id())),
                         userId,
                         turnLogService,
                         sessionId);
@@ -705,9 +709,10 @@ public class AgentService {
                         objectMapper,
                         maxCallsPerEpisode,
                         binding,
-                        new DeltaBrokerEventSink(
-                                new Scope.AgentScope(userId, sessionId.toString(), scoped.id()),
-                                deltaBroker),
+                        runtime.session(new Scope.SessionScope(userId, sessionId.toString()))
+                                .sink(
+                                        new Scope.AgentScope(
+                                                userId, sessionId.toString(), scoped.id())),
                         userId,
                         turnLogService,
                         sessionId);

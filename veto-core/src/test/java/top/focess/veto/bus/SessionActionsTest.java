@@ -14,20 +14,23 @@ import top.focess.veto.contract.Frame;
 import top.focess.veto.model.AgentInstanceRepository;
 import top.focess.veto.model.SessionEntity;
 import top.focess.veto.model.SessionRepository;
+import top.focess.veto.session.TestAgentSessions;
+import top.focess.veto.session.TestConnection;
 import top.focess.veto.vault.TestUsers;
 
 class SessionActionsTest {
     @Test
     void rollbackDoesNotPublishAndCommitDeliversOnlyResourceNames() throws Exception {
-        var broker = new DeltaBroker();
+        var runtime = TestAgentSessions.create();
         var frames = new LinkedBlockingQueue<Frame.ScopedFrame>();
-        var subscription = broker.subscribeAll(frames::add);
+        var connection = new TestConnection(TestUsers.OWNER, frames::add);
+        runtime.connectBrowser(connection.connection());
         AgentInstanceRepository agents = mock(AgentInstanceRepository.class);
         var sessions = mock(SessionRepository.class);
         var entity = mock(SessionEntity.class);
         when(entity.getUserId()).thenReturn(TestUsers.OWNER);
         when(sessions.findById(anyString())).thenReturn(Optional.of(entity));
-        SessionActions service = new SessionActions(broker, agents, sessions);
+        SessionActions service = new SessionActions(runtime, agents, sessions);
         try {
             TransactionSynchronizationManager.initSynchronization();
             TransactionSynchronizationManager.setActualTransactionActive(true);
@@ -47,7 +50,7 @@ class SessionActionsTest {
             assertEquals(List.of("agents", "execution"), changed.resources());
         } finally {
             TransactionSynchronizationManager.clear();
-            subscription.close();
+            runtime.disconnect(connection.connection());
             service.close();
         }
     }

@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
@@ -46,6 +47,24 @@ class HitlRegistryTest {
         assertFalse(registry.resolveReply("agent", "call", "ACCEPT_COMMAND", seq));
         assertFalse(next.isDone());
         registry.declineAll("agent");
+    }
+
+    @Test
+    void sessionDeclineIncludesAllBoundAgentsAndExcludesOtherSessions() throws Exception {
+        var registry = new HitlRegistry(null, Mockito.mock(SessionActions.class));
+        var session = UUID.randomUUID();
+        registry.setSession("primary", session);
+        registry.setSession("child", session);
+        registry.setSession("foreign", UUID.randomUUID());
+        var primary = registry.register("primary", "call", call(), null, E2_OPTIONS, null);
+        var child = registry.register("child", "call", call(), null, E2_OPTIONS, null);
+        var foreign = registry.register("foreign", "call", call(), null, E2_OPTIONS, null);
+        assertEquals(2, registry.declineSession(session));
+        assertTrue(primary.get(1, TimeUnit.SECONDS).isRefusal());
+        assertTrue(child.get(1, TimeUnit.SECONDS).isRefusal());
+        assertFalse(foreign.isDone());
+        assertEquals(0, registry.declineSession(session));
+        assertEquals(1, registry.declineAll("foreign"));
     }
 
     @Test
