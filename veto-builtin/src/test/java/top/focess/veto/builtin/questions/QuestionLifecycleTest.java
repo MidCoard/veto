@@ -3,6 +3,7 @@ package top.focess.veto.builtin.questions;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -12,11 +13,14 @@ import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.mockito.ArgumentCaptor;
 import top.focess.veto.api.event.AgentTerminatedEvent;
 import top.focess.veto.api.event.SessionDeletedEvent;
 import top.focess.veto.api.event.UserLogoutEvent;
 import top.focess.veto.api.plugin.PluginHost;
 import top.focess.veto.api.plugin.Scope;
+import top.focess.veto.api.plugin.contract.JsonValue;
+import top.focess.veto.api.plugin.contract.JsonValues;
 
 class QuestionLifecycleTest {
     @Test
@@ -61,7 +65,8 @@ class QuestionLifecycleTest {
     @ParameterizedTest
     @ValueSource(strings = {"userId", "session", "agent", "plugin"})
     void lifecycleCancelsOnlyMatchingBatches(@NonNull String transition) {
-        var runtime = new QuestionRuntime(mock(PluginHost.class));
+        var host = mock(PluginHost.class);
+        var runtime = new QuestionRuntime(host);
         var target = runtime.register(QuestionTestSupport.invocation("agent", "call"), List.of());
         var other =
                 runtime.register(
@@ -72,6 +77,7 @@ class QuestionLifecycleTest {
                                 null,
                                 "call"),
                         List.of());
+        clearInvocations(host);
         switch (transition) {
             case "userId" ->
                     runtime.onUserLogout(
@@ -97,11 +103,32 @@ class QuestionLifecycleTest {
         }
         assertTrue(target.join().cancelled());
         assertEquals(transition.equals("plugin"), other.isDone());
+        var states = ArgumentCaptor.forClass(JsonValue.ObjectValue.class);
+        verify(host, times(transition.equals("plugin") ? 2 : 1))
+                .publish(any(Scope.SessionScope.class), eq("questions_changed"), states.capture());
+        assertTrue(
+                states.getAllValues().stream()
+                        .allMatch(state -> List.of().equals(JsonValues.toMap(state).get("items"))));
         runtime.close();
         assertTrue(other.join().cancelled());
         assertThrows(
                 IllegalStateException.class,
                 () -> runtime.register(QuestionTestSupport.invocation("agent", "late"), List.of()));
+    }
+
+    @Test
+    void revokedPublicationStillSettlesEveryWaiter() {
+        var host = mock(PluginHost.class);
+        var runtime = new QuestionRuntime(host);
+        var first = runtime.register(QuestionTestSupport.invocation("agent", "first"), List.of());
+        var second = runtime.register(QuestionTestSupport.invocation("agent", "second"), List.of());
+        doThrow(new SecurityException("Session revoked"))
+                .when(host)
+                .publish(any(Scope.SessionScope.class), eq("questions_changed"), any());
+        runtime.close();
+        assertTrue(first.join().cancelled());
+        assertTrue(second.join().cancelled());
+        assertTrue(runtime.pendingFor(QuestionTestSupport.scope("agent")).isEmpty());
     }
 
     @Test
@@ -130,19 +157,25 @@ class QuestionLifecycleTest {
     }
 
     @Test
-    void registrationAndExceptionalCleanupInvalidateButRejectedAnswersDoNot() {
+    void registrationAndExceptionalCleanupPublishStateButRejectedAnswersDoNot() {
         var host = mock(PluginHost.class);
         var runtime = new QuestionRuntime(host);
         var sessionScope = QuestionTestSupport.scope("agent").sessionScope();
         var pending = runtime.register(QuestionTestSupport.invocation("agent", "call"), List.of());
-        verify(host).invalidate(sessionScope, "interactions");
+        var state = ArgumentCaptor.forClass(JsonValue.ObjectValue.class);
+        verify(host).publish(eq(sessionScope), eq("questions_changed"), state.capture());
+        assertEquals(runtime.snapshot(QuestionTestSupport.scope("agent")), state.getValue());
+        assertEquals(BigDecimal.ONE, JsonValues.toMap(state.getValue()).get("revision"));
         verifyNoMoreInteractions(host);
         clearInvocations(host);
         assertFalse(runtime.answer(QuestionTestSupport.scope("agent"), "missing", Map.of()));
         verifyNoInteractions(host);
         pending.completeExceptionally(new IllegalStateException("interrupted"));
         assertTrue(runtime.pendingFor(QuestionTestSupport.scope("agent")).isEmpty());
-        verify(host).invalidate(sessionScope, "interactions");
+        verify(host).publish(eq(sessionScope), eq("questions_changed"), state.capture());
+        assertEquals(
+                Map.of("agentId", "agent", "revision", BigDecimal.valueOf(2), "items", List.of()),
+                JsonValues.toMap(state.getValue()));
         verifyNoMoreInteractions(host);
     }
 }

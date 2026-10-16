@@ -17,13 +17,11 @@ repositories {
 
 val jacksonVersion: String by rootProject.extra
 val slf4jVersion: String by rootProject.extra
-val jeromqVersion: String by rootProject.extra
 val logbackVersion: String by rootProject.extra
 
 dependencies {
     api(project(":veto-api"))
-    // ZeroMQ is the Java protocol transport; TypeScript wire handling belongs to veto-ui.
-    api("org.zeromq:jeromq:$jeromqVersion")
+    // Standard TCP carries Java protocol frames; TypeScript wire handling belongs to veto-ui.
 
     // Public protocol signatures expose JSpecify type-use annotations to consumers.
     api("org.jspecify:jspecify:1.0.0")

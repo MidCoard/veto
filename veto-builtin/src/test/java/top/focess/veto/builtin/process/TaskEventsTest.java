@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.jspecify.annotations.NonNull;
@@ -14,11 +15,96 @@ import org.junit.jupiter.api.Test;
 import top.focess.veto.api.plugin.PluginHost;
 import top.focess.veto.api.plugin.Scope;
 import top.focess.veto.api.plugin.contract.JsonValue;
+import top.focess.veto.api.plugin.contract.JsonValues;
 import top.focess.veto.builtin.monitor.MonitorRecord;
 import top.focess.veto.builtin.monitor.MonitorRepository;
 import top.focess.veto.builtin.monitor.MonitorService;
 
 class TaskEventsTest {
+    @Test
+    void removalBeforeExitRetainsFinalObservationAndSuppressesLateCallbacks() {
+        var host = mock(PluginHost.class);
+        var available = new AtomicBoolean(false);
+        var observed = new ArrayList<TaskInfo>();
+        var scope = new Scope.AgentScope(UUID.randomUUID(), UUID.randomUUID().toString(), "agent");
+        var events =
+                new TaskEvents(
+                        host,
+                        (owner, task, cause) -> {
+                            if (!available.get())
+                                throw new IllegalStateException("Store unavailable");
+                            observed.add(task);
+                        });
+        var instance = UUID.randomUUID();
+        var now = Instant.now();
+        var live =
+                new TaskInfo(
+                        "bg-1",
+                        "agent",
+                        "program",
+                        "workspace",
+                        now,
+                        true,
+                        null,
+                        1,
+                        null,
+                        UUID.fromString(scope.session()),
+                        instance);
+        var exited =
+                new TaskInfo(
+                        "bg-1",
+                        "agent",
+                        "program",
+                        "workspace",
+                        now,
+                        false,
+                        0,
+                        1,
+                        now.plusSeconds(1),
+                        UUID.fromString(scope.session()),
+                        instance);
+        events.changed(
+                scope, live, BackgroundTasks.ExitCause.NATURAL, BackgroundTasks.Change.STARTED);
+        events.changed(
+                scope, exited, BackgroundTasks.ExitCause.USER_STOP, BackgroundTasks.Change.REMOVED);
+        events.changed(
+                scope, exited, BackgroundTasks.ExitCause.USER_STOP, BackgroundTasks.Change.EXITED);
+        events.changed(
+                scope, live, BackgroundTasks.ExitCause.NATURAL, BackgroundTasks.Change.STARTED);
+        available.set(true);
+        events.retry();
+        events.retry();
+        assertEquals(List.of(exited), observed);
+        verify(host).publish(eq(scope.sessionScope()), eq("task_started"), any());
+        verify(host).publish(eq(scope.sessionScope()), eq("task_removed"), any());
+        verify(host, never()).publish(eq(scope.sessionScope()), eq("task_exited"), any());
+        events.close();
+    }
+
+    @Test
+    void lifecyclePreviewBoundsMetadataWithoutSplittingUnicode() {
+        var task =
+                new TaskInfo(
+                        "bg-1",
+                        "agent",
+                        "x".repeat(1023) + "😀tail",
+                        "y".repeat(1200),
+                        Instant.now(),
+                        true,
+                        null,
+                        7,
+                        null,
+                        UUID.randomUUID(),
+                        UUID.randomUUID());
+        var row = TasksFrontend.row(task);
+        assertEquals("x".repeat(1023), row.get("command"));
+        assertEquals("y".repeat(1024), row.get("cwd"));
+        assertEquals(true, row.get("commandTruncated"));
+        assertEquals(true, row.get("cwdTruncated"));
+        assertEquals(task.taskInstanceId().toString(), row.get("taskInstanceId"));
+        assertFalse(row.containsKey("recentOutput"));
+    }
+
     @Test
     void logoutSuppressesNotificationsUntilTheUserAuthenticatesAgain() {
         List<String> observed = new ArrayList<>();
@@ -30,8 +116,6 @@ class TaskEventsTest {
 
                     public void wake(
                             @NonNull UUID userId, @NonNull String session, @NonNull String agent) {}
-
-                    public void invalidate(@NonNull String session, @NonNull String resource) {}
                 };
         var events =
                 new TaskEvents(
@@ -89,17 +173,6 @@ class TaskEventsTest {
                     public void wake(
                             @NonNull UUID userId, @NonNull String session, @NonNull String agent) {}
 
-                    public void invalidate(@NonNull String session, @NonNull String resource) {
-                        throw new AssertionError("Expected complete scoped invalidation identity");
-                    }
-
-                    @Override
-                    public void invalidate(
-                            Scope.@NonNull SessionScope target, @NonNull String resource) {
-                        assertEquals(scope.sessionScope(), target);
-                        assertEquals("tasks", resource);
-                    }
-
                     @Override
                     public void publish(
                             Scope.@NonNull SessionScope target,
@@ -109,6 +182,15 @@ class TaskEventsTest {
                         assertEquals(
                                 new JsonValue.StringValue(scope.agent()),
                                 facts.values().get("agentId"));
+                        var payload = JsonValues.toMap(facts);
+                        if (!(payload.get("task") instanceof Map<?, ?> task))
+                            throw new AssertionError("Expected task preview");
+                        assertEquals("bg-1", task.get("taskId"));
+                        assertEquals("program", task.get("command"));
+                        assertEquals("workspace", task.get("cwd"));
+                        assertEquals(payload.get("taskInstanceId"), task.get("taskInstanceId"));
+                        assertEquals(payload.get("alive"), task.get("alive"));
+                        assertFalse(task.containsKey("recentOutput"));
                         topics.add(topic);
                     }
                 };
@@ -157,7 +239,7 @@ class TaskEventsTest {
         events.retry();
         events.retry();
         assertEquals(List.of(scope.userId() + ":false:AUTO_KILL"), observations);
-        assertEquals(List.of("task_started", "task_exited", "task_started"), topics);
+        assertEquals(List.of("task_started", "task_exited"), topics);
         fail.set(true);
         events.changed(
                 scope, exited, BackgroundTasks.ExitCause.AUTO_KILL, BackgroundTasks.Change.EXITED);
@@ -167,7 +249,7 @@ class TaskEventsTest {
         events.changed(
                 scope, live, BackgroundTasks.ExitCause.NATURAL, BackgroundTasks.Change.STARTED);
         assertEquals(1, observations.size());
-        assertEquals(4, topics.size());
+        assertEquals(2, topics.size());
     }
 
     @Test
@@ -182,8 +264,6 @@ class TaskEventsTest {
 
                     public void wake(
                             @NonNull UUID userId, @NonNull String session, @NonNull String agent) {}
-
-                    public void invalidate(@NonNull String session, @NonNull String resource) {}
                 };
         var events =
                 new TaskEvents(
@@ -246,8 +326,6 @@ class TaskEventsTest {
 
                     public void wake(
                             @NonNull UUID userId, @NonNull String session, @NonNull String agent) {}
-
-                    public void invalidate(@NonNull String session, @NonNull String resource) {}
                 };
         var events = new TaskEvents(host, monitor);
         var session = UUID.randomUUID();

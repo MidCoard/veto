@@ -18,20 +18,53 @@ export function activate(host) {
     const [controlError, setControlError] = useState(false);
     const [loading, setLoading] = useState(true);
     const write = useRef(null);
+    const snapshot = useRef(null);
     useEffect(() => () => write.current?.abort(), []);
     const refresh = useCallback(() => setRevision(value => value + 1), []);
-    useEffect(() => context.subscribe('monitors', refresh), [context.subscribe, refresh]);
+    useEffect(() => context.subscribeRecovery(refresh), [context.subscribeRecovery, refresh]);
+    useEffect(() => { snapshot.current = null; }, [context.connected]);
     useEffect(() => {
+      if (!context.connected) return;
       const controller = new AbortController();
-      if (!context.connected) return () => controller.abort();
+      // Retain only updates racing this controller read, then release them.
+      const changes = new Map();
+      let fetching = true;
+      let latest = snapshot.current?.revision ?? -1;
+      const receive = value => {
+        if (!Number.isSafeInteger(value?.revision) || value.revision <= latest || !value.item?.id) return;
+        latest = value.revision;
+        if (fetching) changes.set(value.item.id, value);
+        const current = snapshot.current;
+        if (current?.items.some(item => item.id === value.item.id)) {
+          const updated = { ...current, revision: value.revision, items: current.items.map(item => item.id === value.item.id ? value.item : item) };
+          snapshot.current = updated; setData(updated);
+        } else if (!fetching) refresh();
+      };
+      const unsubscribe = context.subscribeAction('monitor_changed', receive);
       setFailed(false); setLoading(true);
       context.invoke('list', { offset: page * 20 }, controller.signal).then(value => {
         if (controller.signal.aborted) return;
-        if (page > 0 && value.items.length === 0) { setPage(0); return; }
-        setData(value); setLoading(false);
-      }).catch(() => { if (!controller.signal.aborted) { setFailed(true); setLoading(false); } });
-      return () => controller.abort();
-    }, [context.invoke, context.connected, page, revision]);
+        if (!Number.isSafeInteger(value.revision)) throw new Error('Invalid monitor snapshot');
+        fetching = false;
+        let unseen = false;
+        const items = value.items.map(item => {
+          const change = changes.get(item.id);
+          return change && change.revision > value.revision ? change.item : item;
+        });
+        for (const change of changes.values()) {
+          if (change.revision > value.revision && !value.items.some(item => item.id === change.item.id)) unseen = true;
+        }
+        latest = Math.max(latest, value.revision);
+        const updated = { ...value, revision: latest, items };
+        changes.clear();
+        if (page > 0 && items.length === 0) { snapshot.current = null; setPage(0); return; }
+        snapshot.current = updated; setData(updated); setLoading(false);
+        if (unseen) refresh();
+      }).catch(() => {
+        if (!controller.signal.aborted) { fetching = false; changes.clear(); setFailed(true); setLoading(false); }
+      });
+      return () => { controller.abort(); unsubscribe(); };
+    }, [context.invoke, context.subscribeAction, context.connected, page, revision, refresh]);
     useEffect(() => { onCount?.(failed || !context.connected ? null : data?.total ?? null); }, [data, failed, context.connected, onCount]);
     const control = async (id, action) => {
       if (write.current || !context.connected || loading || failed) return;
@@ -49,7 +82,7 @@ export function activate(host) {
       data?.total === 0 && !unavailable && h('p', { className: 'text-xs text-dim' }, t.empty),
       ...(data?.items ?? []).map(item => h('article', { key: item.id, className: 'rounded-xl border border-rule bg-ink/40 p-3 text-xs' },
         h('div', { className: 'flex flex-wrap justify-between gap-2 text-dim' }, h('span', null, item.kind === 'TIME_ONCE' ? t.time : item.kind === 'RESOURCE_EVENT' ? t.group : (context.locale.startsWith('zh') ? '后台任务' : 'Background tasks')), h('span', null, item.state === 'INTERRUPTED' ? t.interrupted : item.state === 'CANCELLED' ? t.cancelled : item.state === 'PAUSED' ? t.paused : item.pending > 0 ? t.pending : item.state === 'COMPLETED' ? t.triggered : t.active)),
-        h('div', { className: 'mt-2 text-paper whitespace-pre-wrap break-words' }, item.kind === 'RESOURCE_EVENT' ? t.group : h(Content, { context, item, event: {content: item.purpose, truncated: item.purposeTruncated}, t, action: 'purpose' })),
+        h('div', { className: 'mt-2 text-paper whitespace-pre-wrap break-words' }, item.kind === 'RESOURCE_EVENT' ? t.group : h(Content, { key: JSON.stringify([item.purpose, item.purposeTruncated]), context, item, event: {content: item.purpose, truncated: item.purposeTruncated}, t, action: 'purpose' })),
         item.dueAt && h('time', { className: 'mt-2 block text-dim', dateTime: item.dueAt }, new Date(item.dueAt).toLocaleString(context.locale)),
         item.kind === 'TIME_ONCE' && (['ACTIVE', 'PAUSED'].includes(item.state) || item.state === 'COMPLETED' && item.controllable) && h('div', { className: 'mt-3 space-y-2' },
           h('div', { className: 'flex flex-wrap gap-2' },
@@ -58,9 +91,9 @@ export function activate(host) {
           h('p', { className: 'text-dim' }, working === item.id ? t.working : t.hint)),
         h(Details, { context, item, t, revision }))),
       data && data.total > 20 && h('nav', { className: 'flex items-center justify-between gap-2', 'aria-label': t.title },
-        h('button', { type: 'button', className: button, disabled: page === 0, onClick: () => { setData(null); setPage(page - 1); } }, t.previous),
+        h('button', { type: 'button', className: button, disabled: page === 0, onClick: () => { snapshot.current = null; setData(null); setPage(page - 1); } }, t.previous),
         h('span', null, page + 1, ' / ', Math.ceil(data.total / 20)),
-        h('button', { type: 'button', className: button, disabled: (page + 1) * 20 >= data.total, onClick: () => { setData(null); setPage(page + 1); } }, t.next)));
+        h('button', { type: 'button', className: button, disabled: (page + 1) * 20 >= data.total, onClick: () => { snapshot.current = null; setData(null); setPage(page + 1); } }, t.next)));
   }
   function Details({ context, item, t, revision }) {
     const [open, setOpen] = useState(false);
@@ -75,14 +108,14 @@ export function activate(host) {
         .then(value => { if (!controller.signal.aborted) setData(value); })
         .catch(() => { if (!controller.signal.aborted) setFailed(true); });
       return () => controller.abort();
-    }, [open, page, context.invoke, context.connected, item.id, revision]);
+    }, [open, page, context.invoke, context.connected, item, revision]);
     return h('details', { className: 'mt-2 text-dim', onToggle: event => setOpen(event.currentTarget.open) },
       h('summary', { className: 'cursor-pointer' }, t.details),
       h('p', { className: 'mt-2 break-all' }, 'Agent: ', item.agentId),
       failed && h('p', { role: 'alert', className: 'text-verdict' }, t.error),
       open && !data && !failed && h('p', { role: 'status' }, t.loading),
       ...(data?.items ?? []).map(event => h('div', { key: event.id, className: 'mt-2 whitespace-pre-wrap break-words' },
-        h('p', null, t['activation.' + event.state] ?? t['activation.UNKNOWN']), event.state === 'INTERRUPTED' && h('p', null, t['activation.interruptedHint']), h(Content, { context, item, event, t }))),
+        h('p', null, t['activation.' + event.state] ?? t['activation.UNKNOWN']), event.state === 'INTERRUPTED' && h('p', null, t['activation.interruptedHint']), h(Content, { key: JSON.stringify([event.content, event.truncated]), context, item, event, t }))),
       data && data.total > 10 && h('div', { className: 'mt-2 flex gap-2' },
         h('button', { type: 'button', className: button, disabled: page === 0, onClick: () => { setData(null); setPage(page - 1); } }, t.previous),
         h('button', { type: 'button', className: button, disabled: (page + 1) * 10 >= data.total, onClick: () => { setData(null); setPage(page + 1); } }, t.next)));

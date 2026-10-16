@@ -1,222 +1,183 @@
 package top.focess.veto.contract;
 
+import java.io.IOException;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.concurrent.Callable;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.function.LongFunction;
-import java.util.function.Supplier;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import top.focess.veto.api.util.Resources;
+import top.focess.veto.api.util.Threads;
 
 /**
- * A polling protocol connection. One virtual worker creates, handshakes, uses and closes its
- * transport. Callers exchange typed frames through bounded queues, never through the socket.
+ * Full-duplex protocol connection with independent virtual read and write workers. Public
+ * operations are thread-safe: one private monitor protects admission, queues, correlation and
+ * deadlines; socket IO and future completion happen outside it. Concurrent receive callers consume
+ * distinct frames. Grouped calls are not atomic: send may fail after isClosed returned false.
  *
- * <p><b>Thread safety:</b> after construction, public operations may be called concurrently.
- * Connection state, queue admission and sequence allocation are synchronized; only the IO worker
- * touches the transport. Multiple receive callers compete for one queue, not a broadcast stream.
- * Calls made as a group are not atomic: for example, send may fail after isClosed returned false.
+ * <p>Queued frames share their payloads by reference. Finish constructing mutable payloads before
+ * enqueueing and leave them read-only afterward; see {@link Frame}.
  *
- * <p>Queued frames are shared by reference. Callers must finish building mutable payloads before
- * enqueueing and leave them read-only afterward; see {@link Frame} for payload exceptions.
- *
- * <p>The supplied factory opens a transport on the IO worker and may throw an unchecked setup
- * failure. It must clean up any resources allocated before failing. A successfully returned
- * transport belongs to this client and is closed by the same worker.
+ * <p>The factory runs on the reader and must clean up partial setup failures. The returned
+ * transport belongs to this client; close may run concurrently with read and write to unblock both.
  */
 public final class ProtocolClient implements AutoCloseable {
     private static final @NonNull Logger log =
             LoggerFactory.getLogger("top.focess.veto.contract.ProtocolClient");
     private static final int CAPACITY = 256;
-    private static final int POLL_MILLIS = 50;
-    private static final long HEARTBEAT_ACK_NANOS = TimeUnit.SECONDS.toNanos(10);
-    private final @NonNull ConnectionState state = new ConnectionState();
-    private final @NonNull Thread ioThread;
-    private final @NonNull Version serverProductVersion;
+    private static final int MAX_QUEUED_BYTES = 8 * 1024 * 1024;
+    private static final long REPLY_TIMEOUT_NANOS = TimeUnit.SECONDS.toNanos(10);
+    private static final @NonNull ScheduledThreadPoolExecutor DEADLINES =
+            Threads.newDeadlineScheduler("protocol-deadlines");
 
-    /**
-     * Connects using the default version, working directory and heartbeat interval.
-     *
-     * @throws RuntimeException if transport creation, handshake or startup waiting fails
-     * @throws Error if transport creation or handshake raises an error
-     */
-    public ProtocolClient(@NonNull Supplier<@NonNull ClientTransport> factory) {
+    private final @NonNull Object lock = new Object();
+    private final @NonNull CompletableFuture<@NonNull Version> ready = new CompletableFuture<>();
+    private final @NonNull ArrayDeque<@NonNull Outgoing> outgoing = new ArrayDeque<>();
+    private final @NonNull ArrayDeque<@NonNull Incoming> incoming = new ArrayDeque<>();
+    private final @NonNull
+            HashMap<@NonNull Long, @NonNull CompletableFuture<Frame.@NonNull SeqResponse>>
+            pending = new HashMap<>();
+    private final long heartbeatNanos;
+    private final @NonNull Thread reader;
+    private @NonNull Phase phase = Phase.CONNECTING;
+    private FrameTransport transport;
+    private Thread writer;
+    private ScheduledFuture<?> deadlineTask;
+    private long heartbeatAt;
+    private long sequence = 2; // Hello owns sequence 1.
+    private int outgoingBytes;
+    private int incomingBytes;
+
+    public ProtocolClient(@NonNull Callable<@NonNull FrameTransport> factory)
+            throws InterruptedException, ExecutionException {
         this(factory, Version.UNKNOWN, System.getProperty("user.dir"), 30_000);
     }
 
-    /**
-     * Connects using the default heartbeat interval.
-     *
-     * @throws RuntimeException if transport creation, handshake or startup waiting fails
-     * @throws Error if transport creation or handshake raises an error
-     */
     public ProtocolClient(
-            @NonNull Supplier<@NonNull ClientTransport> factory,
+            @NonNull Callable<@NonNull FrameTransport> factory,
             @NonNull Version version,
-            @NonNull String cwd) {
+            @NonNull String cwd)
+            throws InterruptedException, ExecutionException {
         this(factory, version, cwd, 30_000);
     }
 
     /**
-     * Creates the transport and waits for its handshake before returning.
-     *
-     * @param factory opens a transport on the IO worker; setup failures propagate to this caller
-     * @throws RuntimeException if transport creation, handshake or startup waiting fails
-     * @throws IllegalArgumentException if the heartbeat interval is not positive
-     * @throws Error if transport creation or handshake raises an error
+     * Waits for Welcome before returning. Startup failures retain their original cause in
+     * ExecutionException; interruption stops setup, closes the connection and propagates unchanged.
      */
+    // Workers only use fields initialized before start; neither reads the reader handle.
+    @SuppressWarnings("method.invocation")
     public ProtocolClient(
-            @NonNull Supplier<@NonNull ClientTransport> factory,
+            @NonNull Callable<@NonNull FrameTransport> factory,
             @NonNull Version version,
             @NonNull String cwd,
-            long heartbeatMillis) {
+            long heartbeatMillis)
+            throws InterruptedException, ExecutionException {
         if (heartbeatMillis <= 0)
             throw new IllegalArgumentException("Heartbeat interval must be positive");
-        var ready = new CompletableFuture<@NonNull Version>();
-        var connection = state;
-        ioThread =
-                Thread.ofVirtual()
-                        .name("protocol-io")
-                        .unstarted(
-                                () ->
-                                        run(
-                                                factory,
-                                                version,
-                                                cwd,
-                                                TimeUnit.MILLISECONDS.toNanos(heartbeatMillis),
-                                                connection,
-                                                ready));
-        ioThread.start();
+        heartbeatNanos = TimeUnit.MILLISECONDS.toNanos(heartbeatMillis);
+        reader =
+                Thread.ofVirtual().name("protocol-reader").start(() -> read(factory, version, cwd));
         try {
-            serverProductVersion = ready.get();
+            log.debug("Protocol connected to backend {}", ready.get());
         } catch (InterruptedException interrupted) {
-            state.close();
-            awaitStop(ioThread);
-            Thread.currentThread().interrupt();
-            throw new IllegalStateException("Protocol connection interrupted", interrupted);
-        } catch (ExecutionException failure) {
-            var cause = failure.getCause();
-            if (cause instanceof RuntimeException exception) throw exception;
-            if (cause instanceof Error error) throw error;
-            throw new IllegalStateException("Protocol connection failed", cause);
+            reader.interrupt();
+            close();
+            throw interrupted;
         }
     }
 
-    private static void run(
-            @NonNull Supplier<@NonNull ClientTransport> factory,
+    private void read(
+            @NonNull Callable<@NonNull FrameTransport> factory,
             @NonNull Version version,
-            @NonNull String cwd,
-            long heartbeatNanos,
-            @NonNull ConnectionState state,
-            @NonNull CompletableFuture<@NonNull Version> ready) {
-        // This opens the transport and may throw before the try body is entered.
-        try (var transport = factory.get()) {
-            try {
-                var productVersion = handshake(transport, version, cwd, state);
-                state.open();
-                ready.complete(productVersion);
-                communicate(transport, state, heartbeatNanos);
-                transport.send(new Frame.Bye());
-            } finally {
-                state.close();
+            @NonNull String cwd) {
+        try {
+            var connection = factory.call();
+            synchronized (lock) {
+                if (phase != Phase.CLOSED) {
+                    transport = connection;
+                    armTimeout("Protocol handshake timed out");
+                    var hello = new Frame.Hello(Frame.PROTOCOL_VERSION, 1, version, cwd);
+                    writer =
+                            Thread.ofVirtual()
+                                    .name("protocol-writer")
+                                    .start(() -> write(connection, hello));
+                }
+            }
+            if (isClosed()) connection.close();
+            while (!isClosed()) {
+                var frame = connection.receive();
+                if (!(frame instanceof Frame.ServerFrame response))
+                    throw new IOException("Received a client frame from the backend");
+                accept(response);
             }
         } catch (Throwable failure) {
-            // factory.get() can fail before the inner finally; that lifecycle must also end CLOSED.
-            state.close();
-            if (!ready.completeExceptionally(failure))
-                log.warn("Protocol connection failed ({})", failure.getClass().getSimpleName());
+            shutdown(failure, 0);
         }
     }
 
-    private static @NonNull Version handshake(
-            @NonNull ClientTransport transport,
-            @NonNull Version version,
-            @NonNull String cwd,
-            @NonNull ConnectionState state) {
-        long seq = 1;
-        transport.send(new Frame.Hello(Frame.PROTOCOL_VERSION, seq, version, cwd));
-        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
-        while (!state.isClosed()) {
-            long remaining = deadline - System.nanoTime();
-            if (remaining <= 0) throw new IllegalStateException("Protocol handshake timed out");
-            var frame =
-                    transport.recv(
-                            Math.clamp(TimeUnit.NANOSECONDS.toMillis(remaining), 1, POLL_MILLIS));
-            if (frame == null) continue;
-            if (frame instanceof Frame.Welcome welcome) {
-                if (welcome.version() != Frame.PROTOCOL_VERSION)
-                    throw new IllegalStateException("Unsupported protocol version");
-                if (welcome.seq() == seq) return welcome.productVersion();
-            } else if (frame instanceof Frame.Error || frame instanceof Frame.Terminate) {
-                throw new IllegalStateException("Backend rejected protocol handshake");
-            } else state.accept(frame);
-        }
-        throw new IllegalStateException("Protocol connection closed during handshake");
-    }
-
-    private static void communicate(
-            @NonNull ClientTransport transport,
-            @NonNull ConnectionState state,
-            long heartbeatNanos) {
-        long deadline = System.nanoTime() + heartbeatNanos;
-        boolean awaitingHeartbeat = false;
-        while (!state.isClosed()) {
-            // Bound each batch so sustained producers cannot starve receive or heartbeat.
-            for (int i = 0; i < CAPACITY && System.nanoTime() - deadline < 0; i++) {
-                var frame = state.nextOutgoing();
-                if (frame == null || state.isClosed()) break;
-                transport.send(frame);
+    private void write(@NonNull FrameTransport connection, Frame.@NonNull Hello hello) {
+        try {
+            connection.send(hello);
+            while (true) {
+                var frame = nextOutgoing();
+                if (frame == null) return;
+                connection.send(frame);
             }
-            if (state.isClosed()) return;
-            if (System.nanoTime() - deadline >= 0) {
-                if (awaitingHeartbeat)
-                    throw new IllegalStateException("Heartbeat acknowledgement timed out");
-                transport.send(new Frame.Heartbeat());
-                awaitingHeartbeat = true;
-                deadline = System.nanoTime() + HEARTBEAT_ACK_NANOS;
-            }
-            long wait = Math.max(1, TimeUnit.NANOSECONDS.toMillis(deadline - System.nanoTime()));
-            var frame = transport.recv(Math.min(POLL_MILLIS, wait));
-            if (frame instanceof Frame.HeartbeatAck) {
-                if (awaitingHeartbeat) {
-                    awaitingHeartbeat = false;
-                    deadline = System.nanoTime() + heartbeatNanos;
-                }
-            } else if (frame != null) state.accept(frame);
+        } catch (Throwable failure) {
+            shutdown(failure, 0);
         }
     }
 
     /**
-     * Thread-safe enqueue; rejects a closed/full connection. Admission does not guarantee delivery:
-     * close may discard queued work. Frames are not copied; keep their payloads read-only
-     * afterward.
+     * Rejects closed/full connections and payloads exceeding one MiB; admission is not delivery.
      */
     public void send(Frame.@NonNull ClientFrame frame) {
-        state.send(frame);
+        synchronized (lock) {
+            if (phase != Phase.OPEN)
+                throw new IllegalStateException("Protocol connection is not open");
+            enqueue(frame);
+        }
     }
 
     /** Queues cancellation with a connection-owned sequence; CancelResult arrives on receive(). */
     public void cancel(long targetSeq) {
-        state.cancel(targetSeq);
+        send(new Frame.Cancel(nextSequence(), targetSeq));
     }
 
-    /** Allocates an operation identity shared with this connection's queries and controls. */
     public long nextSequence() {
-        return state.nextSequence();
+        synchronized (lock) {
+            if (phase != Phase.OPEN)
+                throw new IllegalStateException("Protocol connection is not open");
+            if (sequence <= 0) throw new IllegalStateException("Protocol sequence exhausted");
+            return sequence++;
+        }
     }
 
-    /**
-     * Thread-safe dequeue; returns null on timeout or after the closed stream drains. Concurrent
-     * receivers consume distinct entries from one queue, with no guarantee of which caller wins.
-     */
+    /** Returns null on timeout or after the closed stream drains. */
     public Frame.ServerFrame receive(long timeout, @NonNull TimeUnit unit)
             throws InterruptedException {
-        return state.receive(unit.toNanos(timeout));
+        long remaining = unit.toNanos(timeout);
+        long deadline = System.nanoTime() + remaining;
+        synchronized (lock) {
+            while (incoming.isEmpty() && phase != Phase.CLOSED && remaining > 0) {
+                TimeUnit.NANOSECONDS.timedWait(lock, remaining);
+                remaining = deadline - System.nanoTime();
+            }
+            var next = incoming.pollFirst();
+            if (next == null) return null;
+            incomingBytes -= next.bytes();
+            return next.frame();
+        }
     }
 
     public Frame.ServerFrame receive() throws InterruptedException {
@@ -225,38 +186,187 @@ public final class ProtocolClient implements AutoCloseable {
 
     public Frame.CompleteResult complete(
             @NonNull String line, long timeout, @NonNull TimeUnit unit) {
-        var response = state.exchange(seq -> new Frame.Complete(line, seq), timeout, unit);
+        var response = exchange(seq -> new Frame.Complete(line, seq), timeout, unit);
         return response instanceof Frame.CompleteResult result ? result : null;
     }
 
     public Frame.HintResult hint(@NonNull String line, long timeout, @NonNull TimeUnit unit) {
-        var response = state.exchange(seq -> new Frame.Hint(line, seq), timeout, unit);
+        var response = exchange(seq -> new Frame.Hint(line, seq), timeout, unit);
         return response instanceof Frame.HintResult result ? result : null;
     }
 
-    /**
-     * Thread-safe and idempotent. Wakes callers and asks the IO owner to close its transport. Waits
-     * up to three seconds for the worker (less if interrupted); returning does not guarantee
-     * transport cleanup has finished. Concurrent sends may fail, and queued work may be discarded.
-     */
-    @Override
-    public void close() {
-        state.close();
-        awaitStop(ioThread);
+    private <R extends Frame.SeqRequest & Frame.ClientFrame> Frame.SeqResponse exchange(
+            @NonNull LongFunction<@NonNull R> request, long timeout, @NonNull TimeUnit unit) {
+        var response = new CompletableFuture<Frame.@NonNull SeqResponse>();
+        long seq;
+        synchronized (lock) {
+            if (phase != Phase.OPEN) return null;
+            seq = nextSequence();
+            try {
+                enqueue(request.apply(seq));
+            } catch (IllegalStateException | IllegalArgumentException rejected) {
+                return null;
+            }
+            pending.put(seq, response);
+        }
+        try {
+            return response.get(timeout, unit);
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+        } catch (ExecutionException | TimeoutException unavailable) {
+            return null;
+        } finally {
+            synchronized (lock) {
+                pending.remove(seq, response);
+            }
+        }
+        return null;
     }
 
-    private static void awaitStop(@NonNull Thread worker) {
-        if (worker != Thread.currentThread()) {
-            try {
-                worker.join(3_000);
-            } catch (InterruptedException interrupted) {
-                Thread.currentThread().interrupt();
+    private void enqueue(Frame.@NonNull ClientFrame frame) {
+        int bytes = FrameCodec.encode(frame).length;
+        if (bytes > FrameTransport.MAX_FRAME_BYTES)
+            throw new IllegalArgumentException("Protocol frame exceeds one MiB");
+        if (outgoing.size() == CAPACITY || bytes > MAX_QUEUED_BYTES - outgoingBytes)
+            throw new IllegalStateException("Protocol send queue is full");
+        outgoing.addLast(new Outgoing(frame, bytes));
+        outgoingBytes += bytes;
+        lock.notifyAll();
+    }
+
+    private Frame.ClientFrame nextOutgoing() throws InterruptedException {
+        synchronized (lock) {
+            while (phase != Phase.CLOSED) {
+                if (phase == Phase.CONNECTING) {
+                    lock.wait();
+                    continue;
+                }
+                long remaining = heartbeatAt - System.nanoTime();
+                if (deadlineTask == null && remaining <= 0) {
+                    armTimeout("Heartbeat acknowledgement timed out");
+                    return new Frame.Heartbeat();
+                }
+                var next = outgoing.pollFirst();
+                if (next != null) {
+                    outgoingBytes -= next.bytes();
+                    return next.frame();
+                }
+                if (deadlineTask != null) lock.wait();
+                else TimeUnit.NANOSECONDS.timedWait(lock, remaining);
             }
+            return null;
         }
     }
 
+    private void accept(Frame.@NonNull ServerFrame frame) {
+        CompletableFuture<Frame.@NonNull SeqResponse> response;
+        Version welcomed = null;
+        synchronized (lock) {
+            if (phase == Phase.CLOSED) return;
+            if (phase == Phase.CONNECTING) {
+                if (frame instanceof Frame.Welcome welcome) {
+                    if (welcome.version() != Frame.PROTOCOL_VERSION)
+                        throw new IllegalStateException("Unsupported protocol version");
+                    if (welcome.seq() != 1) return;
+                    phase = Phase.OPEN;
+                    cancelDeadline();
+                    heartbeatAt = System.nanoTime() + heartbeatNanos;
+                    welcomed = welcome.productVersion();
+                    lock.notifyAll();
+                } else if (frame instanceof Frame.Error || frame instanceof Frame.Terminate)
+                    throw new IllegalStateException("Backend rejected protocol handshake");
+            }
+            if (frame instanceof Frame.HeartbeatAck) {
+                if (phase == Phase.OPEN && deadlineTask != null) {
+                    cancelDeadline();
+                    heartbeatAt = System.nanoTime() + heartbeatNanos;
+                    lock.notifyAll();
+                }
+                return;
+            }
+            response =
+                    frame instanceof Frame.SeqResponse sequenced
+                            ? pending.remove(sequenced.seq())
+                            : null;
+            if (welcomed == null && response == null) {
+                int bytes = FrameCodec.encode(frame).length;
+                if (incoming.size() == CAPACITY || bytes > MAX_QUEUED_BYTES - incomingBytes)
+                    throw new IllegalStateException("Protocol receive queue is full");
+                incoming.addLast(new Incoming(frame, bytes));
+                incomingBytes += bytes;
+                lock.notifyAll();
+                return;
+            }
+        }
+        if (welcomed != null) ready.complete(welcomed);
+        else if (response != null) response.complete((Frame.SeqResponse) frame);
+    }
+
+    /** A live deadline means either Welcome or the outstanding HeartbeatAck is awaited. */
+    private void armTimeout(@NonNull String message) {
+        long expected = System.nanoTime() + REPLY_TIMEOUT_NANOS;
+        heartbeatAt = expected;
+        deadlineTask =
+                DEADLINES.schedule(
+                        () -> shutdown(new IllegalStateException(message), expected),
+                        REPLY_TIMEOUT_NANOS,
+                        TimeUnit.NANOSECONDS);
+    }
+
+    private void cancelDeadline() {
+        var task = deadlineTask;
+        deadlineTask = null;
+        if (task != null && !task.cancel(false)) log.debug("Protocol deadline already completed");
+    }
+
+    /**
+     * Thread-safe and idempotent. Fails waiting exchanges, discards pending output and closes the
+     * transport to unblock both workers. No final Bye delivery is promised.
+     */
+    @Override
+    public void close() {
+        shutdown(null, 0);
+        Thread output;
+        synchronized (lock) {
+            output = writer;
+        }
+        Threads.awaitTermination(reader, 3_000);
+        Threads.awaitTermination(output, 3_000);
+    }
+
+    /**
+     * expectedDeadline=0 is an unconditional close; stale timeout tasks cannot close a new phase.
+     */
+    private void shutdown(Throwable cause, long expectedDeadline) {
+        ArrayList<@NonNull CompletableFuture<Frame.@NonNull SeqResponse>> detached;
+        FrameTransport connection;
+        synchronized (lock) {
+            if (phase == Phase.CLOSED) return;
+            if (expectedDeadline != 0 && (deadlineTask == null || heartbeatAt != expectedDeadline))
+                return;
+            phase = Phase.CLOSED;
+            cancelDeadline();
+            connection = transport;
+            transport = null;
+            outgoing.clear();
+            outgoingBytes = 0;
+            detached = new ArrayList<>(pending.values());
+            pending.clear();
+            lock.notifyAll();
+        }
+        var failure =
+                cause == null ? new IllegalStateException("Protocol connection closed") : cause;
+        detached.forEach(response -> response.completeExceptionally(failure));
+        if (connection != null) Resources.closeOnFailure(connection, failure);
+        if (!ready.completeExceptionally(failure)
+                && (cause != null || failure.getSuppressed().length != 0))
+            log.warn("Protocol connection failed", failure);
+    }
+
     public boolean isClosed() {
-        return state.isClosed();
+        synchronized (lock) {
+            return phase == Phase.CLOSED;
+        }
     }
 
     public int negotiatedVersion() {
@@ -264,7 +374,7 @@ public final class ProtocolClient implements AutoCloseable {
     }
 
     public @NonNull Version serverProductVersion() {
-        return serverProductVersion;
+        return ready.join();
     }
 
     private enum Phase {
@@ -273,129 +383,7 @@ public final class ProtocolClient implements AutoCloseable {
         CLOSED
     }
 
-    /**
-     * CONNECTING -> OPEN on Welcome; CONNECTING/OPEN -> CLOSED on close or failure. CLOSED is
-     * terminal: callers wake immediately, while the IO owner retires the socket. This object alone
-     * owns admission, queues and correlation under its monitor.
-     *
-     * <p>Thread-safe: every access to mutable state holds this object's monitor. Waiting for and
-     * completing detached futures happen outside the monitor; frame payloads are not protected.
-     */
-    private static final class ConnectionState {
-        private @NonNull Phase phase = Phase.CONNECTING;
-        private long sequence = 2; // Hello owns sequence 1.
-        private final @NonNull ArrayDeque<Frame.@NonNull ClientFrame> outgoing = new ArrayDeque<>();
-        private final @NonNull ArrayDeque<Frame.@NonNull ServerFrame> incoming = new ArrayDeque<>();
-        private final @NonNull
-                HashMap<@NonNull Long, @NonNull CompletableFuture<Frame.@NonNull SeqResponse>>
-                pending = new HashMap<>();
+    private record Outgoing(Frame.@NonNull ClientFrame frame, int bytes) {}
 
-        private synchronized void open() {
-            switch (phase) {
-                case CONNECTING -> phase = Phase.OPEN;
-                case OPEN, CLOSED -> throw new IllegalStateException("Connection cannot be opened");
-            }
-        }
-
-        private synchronized boolean isClosed() {
-            return phase == Phase.CLOSED;
-        }
-
-        private synchronized void send(Frame.@NonNull ClientFrame frame) {
-            if (phase != Phase.OPEN)
-                throw new IllegalStateException("Protocol connection is not open");
-            if (outgoing.size() == CAPACITY)
-                throw new IllegalStateException("Protocol send queue is full");
-            outgoing.addLast(frame);
-        }
-
-        private synchronized Frame.ClientFrame nextOutgoing() {
-            return outgoing.pollFirst();
-        }
-
-        private synchronized long nextSequence() {
-            if (phase != Phase.OPEN)
-                throw new IllegalStateException("Protocol connection is not open");
-            if (sequence <= 0) throw new IllegalStateException("Protocol sequence exhausted");
-            return sequence++;
-        }
-
-        private synchronized void cancel(long targetSeq) {
-            send(new Frame.Cancel(nextSequence(), targetSeq));
-        }
-
-        private <R extends Frame.SeqRequest & Frame.ClientFrame> Frame.SeqResponse exchange(
-                @NonNull LongFunction<@NonNull R> request, long timeout, @NonNull TimeUnit unit) {
-            var response = new CompletableFuture<Frame.@NonNull SeqResponse>();
-            long seq;
-            synchronized (this) {
-                if (phase != Phase.OPEN || outgoing.size() == CAPACITY) return null;
-                seq = nextSequence();
-                var frame = request.apply(seq);
-                pending.put(seq, response);
-                outgoing.addLast(frame);
-            }
-            try {
-                return response.get(timeout, unit);
-            } catch (InterruptedException interrupted) {
-                Thread.currentThread().interrupt();
-            } catch (ExecutionException | TimeoutException unavailable) {
-                return null;
-            } finally {
-                synchronized (this) {
-                    pending.remove(seq, response);
-                }
-            }
-            return null;
-        }
-
-        private void accept(Frame.@NonNull ServerFrame frame) {
-            if (frame instanceof Frame.HeartbeatAck) return;
-            CompletableFuture<Frame.@NonNull SeqResponse> response;
-            synchronized (this) {
-                if (phase == Phase.CLOSED) return;
-                response =
-                        frame instanceof Frame.SeqResponse sequenced
-                                ? pending.remove(sequenced.seq())
-                                : null;
-                if (response == null) {
-                    if (incoming.size() == CAPACITY)
-                        throw new IllegalStateException("Protocol receive queue is full");
-                    incoming.addLast(frame);
-                    notifyAll();
-                    return;
-                }
-            }
-            Frame.SeqResponse sequenced = (Frame.SeqResponse) frame;
-            response.complete(sequenced);
-        }
-
-        private synchronized Frame.ServerFrame receive(long remaining) throws InterruptedException {
-            long deadline = System.nanoTime() + remaining;
-            while (incoming.isEmpty() && phase != Phase.CLOSED && remaining > 0) {
-                TimeUnit.NANOSECONDS.timedWait(this, remaining);
-                remaining = deadline - System.nanoTime();
-            }
-            return incoming.pollFirst();
-        }
-
-        private void close() {
-            ArrayList<@NonNull CompletableFuture<Frame.@NonNull SeqResponse>> detached;
-            synchronized (this) {
-                switch (phase) {
-                    case CLOSED -> {
-                        return;
-                    }
-                    case CONNECTING, OPEN -> phase = Phase.CLOSED;
-                }
-                outgoing.clear();
-                detached = new ArrayList<>(pending.values());
-                pending.clear();
-                notifyAll();
-            }
-            // Completing a future may execute callbacks; never do that under the state monitor.
-            var failure = new IllegalStateException("Protocol connection closed");
-            detached.forEach(response -> response.completeExceptionally(failure));
-        }
-    }
+    private record Incoming(Frame.@NonNull ServerFrame frame, int bytes) {}
 }

@@ -60,12 +60,12 @@ import top.focess.veto.vault.LoginSessionManager;
 import top.focess.veto.vault.TestUsers;
 
 class VetoWebSocketSecurityTest {
-    private final @NonNull Map<@NonNull VetoWebSocketHandler, @NonNull AgentSessions> runtimes =
+    private final @NonNull Map<@NonNull WebSocketServer, @NonNull AgentSessions> runtimes =
             new HashMap<>();
 
-    private final @NonNull List<@NonNull VetoWebSocketHandler> handlers = new ArrayList<>();
+    private final @NonNull List<@NonNull WebSocketServer> handlers = new ArrayList<>();
 
-    private @NonNull VetoWebSocketHandler handler(
+    private @NonNull WebSocketServer handler(
             @NonNull SessionRepository sessions,
             @NonNull LoginSessionManager tokens,
             @NonNull AgentService agents,
@@ -81,7 +81,7 @@ class VetoWebSocketSecurityTest {
                         });
         var runtime = TestAgentSessions.create(sessions, agents);
         var handler =
-                new VetoWebSocketHandler(
+                new WebSocketServer(
                         mock(SessionService.class),
                         mock(SessionCommandService.class),
                         tokens,
@@ -91,13 +91,13 @@ class VetoWebSocketSecurityTest {
         return handler;
     }
 
-    private @NonNull AgentSessions runtime(@NonNull VetoWebSocketHandler handler) {
+    private @NonNull AgentSessions runtime(@NonNull WebSocketServer handler) {
         var runtime = runtimes.get(handler);
         if (runtime == null) throw new AssertionError("Missing runtime");
         return runtime;
     }
 
-    private void publish(@NonNull VetoWebSocketHandler handler, Frame.@NonNull ScopedFrame frame) {
+    private void publish(@NonNull WebSocketServer handler, Frame.@NonNull ScopedFrame frame) {
         var user = frame.scope().userId();
         var session = frame.scope().session();
         if (user == null || session == null) throw new AssertionError("Missing frame identity");
@@ -106,7 +106,7 @@ class VetoWebSocketSecurityTest {
 
     @AfterEach
     void stopWriters() {
-        handlers.forEach(VetoWebSocketHandler::stop);
+        handlers.forEach(WebSocketServer::stop);
     }
 
     @Test
@@ -139,7 +139,7 @@ class VetoWebSocketSecurityTest {
     void deltaFramesReachOnlyConnectionsOwnedByTheSessionUser() throws Exception {
         SessionRepository sessions = mock(SessionRepository.class);
         LoginSessionManager tokens = new LoginSessionManager();
-        VetoWebSocketHandler handler =
+        WebSocketServer handler =
                 handler(sessions, tokens, mock(AgentService.class), mock(HitlRegistry.class));
         WebSocketSession alice =
                 socket(
@@ -649,8 +649,7 @@ class VetoWebSocketSecurityTest {
         assertEquals("call", result.callId());
     }
 
-    private static void connect(
-            @NonNull VetoWebSocketHandler handler, @NonNull WebSocketSession socket)
+    private static void connect(@NonNull WebSocketServer handler, @NonNull WebSocketSession socket)
             throws Exception {
         handler.afterConnectionEstablished(socket);
         hello(handler, socket, 1);
@@ -658,7 +657,7 @@ class VetoWebSocketSecurityTest {
     }
 
     private static void hello(
-            @NonNull VetoWebSocketHandler handler, @NonNull WebSocketSession socket, long seq) {
+            @NonNull WebSocketServer handler, @NonNull WebSocketSession socket, long seq) {
         handler.handleTextMessage(
                 socket,
                 new TextMessage(

@@ -21,7 +21,7 @@
     {
       "name": "veto.terminal.bind-address",
       "type": "java.lang.String",
-      "description": "ZeroMQ bind address for the local terminal IPC server.",
+      "description": "TCP bind address (tcp://host:port) for the local terminal IPC server.",
       "defaultValue": "tcp://127.0.0.1:5555"
     },
     {

@@ -12,7 +12,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.Objects;
-import java.util.concurrent.*;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.jspecify.annotations.NonNull;
@@ -37,19 +38,10 @@ public class LlamaCppBridge {
     private final @NonNull SlmConfiguration config;
     private final @NonNull GBNFGrammarEngine grammarEngine;
 
-    private Process llamaProcess;
+    private volatile Process llamaProcess;
     private volatile int serverPort = -1;
     private final @NonNull HttpClient httpClient =
             HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
-    private final @NonNull ExecutorService startupExecutor =
-            Executors.newSingleThreadExecutor(
-                    r -> {
-                        Thread t = new Thread(r, "veto-llamacpp-startup");
-                        t.setDaemon(true);
-                        return t;
-                    });
-
-    private volatile boolean available = false;
 
     /** Creates the bridge; the llama.cpp subprocess is started lazily by {@link #start()}. */
     public LlamaCppBridge(
@@ -64,9 +56,10 @@ public class LlamaCppBridge {
      */
     @PostConstruct
     public synchronized boolean start() {
-        if (available) {
+        if (isAvailable()) {
             return true;
         }
+        if (llamaProcess != null) stop();
 
         if (!config.isEnabled()) {
             log.info("Local SLM is disabled by veto.slm.enabled");
@@ -81,7 +74,6 @@ public class LlamaCppBridge {
                     "gateway LlamaCpp: Model not found at '{}'. SLM inference disabled. "
                             + "Place a quantized GGUF model (1B-3B) at this path.",
                     resolved);
-            this.available = false;
             return false;
         }
 
@@ -104,7 +96,6 @@ public class LlamaCppBridge {
             waitUntilListening(process, port);
             this.serverPort = port;
 
-            available = true;
             log.info(
                     "gateway LlamaCpp: Started llama.cpp with model '{}' (ctx={}, temp={}, port={})",
                     resolved,
@@ -112,14 +103,15 @@ public class LlamaCppBridge {
                     config.getTemperature(),
                     serverPort);
 
-            // Start health monitor
-            startHealthMonitor();
-
             return true;
 
-        } catch (IOException e) {
-            log.error("gateway LlamaCpp: Failed to start llama.cpp. Is it installed?", e);
-            this.available = false;
+        } catch (IOException | InterruptedException failure) {
+            if (failure instanceof InterruptedException) {
+                Thread.currentThread().interrupt();
+                log.info("gateway LlamaCpp: Startup interrupted");
+            } else
+                log.error("gateway LlamaCpp: Failed to start llama.cpp. Is it installed?", failure);
+            stop();
             return false;
         }
     }
@@ -168,66 +160,68 @@ public class LlamaCppBridge {
      */
     public @NonNull CompletableFuture<String> infer(
             @NonNull String prompt, @NonNull String grammarName) {
-        if (!available || serverPort <= 0) {
+        if (!isAvailable()) {
             return CompletableFuture.completedFuture(
                     "{\"veto_decision\":\"pass\",\"data\":{\"note\":\"SLM unavailable, passed without analysis\"}}");
         }
 
         String grammar = grammarEngine.resolveGrammar(grammarName);
-        return CompletableFuture.supplyAsync(
-                () -> {
-                    try {
-                        // Build the OpenAI-compatible completions request
-                        String requestBody =
-                                String.format(
-                                        "{\"prompt\":\"%s\",\"n_predict\":512,\"temperature\":%s,"
-                                                + "\"stop\":[\"###\"],\"grammar\":\"%s\"}",
-                                        escapeJson(prompt),
-                                        config.getTemperature(),
-                                        escapeJson(grammar));
-
-                        HttpRequest request =
-                                HttpRequest.newBuilder()
-                                        .uri(
-                                                URI.create(
-                                                        String.format(
-                                                                "http://127.0.0.1:%d/v1/completions",
-                                                                serverPort)))
-                                        .timeout(Duration.ofSeconds(30))
-                                        .header("Content-Type", "application/json")
-                                        .POST(HttpRequest.BodyPublishers.ofString(requestBody))
-                                        .build();
-
-                        var response =
-                                Objects.requireNonNull(
-                                        httpClient.send(
-                                                request, HttpResponse.BodyHandlers.ofString()),
-                                        "HttpClient.send returned null");
-
-                        if (response.statusCode() == 200) {
-                            return extractContentFromResponse(response.body());
-                        } else {
-                            log.warn(
-                                    "gateway LlamaCpp: Inference returned status {}",
-                                    response.statusCode());
-                            return "{\"veto_decision\":\"pass\",\"data\":{\"note\":\"SLM inference error\"}}";
-                        }
-
-                    } catch (Exception e) {
-                        log.error("gateway LlamaCpp: Inference failed", e);
-                        return "{\"veto_decision\":\"pass\",\"data\":{\"error\":\""
-                                + escapeJson(e.getMessage())
-                                + "\"}}";
-                    }
+        var transport = requestCompletion(prompt, grammar, Duration.ofSeconds(30));
+        CompletableFuture<String> result = new CompletableFuture<>();
+        transport.whenComplete(
+                (response, failure) -> {
+                    if (result.isCancelled()) return;
+                    if (failure != null) {
+                        log.error("gateway LlamaCpp: Inference failed", failure);
+                        result.complete(
+                                "{\"veto_decision\":\"pass\",\"data\":{\"error\":\""
+                                        + escapeJson(failure.getMessage())
+                                        + "\"}}");
+                    } else if (response.statusCode() != 200) {
+                        log.warn(
+                                "gateway LlamaCpp: Inference returned status {}",
+                                response.statusCode());
+                        result.complete(
+                                "{\"veto_decision\":\"pass\",\"data\":{\"note\":\"SLM inference error\"}}");
+                    } else result.complete(extractContentFromResponse(response.body()));
                 });
+        result.whenComplete(
+                (value, failure) -> {
+                    if (result.isCancelled())
+                        log.debug(
+                                "Local inference HTTP request cancelled: {}",
+                                transport.cancel(true));
+                });
+        return result;
     }
 
     /** Literal caller-owned grammar; cancellation propagates to the local HTTP request. */
     public @NonNull CompletableFuture<String> inferWithGrammar(
             @NonNull String prompt, @NonNull String grammar) {
-        if (!available || serverPort <= 0)
+        if (!isAvailable())
             return CompletableFuture.failedFuture(
                     new IllegalStateException("Local model unavailable"));
+        var transport = requestCompletion(prompt, grammar, Duration.ofSeconds(2));
+        CompletableFuture<String> result = new CompletableFuture<>();
+        transport.whenComplete(
+                (response, failure) -> {
+                    if (failure != null || response.statusCode() != 200) {
+                        result.completeExceptionally(
+                                new IllegalStateException("Local model completion unavailable"));
+                    } else result.complete(extractContentFromResponse(response.body()));
+                });
+        result.whenComplete(
+                (value, failure) -> {
+                    if (result.isCancelled())
+                        log.debug(
+                                "Local inference HTTP request cancelled: {}",
+                                transport.cancel(true));
+                });
+        return result;
+    }
+
+    private @NonNull CompletableFuture<@NonNull HttpResponse<@NonNull String>> requestCompletion(
+            @NonNull String prompt, @NonNull String grammar, @NonNull Duration timeout) {
         String body =
                 String.format(
                         "{\"prompt\":\"%s\",\"n_predict\":512,\"temperature\":%s,\"stop\":[\"###\"],\"grammar\":\"%s\"}",
@@ -238,38 +232,23 @@ public class LlamaCppBridge {
                                 URI.create(
                                         String.format(
                                                 "http://127.0.0.1:%d/v1/completions", serverPort)))
-                        .timeout(Duration.ofSeconds(2))
+                        .timeout(timeout)
                         .header("Content-Type", "application/json")
                         .POST(HttpRequest.BodyPublishers.ofString(body))
                         .build();
-        var transport = httpClient.sendAsync(request, HttpResponse.BodyHandlers.ofString());
-        CompletableFuture<String> result = new CompletableFuture<>();
-        transport.whenComplete(
-                (response, failure) -> {
-                    if (failure != null || response == null || response.statusCode() != 200) {
-                        result.completeExceptionally(
-                                new IllegalStateException("Local model completion unavailable"));
-                    } else result.complete(extractContentFromResponse(response.body()));
-                });
-        result.whenComplete(
-                (value, failure) -> {
-                    if (result.isCancelled()) transport.cancel(true);
-                });
-        return result;
-    }
-
-    /** Kill request for priority interruption. */
-    public void killCurrentInference() {
-        // With HTTP API, we can cancel pending requests by closing connections
-        log.warn("gateway LlamaCpp: Kill current inference requested");
+        try {
+            return httpClient.sendAsync(request, HttpResponse.BodyHandlers.ofString());
+        } catch (RuntimeException failure) {
+            return CompletableFuture.failedFuture(failure);
+        }
     }
 
     /** Gracefully stop the llama.cpp subprocess. */
     @PreDestroy
     public synchronized void stop() {
-        available = false;
         serverPort = -1;
         Process process = llamaProcess;
+        llamaProcess = null;
         if (process != null && process.isAlive()) {
             process.destroy();
             try {
@@ -304,13 +283,15 @@ public class LlamaCppBridge {
             Thread.sleep(2000);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
+            return false;
         }
 
         return start();
     }
 
     public boolean isAvailable() {
-        return available;
+        Process process = llamaProcess;
+        return serverPort > 0 && process != null && process.isAlive();
     }
 
     // ── Internal helpers ──
@@ -322,73 +303,45 @@ public class LlamaCppBridge {
         }
     }
 
-    private void waitUntilListening(@NonNull Process process, int port) throws IOException {
-        try (ScheduledExecutorService readinessExecutor =
-                Executors.newSingleThreadScheduledExecutor(
-                        runnable -> {
-                            Thread thread = new Thread(runnable, "veto-llamacpp-readiness");
-                            thread.setDaemon(true);
-                            return thread;
-                        })) {
-            CompletableFuture<Void> readiness = new CompletableFuture<>();
-            ScheduledFuture<?> probe =
-                    readinessExecutor.scheduleWithFixedDelay(
-                            () -> probeReadiness(process, port, readiness),
-                            0,
-                            100,
-                            TimeUnit.MILLISECONDS);
+    @SuppressWarnings("BusyWait") // Bounded readiness polling with interruptible backoff.
+    private void waitUntilListening(@NonNull Process process, int port)
+            throws IOException, InterruptedException {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30);
+        while (true) {
+            if (!process.isAlive())
+                throw new IOException("llama-server exited before opening its HTTP port");
+            long remaining = deadline - System.nanoTime();
+            if (remaining <= 0) break;
             try {
-                readiness.get(30, TimeUnit.SECONDS);
-            } catch (TimeoutException e) {
-                throw new IOException(
-                        "llama-server did not open its HTTP port within 30 seconds", e);
-            } catch (ExecutionException e) {
-                throw new IOException(
-                        "llama-server exited before opening its HTTP port", e.getCause());
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                throw new IOException("Interrupted while waiting for llama-server", e);
-            } finally {
-                probe.cancel(false);
+                HttpRequest request =
+                        HttpRequest.newBuilder()
+                                .uri(URI.create("http://127.0.0.1:" + port + "/health"))
+                                .timeout(
+                                        Duration.ofNanos(
+                                                Math.min(
+                                                        remaining,
+                                                        TimeUnit.MILLISECONDS.toNanos(500))))
+                                .GET()
+                                .build();
+                var response =
+                        Objects.requireNonNull(
+                                httpClient.send(request, HttpResponse.BodyHandlers.discarding()),
+                                "HttpClient.send returned null");
+                if (response.statusCode() == 200) return;
+            } catch (IOException notReady) {
+                // Retry connection and response failures until the process is ready or exits.
             }
+            remaining = deadline - System.nanoTime();
+            if (remaining <= 0) break;
+            TimeUnit.NANOSECONDS.sleep(Math.min(remaining, TimeUnit.MILLISECONDS.toNanos(100)));
         }
-    }
-
-    private void probeReadiness(
-            @NonNull Process process, int port, @NonNull CompletableFuture<Void> readiness) {
-        if (readiness.isDone()) {
-            return;
-        }
-        if (!process.isAlive()) {
-            readiness.completeExceptionally(
-                    new IOException("llama-server exited before opening its HTTP port"));
-            return;
-        }
-        try {
-            HttpRequest request =
-                    HttpRequest.newBuilder()
-                            .uri(URI.create("http://127.0.0.1:" + port + "/health"))
-                            .timeout(Duration.ofMillis(500))
-                            .GET()
-                            .build();
-            var response =
-                    Objects.requireNonNull(
-                            httpClient.send(request, HttpResponse.BodyHandlers.discarding()),
-                            "HttpClient.send returned null");
-            if (response.statusCode() == 200) {
-                readiness.complete(null);
-            }
-        } catch (IOException notReady) {
-            // The scheduled probe retries until the server listens, exits, or times out.
-        } catch (InterruptedException interrupted) {
-            Thread.currentThread().interrupt();
-            readiness.completeExceptionally(interrupted);
-        }
+        throw new IOException("llama-server did not open its HTTP port within 30 seconds");
     }
 
     private void drainProcessOutput(@NonNull Process process) {
-        Thread thread =
-                new Thread(
+        Thread.ofVirtual()
+                .name("veto-llamacpp-output")
+                .start(
                         () -> {
                             try (BufferedReader reader =
                                     new BufferedReader(
@@ -402,10 +355,7 @@ public class LlamaCppBridge {
                                     log.debug("gateway llama-server output stream closed", e);
                                 }
                             }
-                        },
-                        "veto-llamacpp-output");
-        thread.setDaemon(true);
-        thread.start();
+                        });
     }
 
     /** Extract the generated content from the OpenAI completions response JSON. */
@@ -428,26 +378,6 @@ public class LlamaCppBridge {
             log.warn("gateway LlamaCpp: Failed to parse response body", e);
         }
         return responseBody;
-    }
-
-    @SuppressWarnings("BusyWait") // Deliberate 30-second process liveness poll, not a spin loop.
-    private void startHealthMonitor() {
-        startupExecutor.submit(
-                () -> {
-                    while (available) {
-                        if (llamaProcess != null && !llamaProcess.isAlive()) {
-                            log.warn("gateway LlamaCpp: Process died unexpectedly");
-                            available = false;
-                            break;
-                        }
-                        try {
-                            Thread.sleep(30_000);
-                        } catch (InterruptedException e) {
-                            Thread.currentThread().interrupt();
-                            break;
-                        }
-                    }
-                });
     }
 
     private @NonNull String escapeJson(String s) {

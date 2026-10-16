@@ -143,6 +143,7 @@ public abstract class AbstractLlmProvider implements LLMProviderStrategy {
                     safe(e.getMessage()));
             throw e;
         } catch (Exception e) {
+            if (e instanceof InterruptedException) Thread.currentThread().interrupt();
             log.warn(
                     "Unexpected LLM call failure requestId={} model={} {}: {}",
                     requestId,

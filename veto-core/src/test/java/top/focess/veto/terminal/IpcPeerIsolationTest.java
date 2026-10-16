@@ -4,7 +4,10 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
+import java.io.IOException;
+import java.net.InetSocketAddress;
 import java.net.ServerSocket;
+import java.net.Socket;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
@@ -22,9 +25,6 @@ import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.support.StaticListableBeanFactory;
 import org.springframework.context.annotation.AnnotationConfigApplicationContext;
 import org.springframework.core.env.MapPropertySource;
-import org.zeromq.SocketType;
-import org.zeromq.ZContext;
-import org.zeromq.ZMQ;
 import top.focess.veto.agent.AgentService;
 import top.focess.veto.agent.intercept.VetoOption;
 import top.focess.veto.agent.intercept.VetoPrompt;
@@ -36,7 +36,6 @@ import top.focess.veto.command.SessionCommandService;
 import top.focess.veto.command.VetoCommandSender;
 import top.focess.veto.contract.Delta;
 import top.focess.veto.contract.Frame;
-import top.focess.veto.contract.FrameCodec;
 import top.focess.veto.contract.Version;
 import top.focess.veto.event.EventManager;
 import top.focess.veto.model.SessionEntity;
@@ -44,6 +43,7 @@ import top.focess.veto.model.SessionRepository;
 import top.focess.veto.session.AgentSessions;
 import top.focess.veto.session.SessionService;
 import top.focess.veto.session.TestAgentSessions;
+import top.focess.veto.transport.tcp.TcpConnection;
 import top.focess.veto.vault.AuthLifecycleManager;
 import top.focess.veto.vault.CurrentUser;
 import top.focess.veto.vault.KeysteadVault;
@@ -82,13 +82,18 @@ class IpcPeerIsolationTest {
                 .getPropertySources()
                 .addFirst(
                         new MapPropertySource(
-                                "terminal-test", Map.of("veto.terminal.bind-address", address)));
+                                "terminal-test",
+                                Map.of(
+                                        "veto.terminal.enabled",
+                                        "true",
+                                        "veto.terminal.bind-address",
+                                        address)));
         context.registerBean(CommandRegistry.class, () -> registry);
         context.registerBean(AgentService.class, () -> agents);
         context.registerBean(AgentSessions.class, () -> runtime);
         context.registerBean(SessionService.class, () -> mock(SessionService.class));
         context.registerBean(SessionCommandService.class, () -> mock(SessionCommandService.class));
-        context.register(TerminalConfiguration.class);
+        context.register(TerminalConfiguration.class, IpcServer.class);
         context.refresh();
         return context;
     }
@@ -138,10 +143,9 @@ class IpcPeerIsolationTest {
                 openEndpoint(
                         registry, mock(AgentService.class), TestAgentSessions.create(), address);
         var server = endpoint.getBean(IpcServer.class);
-        try (var context = new ZContext()) {
-            var terminal = connect(context, address, "revoked-command");
+        try (var terminal = connect(address)) {
             assertEquals("fresh login", request(terminal, "login").content());
-            assertTrue(terminal.send(FrameCodec.encode(requestFrame("private"))));
+            terminal.send(requestFrame("private"));
             assertTrue(entered.await(5, TimeUnit.SECONDS));
             server.revokeUser(TestUsers.ALICE);
             var sender = senderRef.get();
@@ -153,7 +157,7 @@ class IpcPeerIsolationTest {
             assertNull(completed.content());
             assertEquals(loginAgain ? TestUsers.ALICE : null, completed.scope().userId());
             assertEquals("fresh login", request(terminal, "login").content());
-            assertTrue(terminal.send(FrameCodec.encode(requestFrame("fresh"))));
+            terminal.send(requestFrame("fresh"));
             var output = assertInstanceOf(Delta.class, receive(terminal));
             assertEquals(
                     "fresh command output",
@@ -161,7 +165,7 @@ class IpcPeerIsolationTest {
             var fresh = assertInstanceOf(Frame.Done.class, receive(terminal));
 
             assertEquals("fresh command complete", fresh.content());
-            assertTrue(terminal.send(FrameCodec.encode(requestFrame("logout"))));
+            terminal.send(requestFrame("logout"));
             assertInstanceOf(Delta.class, receive(terminal));
             var loggedOut = assertInstanceOf(Frame.Done.class, receive(terminal));
 
@@ -205,16 +209,13 @@ class IpcPeerIsolationTest {
                 openEndpoint(
                         registry, mock(AgentService.class), TestAgentSessions.create(), address);
         var server = endpoint.getBean(IpcServer.class);
-        try (var context = new ZContext()) {
-            var terminal = connect(context, address, "revoked-completion");
+        try (var terminal = connect(address)) {
             request(terminal, "login");
-            assertTrue(
-                    terminal.send(
-                            FrameCodec.encode(new Frame.Complete("/credential", nextSequence()))));
+            terminal.send(new Frame.Complete("/credential", nextSequence()));
             assertTrue(entered.await(5, TimeUnit.SECONDS));
             server.revokeUser(TestUsers.ALICE);
             release.countDown();
-            assertTrue(terminal.send(FrameCodec.encode(new Frame.Heartbeat())));
+            terminal.send(new Frame.Heartbeat());
             assertInstanceOf(Frame.HeartbeatAck.class, receive(terminal));
         } finally {
             release.countDown();
@@ -247,8 +248,7 @@ class IpcPeerIsolationTest {
                 openEndpoint(
                         registry, mock(AgentService.class), TestAgentSessions.create(), address);
         var server = endpoint.getBean(IpcServer.class);
-        try (var context = new ZContext()) {
-            var terminal = connect(context, address, "auth-incarnation");
+        try (var terminal = connect(address)) {
             request(terminal, "login");
             var sender = senderRef.get();
             if (sender == null) throw new AssertionError("Missing sender");
@@ -293,7 +293,7 @@ class IpcPeerIsolationTest {
                                     null),
                             original,
                             () -> true));
-            assertTrue(terminal.send(FrameCodec.encode(new Frame.Heartbeat())));
+            terminal.send(new Frame.Heartbeat());
             assertInstanceOf(Frame.HeartbeatAck.class, receive(terminal));
         } finally {
             endpoint.close();
@@ -325,13 +325,12 @@ class IpcPeerIsolationTest {
                 openEndpoint(
                         registry, mock(AgentService.class), TestAgentSessions.create(), address);
         var server = endpoint.getBean(IpcServer.class);
-        try (var context = new ZContext()) {
-            var terminal = connect(context, address, "reused-routing-identity");
+        try (var terminal = connect(address)) {
             request(terminal, "login");
             var sender = senderRef.get();
             if (sender == null) throw new AssertionError("Missing sender");
-            assertTrue(terminal.send(FrameCodec.encode(new Frame.Bye())));
-            var sessionsField = IpcServer.class.getDeclaredField("peers");
+            terminal.send(new Frame.Bye());
+            var sessionsField = IpcServer.class.getDeclaredField("clients");
             sessionsField.setAccessible(true);
             if (!(sessionsField.get(server) instanceof Map<?, ?> sessions))
                 throw new AssertionError("Missing sessions");
@@ -345,19 +344,14 @@ class IpcPeerIsolationTest {
                             new Delta.Thought("private", 1));
             assertFalse(sender.connection().sendSession(delta, () -> true));
             sender.output("retired connection text");
-            assertTrue(terminal.send(FrameCodec.encode(new Frame.Heartbeat())));
-            assertInstanceOf(Frame.Terminate.class, receive(terminal));
-            assertTrue(
-                    terminal.send(
-                            FrameCodec.encode(
-                                    new Frame.Hello(
-                                            Frame.PROTOCOL_VERSION, 2, Version.UNKNOWN, "."))));
-            assertInstanceOf(Frame.Welcome.class, receive(terminal));
-            assertFalse(sender.connection().sendSession(delta, () -> true));
-            sender.output("retired connection text");
-            assertFalse(sender.connection().send(done("retired completion")));
-            assertTrue(terminal.send(FrameCodec.encode(new Frame.Heartbeat())));
-            assertInstanceOf(Frame.HeartbeatAck.class, receive(terminal));
+            assertThrows(IOException.class, terminal::receive);
+            try (var replacement = connect(address)) {
+                assertFalse(sender.connection().sendSession(delta, () -> true));
+                sender.output("retired connection text");
+                assertFalse(sender.connection().send(done("retired completion")));
+                replacement.send(new Frame.Heartbeat());
+                assertInstanceOf(Frame.HeartbeatAck.class, receive(replacement));
+            }
         } finally {
             endpoint.close();
         }
@@ -390,8 +384,7 @@ class IpcPeerIsolationTest {
         var endpoint = openEndpoint(registry, agents, runtime, address);
         var server = endpoint.getBean(IpcServer.class);
         var sessionId = UUID.randomUUID();
-        try (var context = new ZContext()) {
-            var terminal = connect(context, address, "revoked-approval");
+        try (var terminal = connect(address)) {
             request(terminal, "login");
             var sender = senderRef.get();
             if (sender == null) throw new AssertionError("Missing sender");
@@ -432,16 +425,16 @@ class IpcPeerIsolationTest {
                 var reply =
                         new Frame.VetoResult(
                                 veto.scope(), veto.callId(), "ACCEPT_GENERIC", veto.seq());
-                assertTrue(terminal.send(FrameCodec.encode(reply)));
+                terminal.send(reply);
                 assertInstanceOf(Frame.Error.class, receive(terminal));
-                assertTrue(terminal.send(FrameCodec.encode(new Frame.Heartbeat())));
+                terminal.send(new Frame.Heartbeat());
                 assertInstanceOf(Frame.HeartbeatAck.class, receive(terminal));
                 verify(agents, never())
                         .resolveVeto(anyString(), anyString(), anyString(), anyLong());
                 request(terminal, "login-again");
-                assertTrue(terminal.send(FrameCodec.encode(reply)));
+                terminal.send(reply);
                 assertInstanceOf(Frame.Error.class, receive(terminal));
-                assertTrue(terminal.send(FrameCodec.encode(new Frame.Heartbeat())));
+                terminal.send(new Frame.Heartbeat());
                 assertInstanceOf(Frame.HeartbeatAck.class, receive(terminal));
                 verify(agents, never())
                         .resolveVeto(anyString(), anyString(), anyString(), anyLong());
@@ -461,15 +454,10 @@ class IpcPeerIsolationTest {
                                 null,
                                 2));
                 var fresh = assertInstanceOf(Frame.Veto.class, receive(terminal));
-                assertTrue(
-                        terminal.send(
-                                FrameCodec.encode(
-                                        new Frame.VetoResult(
-                                                fresh.scope(),
-                                                fresh.callId(),
-                                                "ACCEPT_GENERIC",
-                                                fresh.seq()))));
-                assertTrue(terminal.send(FrameCodec.encode(new Frame.Heartbeat())));
+                terminal.send(
+                        new Frame.VetoResult(
+                                fresh.scope(), fresh.callId(), "ACCEPT_GENERIC", fresh.seq()));
+                terminal.send(new Frame.Heartbeat());
                 assertInstanceOf(Frame.HeartbeatAck.class, receive(terminal));
                 verify(agents, timeout(2_000)).resolveVeto("agent", "call", "ACCEPT_GENERIC", 2);
                 publish(runtime, delta);
@@ -491,6 +479,7 @@ class IpcPeerIsolationTest {
         doCallRealMethod().when(registry).terminalOutcome(any(), any());
         var alice = TestUsers.registry().findByUserId(TestUsers.ALICE).orElseThrow();
         var selected = UUID.randomUUID().toString();
+        var senderRef = new AtomicReference<VetoCommandSender>();
 
         when(registry.dispatch(any(), anyString()))
                 .thenAnswer(
@@ -498,6 +487,7 @@ class IpcPeerIsolationTest {
                             VetoCommandSender sender = invocation.getArgument(0);
                             if (sender == null) throw new AssertionError("Missing sender");
                             sender.setUser(alice);
+                            senderRef.set(sender);
                             return done("logged in");
                         });
         var runtime = TestAgentSessions.create();
@@ -505,10 +495,11 @@ class IpcPeerIsolationTest {
         var address = "tcp://127.0.0.1:" + port;
         var endpoint = openEndpoint(registry, mock(AgentService.class), runtime, address);
         var server = endpoint.getBean(IpcServer.class);
-        try (var context = new ZContext()) {
-            var terminal = connect(context, address, "plugin-peer");
+        try (var terminal = connect(address)) {
             request(terminal, "login");
-            runtime.select("plugin-peer", new Scope.SessionScope(TestUsers.ALICE, selected));
+            var sender = senderRef.get();
+            if (sender == null) throw new AssertionError("Missing sender");
+            runtime.select(sender.terminalId(), new Scope.SessionScope(TestUsers.ALICE, selected));
             var data = JsonNodeFactory.instance.objectNode().put("status", "ready");
             assertThrows(
                     IllegalArgumentException.class,
@@ -550,7 +541,7 @@ class IpcPeerIsolationTest {
             assertEquals(action, receive(terminal));
             server.revokeUser(TestUsers.ALICE);
             publish(runtime, expected);
-            assertTrue(terminal.send(FrameCodec.encode(new Frame.Heartbeat())));
+            terminal.send(new Frame.Heartbeat());
             assertInstanceOf(Frame.HeartbeatAck.class, receive(terminal));
         } finally {
             endpoint.close();
@@ -583,10 +574,9 @@ class IpcPeerIsolationTest {
                 openEndpoint(
                         registry, mock(AgentService.class), TestAgentSessions.create(), address);
         var server = endpoint.getBean(IpcServer.class);
-        try (var context = new ZContext()) {
-            var terminal = connect(context, address, "pending-input");
+        try (var terminal = connect(address)) {
             assertEquals("true", request(terminal, "login").content());
-            assertTrue(terminal.send(FrameCodec.encode(requestFrame("prompt"))));
+            terminal.send(requestFrame("prompt"));
             assertInstanceOf(Frame.Prompt.class, receive(terminal));
             server.revokeUser(TestUsers.ALICE);
             var revoked = assertInstanceOf(Frame.Done.class, receive(terminal));
@@ -643,19 +633,17 @@ class IpcPeerIsolationTest {
                         mock(EventManager.class),
                         new LoginSessionManager(),
                         beans.getBeanProvider(IpcServer.class));
-        try (var context = new ZContext()) {
-            var first = connect(context, address, "alice-1");
-            var second = connect(context, address, "alice-2");
-            var other = connect(context, address, "bob");
+        try (var first = connect(address);
+                var second = connect(address);
+                var other = connect(address)) {
             request(first, "login-alice");
             request(second, "login-alice");
             request(other, "login-bob");
-            assertTrue(first.send(FrameCodec.encode(requestFrame("hold"))));
+            first.send(requestFrame("hold"));
             assertTrue(entered.await(5, TimeUnit.SECONDS));
-            assertTrue(first.send(FrameCodec.encode(requestFrame("queued"))));
+            first.send(requestFrame("queued"));
             // Completion is ordered behind the queued frame on the session mailbox.
-            assertTrue(
-                    first.send(FrameCodec.encode(new Frame.Complete("barrier", nextSequence()))));
+            first.send(new Frame.Complete("barrier", nextSequence()));
             assertInstanceOf(Frame.CompleteResult.class, receive(first));
             lifecycle.logout(TestUsers.ALICE);
             release.countDown();
@@ -670,77 +658,113 @@ class IpcPeerIsolationTest {
         }
     }
 
-    private static ZMQ.@NonNull Socket connect(
-            @NonNull ZContext context, @NonNull String address, @NonNull String identity) {
-        var dealer = context.createSocket(SocketType.DEALER);
-        if (dealer == null) throw new AssertionError("DEALER creation failed");
-        dealer.setIdentity(identity.getBytes(StandardCharsets.UTF_8));
-        dealer.setReceiveTimeOut(3_000);
-        dealer.connect(address);
-        assertTrue(
-                dealer.send(
-                        FrameCodec.encodeString(
-                                new Frame.Hello(Frame.PROTOCOL_VERSION, 1, Version.UNKNOWN, "."))));
-        assertInstanceOf(Frame.Welcome.class, receive(dealer));
-        return dealer;
+    private static @NonNull TcpConnection connect(@NonNull String address) throws IOException {
+        var connection = TcpConnection.connect(address);
+        connection.send(new Frame.Hello(Frame.PROTOCOL_VERSION, 1, Version.UNKNOWN, "."));
+        assertInstanceOf(Frame.Welcome.class, receive(connection));
+        return connection;
     }
 
-    private static Frame.@NonNull Done request(ZMQ.@NonNull Socket dealer, @NonNull String raw) {
+    private static Frame.@NonNull Done request(
+            @NonNull TcpConnection connection, @NonNull String raw) throws IOException {
         var request = requestFrame(raw);
-        assertTrue(dealer.send(FrameCodec.encode(request)));
-        var result = assertInstanceOf(Frame.Done.class, receive(dealer));
+        connection.send(request);
+        var result = assertInstanceOf(Frame.Done.class, receive(connection));
         assertEquals(request.seq(), result.seq());
         return result;
     }
 
     @Test
     @Timeout(15)
-    void shortIdentitiesAndRejectedFramesDoNotKillTheServerOrSessionWorker() throws Exception {
-        int port;
-        try (var reservation = new ServerSocket(0)) {
-            port = reservation.getLocalPort();
-        }
-        String address = "tcp://127.0.0.1:" + port;
+    void rejectedFramesCloseOnlyTheirConnectionAndCommandFailureAllowsTheNextRequest()
+            throws Exception {
         var registry = mock(CommandRegistry.class);
         doCallRealMethod().when(registry).terminalOutcome(any(), any());
         when(registry.complete(any(), eq("explode")))
                 .thenThrow(new IllegalArgumentException("invalid completion syntax"));
         when(registry.complete(any(), eq("healthy"))).thenReturn(List.of());
-        var endpoint =
+        try (var endpoint =
                 openEndpoint(
-                        registry, mock(AgentService.class), TestAgentSessions.create(), address);
-        try (var context = new ZContext()) {
-            var dealer = context.createSocket(SocketType.DEALER);
-            if (dealer == null) throw new AssertionError("DEALER creation failed");
-            dealer.setIdentity("x".getBytes(StandardCharsets.UTF_8));
-            dealer.setReceiveTimeOut(3_000);
-            dealer.connect(address);
-            assertTrue(dealer.send("{\"type\":\"heartbeat\"}"));
-            assertInstanceOf(Frame.Terminate.class, receive(dealer));
-            assertTrue(
-                    dealer.send(
-                            FrameCodec.encodeString(
-                                    new Frame.Hello(
-                                            Frame.PROTOCOL_VERSION, 1, Version.UNKNOWN, "."))));
-            assertInstanceOf(Frame.Welcome.class, receive(dealer));
-            assertTrue(dealer.send("{\"type\":\"heartbeat\"}"));
-            assertInstanceOf(Frame.HeartbeatAck.class, receive(dealer));
-            assertTrue(dealer.send("{malformed json"));
-            assertTrue(dealer.send("{\"type\":\"complete\",\"raw\":\"explode\",\"seq\":2}"));
-            var rejected = receive(dealer);
-            assertTrue(rejected instanceof Frame.Error error && error.seq() == 2);
-            assertTrue(dealer.send("{\"type\":\"complete\",\"raw\":\"healthy\",\"seq\":3}"));
-            var healthy = receive(dealer);
-            assertTrue(healthy instanceof Frame.CompleteResult result && result.seq() == 3);
-            verify(registry).complete(any(), eq("healthy"));
-        } finally {
-            endpoint.close();
+                        registry,
+                        mock(AgentService.class),
+                        TestAgentSessions.create(),
+                        "tcp://127.0.0.1:0")) {
+            var address = "tcp://127.0.0.1:" + endpoint.getBean(ServerSocket.class).getLocalPort();
+            try (var uninitialized = TcpConnection.connect(address)) {
+                uninitialized.send(new Frame.Heartbeat());
+                assertInstanceOf(Frame.Error.class, receive(uninitialized));
+                assertThrows(IOException.class, uninitialized::receive);
+            }
+            try (var malformed = connect(address)) {
+                malformed.send("{malformed json".getBytes(StandardCharsets.UTF_8));
+                assertThrows(IOException.class, malformed::receive);
+            }
+            try (var healthy = connect(address)) {
+                healthy.send(new Frame.Complete("explode", 2));
+                var rejected = receive(healthy);
+                assertTrue(rejected instanceof Frame.Error error && error.seq() == 2);
+                healthy.send(new Frame.Complete("healthy", 3));
+                var result = receive(healthy);
+                assertTrue(
+                        result instanceof Frame.CompleteResult completed && completed.seq() == 3);
+                verify(registry).complete(any(), eq("healthy"));
+            }
         }
     }
 
     @Test
     @Timeout(15)
-    void shutdownJoinsTheIoWorkerBeforeReleasingTheEndpoint() throws Exception {
+    void slowPeerOutputIsBoundedAndDoesNotDelayHealthyPeer() throws Exception {
+        var registry = mock(CommandRegistry.class);
+        var flooding = new CountDownLatch(1);
+        var rejected = new CountDownLatch(1);
+        var payload = Delta.message("x".repeat(512 * 1024));
+        doCallRealMethod().when(registry).terminalOutcome(any(), any());
+        when(registry.dispatch(any(), anyString()))
+                .thenAnswer(
+                        invocation -> {
+                            VetoCommandSender sender = invocation.getArgument(0);
+                            if (sender == null) throw new AssertionError("Missing sender");
+                            flooding.countDown();
+                            for (int message = 0; message < 128; message++) {
+                                if (!sender.connection().send(payload)) {
+                                    rejected.countDown();
+                                    break;
+                                }
+                            }
+                            return done(null);
+                        });
+        try (var endpoint =
+                openEndpoint(
+                        registry,
+                        mock(AgentService.class),
+                        TestAgentSessions.create(),
+                        "tcp://127.0.0.1:0")) {
+            int port = endpoint.getBean(ServerSocket.class).getLocalPort();
+            try (var socket = new Socket();
+                    var healthy = connect("tcp://127.0.0.1:" + port)) {
+                socket.setReceiveBufferSize(1024);
+                socket.connect(new InetSocketAddress("127.0.0.1", port));
+                try (var slow = TcpConnection.accept(socket)) {
+                    slow.send(new Frame.Hello(Frame.PROTOCOL_VERSION, 1, Version.UNKNOWN, "."));
+                    assertInstanceOf(Frame.Welcome.class, slow.receive());
+                    slow.send(requestFrame("flood"));
+                    assertTrue(flooding.await(2, TimeUnit.SECONDS));
+                    healthy.send(new Frame.Heartbeat());
+                    assertInstanceOf(Frame.HeartbeatAck.class, healthy.receive());
+                    assertTrue(
+                            rejected.await(5, TimeUnit.SECONDS),
+                            "slow output must hit the byte budget");
+                    healthy.send(new Frame.Heartbeat());
+                    assertInstanceOf(Frame.HeartbeatAck.class, healthy.receive());
+                }
+            }
+        }
+    }
+
+    @Test
+    @Timeout(15)
+    void shutdownJoinsTheAcceptorBeforeReleasingTheEndpoint() throws Exception {
         int port;
         try (var reservation = new ServerSocket(0)) {
             port = reservation.getLocalPort();
@@ -752,15 +776,14 @@ class IpcPeerIsolationTest {
                 openEndpoint(
                         registry, mock(AgentService.class), TestAgentSessions.create(), address);
         var server = endpoint.getBean(IpcServer.class);
-        try (var context = new ZContext()) {
-            var terminal = connect(context, address, "shutdown-peer");
-            var workerField = IpcServer.class.getDeclaredField("ioThread");
+        try (var terminal = connect(address)) {
+            var workerField = IpcServer.class.getDeclaredField("acceptor");
             workerField.setAccessible(true);
             if (!(workerField.get(server) instanceof Thread worker))
                 throw new AssertionError("Missing IO owner");
             assertTrue(worker.isVirtual());
             endpoint.close();
-            assertInstanceOf(Frame.Terminate.class, receive(terminal));
+            assertThrows(IOException.class, terminal::receive);
             assertFalse(worker.isAlive(), "shutdown must leave no IO worker or bound socket");
             var replacement =
                     openEndpoint(
@@ -812,32 +835,29 @@ class IpcPeerIsolationTest {
         var endpoint =
                 openEndpoint(
                         registry, mock(AgentService.class), TestAgentSessions.create(), address);
-        try (var context = new ZContext()) {
-            var terminal = connect(context, address, "cancellation-peer");
+        try (var terminal = connect(address)) {
             var held = requestFrame("hold");
-            assertTrue(terminal.send(FrameCodec.encode(held)));
+            terminal.send(held);
             assertTrue(entered.await(2, TimeUnit.SECONDS));
             long cancelSeq = nextSequence();
-            assertTrue(terminal.send(FrameCodec.encode(new Frame.Cancel(cancelSeq, held.seq()))));
+            terminal.send(new Frame.Cancel(cancelSeq, held.seq()));
             assertTrue(interrupted.await(2, TimeUnit.SECONDS));
             assertEquals(
                     new Frame.CancelResult(Frame.CancelStatus.ACCEPTED, cancelSeq),
                     receive(terminal));
-            assertTrue(terminal.send(FrameCodec.encode(requestFrame("next"))));
-            assertTrue(
-                    terminal.send(
-                            FrameCodec.encode(new Frame.Complete("barrier", nextSequence()))));
+            terminal.send(requestFrame("next"));
+            terminal.send(new Frame.Complete("barrier", nextSequence()));
             assertInstanceOf(Frame.CompleteResult.class, receive(terminal));
             assertEquals(
                     1,
                     nextEntered.getCount(),
                     "replacement body must wait for cancelled body exit");
             long repeatSeq = nextSequence();
-            assertTrue(terminal.send(FrameCodec.encode(new Frame.Cancel(repeatSeq, held.seq()))));
+            terminal.send(new Frame.Cancel(repeatSeq, held.seq()));
             assertEquals(
                     new Frame.CancelResult(Frame.CancelStatus.ACCEPTED, repeatSeq),
                     receive(terminal));
-            assertTrue(terminal.send(FrameCodec.encode(new Frame.Heartbeat())));
+            terminal.send(new Frame.Heartbeat());
             assertInstanceOf(Frame.HeartbeatAck.class, receive(terminal));
             release.countDown();
             var cancelled = assertInstanceOf(Frame.Done.class, receive(terminal));
@@ -846,11 +866,11 @@ class IpcPeerIsolationTest {
             assertEquals("next", completed.content());
             assertTrue(nextEntered.await(1, TimeUnit.SECONDS));
             long finishedSeq = nextSequence();
-            assertTrue(terminal.send(FrameCodec.encode(new Frame.Cancel(finishedSeq, held.seq()))));
+            terminal.send(new Frame.Cancel(finishedSeq, held.seq()));
             assertEquals(
                     new Frame.CancelResult(Frame.CancelStatus.NO_ACTIVE_REQUEST, finishedSeq),
                     receive(terminal));
-            assertTrue(terminal.send(FrameCodec.encode(new Frame.Heartbeat())));
+            terminal.send(new Frame.Heartbeat());
             assertInstanceOf(Frame.HeartbeatAck.class, receive(terminal));
         } finally {
             release.countDown();
@@ -883,17 +903,16 @@ class IpcPeerIsolationTest {
         var endpoint =
                 openEndpoint(
                         registry, mock(AgentService.class), TestAgentSessions.create(), address);
-        try (var context = new ZContext()) {
-            var terminal = connect(context, address, "cancel-prompt");
-            assertTrue(terminal.send(FrameCodec.encode(requestFrame("prompt"))));
+        try (var terminal = connect(address)) {
+            terminal.send(requestFrame("prompt"));
             var prompt = assertInstanceOf(Frame.Prompt.class, receive(terminal));
             long cancelSeq = nextSequence();
-            assertTrue(terminal.send(FrameCodec.encode(new Frame.Cancel(cancelSeq, prompt.seq()))));
+            terminal.send(new Frame.Cancel(cancelSeq, prompt.seq()));
             assertEquals(
                     new Frame.CancelResult(Frame.CancelStatus.ACCEPTED, cancelSeq),
                     receive(terminal));
             assertTrue(dismissed.await(1, TimeUnit.SECONDS));
-            assertTrue(terminal.send(FrameCodec.encode(new Frame.Heartbeat())));
+            terminal.send(new Frame.Heartbeat());
             assertInstanceOf(Frame.HeartbeatAck.class, receive(terminal));
             release.countDown();
             assertEquals(
@@ -937,8 +956,7 @@ class IpcPeerIsolationTest {
                         });
         var address = "tcp://127.0.0.1:" + port;
         var endpoint = openEndpoint(registry, agents, runtime(agents), address);
-        try (var context = new ZContext()) {
-            var terminal = connect(context, address, "cancel-approval");
+        try (var terminal = connect(address)) {
             request(terminal, "login");
             var sender = senderRef.get();
             if (sender == null) throw new AssertionError("Missing sender");
@@ -959,23 +977,17 @@ class IpcPeerIsolationTest {
                             1));
             var veto = assertInstanceOf(Frame.Veto.class, receive(terminal));
             long cancelSeq = nextSequence();
-            assertTrue(
-                    terminal.send(FrameCodec.encode(new Frame.Cancel(cancelSeq, cancelSeq - 1))));
+            terminal.send(new Frame.Cancel(cancelSeq, cancelSeq - 1));
             assertEquals(
                     new Frame.CancelResult(Frame.CancelStatus.NO_ACTIVE_REQUEST, cancelSeq),
                     receive(terminal));
             verify(agents, never()).resolveVeto(anyString(), anyString(), anyString(), anyLong());
-            assertTrue(
-                    terminal.send(
-                            FrameCodec.encode(
-                                    new Frame.VetoResult(
-                                            veto.scope(),
-                                            veto.callId(),
-                                            "GENERIC_DECLINE",
-                                            veto.seq()))));
+            terminal.send(
+                    new Frame.VetoResult(
+                            veto.scope(), veto.callId(), "GENERIC_DECLINE", veto.seq()));
             verify(agents, timeout(2_000)).resolveVeto("agent", "call", "GENERIC_DECLINE", 1);
             if (!outcome.equals("accepted")) assertInstanceOf(Frame.Error.class, receive(terminal));
-            assertTrue(terminal.send(FrameCodec.encode(new Frame.Heartbeat())));
+            terminal.send(new Frame.Heartbeat());
             assertInstanceOf(Frame.HeartbeatAck.class, receive(terminal));
         } finally {
             endpoint.close();
@@ -1005,19 +1017,15 @@ class IpcPeerIsolationTest {
                 .send(new Scope.AgentScope(user, sessionId.toString(), prompt.agentId()), prompt);
     }
 
-    private static @NonNull Frame receive(ZMQ.@NonNull Socket dealer) {
+    private static @NonNull Frame receive(@NonNull TcpConnection connection) throws IOException {
         Frame frame;
         do {
-            frame = receiveRaw(dealer);
+            frame = receiveRaw(connection);
         } while (frame instanceof Frame.RequestAccepted);
         return frame;
     }
 
-    private static @NonNull Frame receiveRaw(ZMQ.@NonNull Socket dealer) {
-        byte[] payload = dealer.recv();
-        if (payload == null) throw new AssertionError("server did not respond");
-        var frame = FrameCodec.decode(payload);
-        if (frame == null) throw new AssertionError("server sent an invalid frame");
-        return frame;
+    private static @NonNull Frame receiveRaw(@NonNull TcpConnection connection) throws IOException {
+        return connection.receive();
     }
 }

@@ -9,7 +9,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
-import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicLong;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
@@ -22,7 +21,7 @@ import top.focess.veto.contract.ProtocolClient;
  * Direct, deterministic tests of {@link ClientSession}'s protocol logic — one per cell of the
  * interaction matrices. The session is transport-agnostic (fed frames via {@link
  * ClientSession#onFrame}, returns frames via {@link ClientSession#submit}/{@link
- * ClientSession#cancel}), so no ZMQ or {@link ProtocolClient} is needed — a recording {@link
+ * ClientSession#cancel}), so no socket or {@link ProtocolClient} is needed — a recording {@link
  * ClientView} captures every render event.
  */
 class ClientSessionTest {
@@ -1236,21 +1235,10 @@ class ClientSessionTest {
             ClientSession s = newSession(v);
             s.submit("first", null); // RUNNING
 
-            CountDownLatch bothStarted = new CountDownLatch(1);
             Thread a = new Thread(() -> s.submit("reply", null));
-            Thread b =
-                    new Thread(
-                            () -> {
-                                try {
-                                    bothStarted.await();
-                                } catch (InterruptedException e) {
-                                    Thread.currentThread().interrupt();
-                                }
-                                s.onFrame(new Frame.Prompt("pw", false, 2));
-                            });
+            Thread b = new Thread(() -> s.onFrame(new Frame.Prompt("pw", false, 2)));
 
             a.start();
-            bothStarted.countDown();
             b.start();
             a.join();
             b.join();

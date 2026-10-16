@@ -122,8 +122,6 @@ public final class ProcessHostFixture implements AutoCloseable {
                         }
 
                         public void wake(UUID userId, String session, String agent) {}
-
-                        public void invalidate(String session, String resource) {}
                     };
             var context =
                     new PluginContext(
@@ -232,8 +230,6 @@ public final class ProcessHostFixture implements AutoCloseable {
 
                     public void wake(
                             @NonNull UUID userId, @NonNull String session, @NonNull String agent) {}
-
-                    public void invalidate(@NonNull String session, @NonNull String resource) {}
                 };
         return new PluginHostServices(
                 Map.of(

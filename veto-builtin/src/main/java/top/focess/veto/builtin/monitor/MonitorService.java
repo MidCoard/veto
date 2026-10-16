@@ -23,6 +23,8 @@ import top.focess.veto.api.event.SessionDeletedEvent;
 import top.focess.veto.api.plugin.PluginHost;
 import top.focess.veto.api.plugin.contract.AgentInbox.InboxContext;
 import top.focess.veto.api.plugin.contract.AgentInbox.Observation;
+import top.focess.veto.api.plugin.contract.JsonValue;
+import top.focess.veto.api.plugin.contract.JsonValues;
 import top.focess.veto.builtin.group.DagNode;
 import top.focess.veto.builtin.group.GroupObservations;
 import top.focess.veto.builtin.group.GroupState;
@@ -35,12 +37,12 @@ import top.focess.veto.builtin.process.TaskInfo;
  * Domain observations and time triggers share persistence and a single runner delivery path.
  *
  * <p>Tool, inbox, process-observer and scheduler callers share the service monitor for compound
- * record transitions, persistence retries and foreground waits. Repository operations and group
- * snapshot reads execute under that monitor; future completion may invoke continuations inline.
- * Tick delivery copies eligible records under the monitor, then calls host wake outside it.
- * Repository, group-view and future callbacks must not wait for another thread to enter this
- * service. Concurrent callers observe serialized state changes, not an atomic database transaction
- * spanning every monitor.
+ * record transitions, publication revisions, persistence retries and foreground waits. Repository
+ * operations and group snapshot reads execute under that monitor; future completion may invoke
+ * continuations inline. Tick delivery copies eligible records under the monitor, then calls host
+ * wake outside it. Repository, group-view and future callbacks must not wait for another thread to
+ * enter this service. Concurrent callers observe serialized state changes, not an atomic database
+ * transaction spanning every monitor.
  */
 public class MonitorService implements ProcessObserver {
     private static final @NonNull Logger log =
@@ -57,6 +59,9 @@ public class MonitorService implements ProcessObserver {
     private final @NonNull ObjectMapper mapper;
     private final @NonNull GroupObservations groups;
     private final @NonNull Map<String, MonitorRecord> records = new LinkedHashMap<>();
+    private long revision;
+
+    record Snapshot(long revision, @NonNull List<MonitorRecord> records) {}
 
     private final @NonNull Set<String> terminatedAgents = new HashSet<>();
     private final @NonNull Map<PluginHost.Invocation, PluginAwait> foreground =
@@ -197,6 +202,11 @@ public class MonitorService implements ProcessObserver {
         return records.values().stream()
                 .filter(r -> r.userId().equals(userId) && r.sessionId().equals(sessionId))
                 .toList();
+    }
+
+    /** Captures rows and their publication revision under the same state owner. */
+    synchronized @NonNull Snapshot snapshot(@NonNull UUID userId, @NonNull String sessionId) {
+        return new Snapshot(revision, list(userId, sessionId));
     }
 
     /**
@@ -583,7 +593,19 @@ public class MonitorService implements ProcessObserver {
         try {
             repository.save(new MonitorEntity(record.id(), mapper.writeValueAsString(record)));
             records.put(record.id(), record);
-            if (host != null) host.invalidate(record.sessionId(), "monitors");
+            revision++;
+            if (host != null)
+                host.publish(
+                        record.sessionId(),
+                        "monitor_changed",
+                        (JsonValue.ObjectValue)
+                                JsonValues.from(
+                                        mapper.valueToTree(
+                                                Map.of(
+                                                        "revision",
+                                                        revision,
+                                                        "item",
+                                                        MonitorFrontend.summary(record)))));
         } catch (JsonProcessingException error) {
             throw new IllegalStateException("Cannot save Monitor", error);
         }

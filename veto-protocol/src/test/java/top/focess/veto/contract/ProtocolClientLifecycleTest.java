@@ -3,6 +3,8 @@ package top.focess.veto.contract;
 import static org.junit.jupiter.api.Assertions.*;
 import static top.focess.veto.contract.ContractTestSupport.assertThrows;
 
+import java.io.IOException;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -11,6 +13,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
@@ -19,6 +22,34 @@ import top.focess.veto.api.plugin.Scope;
 
 @Timeout(10)
 class ProtocolClientLifecycleTest {
+    @Test
+    void interruptedQueryPreservesThePromptWakeSignalWithoutClosingTheConnection()
+            throws Exception {
+        var peer = new Peer();
+        try (var client = new ProtocolClient(() -> peer)) {
+            var answer = new CompletableFuture<Frame.@Nullable HintResult>();
+            var interrupted = new AtomicBoolean();
+            var requester =
+                    Thread.ofVirtual()
+                            .start(
+                                    () -> {
+                                        var result = client.hint("command", 30, TimeUnit.SECONDS);
+                                        interrupted.set(Thread.currentThread().isInterrupted());
+                                        answer.complete(result);
+                                    });
+            var request = assertInstanceOf(Frame.Hint.class, peer.sent.poll(1, TimeUnit.SECONDS));
+            requester.interrupt();
+            assertNull(answer.get(1, TimeUnit.SECONDS));
+            requester.join(1_000);
+            assertFalse(requester.isAlive());
+            assertTrue(interrupted.get(), "JLine must still observe the prompt-swap wake signal");
+            assertFalse(client.isClosed());
+            var late = new Frame.HintResult(new Frame.HintInfo("argument", null), request.seq());
+            assertTrue(peer.incoming.offer(late));
+            assertEquals(late, client.receive(1, TimeUnit.SECONDS));
+        }
+    }
+
     @Test
     void cancellationUsesTheConnectionSequenceAndDoesNotConsumeQueryReplies() throws Exception {
         var peer = new Peer();
@@ -120,8 +151,7 @@ class ProtocolClientLifecycleTest {
                                     () -> {
                                         try {
                                             stream.complete(client.receive(30, TimeUnit.SECONDS));
-                                        } catch (InterruptedException failure) {
-                                            Thread.currentThread().interrupt();
+                                        } catch (Throwable failure) {
                                             stream.completeExceptionally(failure);
                                         }
                                     });
@@ -145,9 +175,10 @@ class ProtocolClientLifecycleTest {
     @Test
     void fullOutboxRejectsWorkInsteadOfDroppingIt() throws Exception {
         var peer = new Peer();
-        peer.block = true;
+        peer.blockSend = true;
         try (var client = new ProtocolClient(() -> peer)) {
-            assertTrue(peer.receiving.await(1, TimeUnit.SECONDS));
+            client.send(new Frame.Request(client.nextSequence(), null, null, "in-flight"));
+            assertTrue(peer.sending.await(1, TimeUnit.SECONDS));
             for (int i = 0; i < 256; i++)
                 client.send(new Frame.Request(client.nextSequence(), null, null, "queued"));
             assertThrows(
@@ -163,6 +194,53 @@ class ProtocolClientLifecycleTest {
     }
 
     @Test
+    void outboxRejectsExcessBytesBeforeItsFrameCountLimit() throws Exception {
+        var peer = new Peer();
+        peer.blockSend = true;
+        try (var client = new ProtocolClient(() -> peer)) {
+            client.send(new Frame.Request(client.nextSequence(), null, null, "in-flight"));
+            assertTrue(peer.sending.await(1, TimeUnit.SECONDS));
+            var payload = "x".repeat(800 * 1024);
+            for (int i = 0; i < 10; i++)
+                client.send(new Frame.Request(client.nextSequence(), null, null, payload));
+            assertThrows(
+                    IllegalStateException.class,
+                    () ->
+                            client.send(
+                                    new Frame.Request(client.nextSequence(), null, null, payload)));
+            assertThrows(
+                    IllegalArgumentException.class,
+                    () ->
+                            client.send(
+                                    new Frame.Request(
+                                            client.nextSequence(),
+                                            null,
+                                            null,
+                                            "x".repeat(FrameTransport.MAX_FRAME_BYTES))));
+        }
+    }
+
+    @Test
+    void blockedWriterDoesNotStopRepliesOrStreamDelivery() throws Exception {
+        var peer = new Peer();
+        try (var client = new ProtocolClient(() -> peer)) {
+            var answer = new CompletableFuture<Frame.@Nullable HintResult>();
+            Thread.ofVirtual()
+                    .start(() -> answer.complete(client.hint("command", 5, TimeUnit.SECONDS)));
+            var request = assertInstanceOf(Frame.Hint.class, peer.sent.poll(1, TimeUnit.SECONDS));
+            peer.blockSend = true;
+            client.send(new Frame.Request(client.nextSequence(), null, null, "blocked"));
+            assertTrue(peer.sending.await(1, TimeUnit.SECONDS));
+            var reply = new Frame.HintResult(new Frame.HintInfo("argument", null), request.seq());
+            assertTrue(peer.incoming.offer(reply));
+            assertTrue(peer.incoming.offer(Delta.message("progress")));
+            assertEquals(reply, answer.get(1, TimeUnit.SECONDS));
+            assertInstanceOf(Delta.class, client.receive(1, TimeUnit.SECONDS));
+            assertEquals(1, peer.release.getCount(), "Writer must still be blocked");
+        }
+    }
+
+    @Test
     void receiveOverflowClosesConnectionAndRetainsAcceptedFrames() throws Exception {
         var peer = new Peer();
         try (var client = new ProtocolClient(() -> peer)) {
@@ -172,6 +250,19 @@ class ProtocolClientLifecycleTest {
             for (int i = 0; i < 256; i++)
                 assertTrue(client.receive(0, TimeUnit.MILLISECONDS) instanceof Delta);
             assertNull(client.receive(1, TimeUnit.SECONDS));
+        }
+    }
+
+    @Test
+    void incomingByteBudgetClosesBeforeTheFrameCountLimit() throws Exception {
+        var peer = new Peer();
+        try (var client = new ProtocolClient(() -> peer)) {
+            var frame = Delta.message("x".repeat(800 * 1024));
+            for (int i = 0; i < 11; i++) assertTrue(peer.incoming.offer(frame));
+            assertTrue(peer.closed.await(2, TimeUnit.SECONDS));
+            assertTrue(client.isClosed());
+            for (int i = 0; i < 10; i++) assertEquals(frame, client.receive(0, TimeUnit.SECONDS));
+            assertNull(client.receive(0, TimeUnit.SECONDS));
         }
     }
 
@@ -202,11 +293,8 @@ class ProtocolClientLifecycleTest {
                     hint.get(1, TimeUnit.SECONDS),
                     "pending exchange must wake before socket send finishes");
             assertTrue(client.isClosed());
-            peer.release.countDown();
             closing.get(2, TimeUnit.SECONDS);
             assertTrue(peer.closed.await(1, TimeUnit.SECONDS));
-            assertEquals(inFlight, peer.sent.poll());
-            assertTrue(peer.sent.poll() instanceof Frame.Bye);
             assertTrue(peer.sent.isEmpty(), "close must not drain unsent application frames");
         } finally {
             peer.release.countDown();
@@ -214,21 +302,19 @@ class ProtocolClientLifecycleTest {
         }
     }
 
-    private static final class Peer implements ClientTransport {
+    private static final class Peer implements FrameTransport {
+        private static final Frame.@NonNull ServerFrame END = new Frame.HeartbeatAck(Instant.EPOCH);
         private final @NonNull BlockingQueue<Frame.@NonNull ServerFrame> incoming =
                 new LinkedBlockingQueue<>();
         private final @NonNull BlockingQueue<Frame.@NonNull ClientFrame> sent =
                 new LinkedBlockingQueue<>();
         private final @NonNull CountDownLatch closed = new CountDownLatch(1);
-        private final @NonNull CountDownLatch receiving = new CountDownLatch(1);
         private final @NonNull CountDownLatch release = new CountDownLatch(1);
-        private boolean welcomed;
-        private boolean block;
         private volatile boolean blockSend;
         private final @NonNull CountDownLatch sending = new CountDownLatch(1);
 
         @Override
-        public void send(Frame.@NonNull ClientFrame frame) {
+        public void send(@NonNull Frame frame) throws IOException {
             if (frame instanceof Frame.Hello hello) {
                 if (!incoming.offer(
                         new Frame.Welcome(Frame.PROTOCOL_VERSION, hello.seq(), Version.UNKNOWN)))
@@ -240,32 +326,32 @@ class ProtocolClientLifecycleTest {
                         release.await();
                     } catch (InterruptedException interrupted) {
                         Thread.currentThread().interrupt();
-                        throw new IllegalStateException(interrupted);
+                        throw new IOException(interrupted);
                     }
                 }
-                if (!sent.offer(frame)) throw new AssertionError("Cannot record send");
+                if (closed.getCount() == 0) throw new IOException("Transport closed");
+                if (!(frame instanceof Frame.ClientFrame request) || !sent.offer(request))
+                    throw new AssertionError("Cannot record send");
             }
         }
 
         @Override
-        public Frame.ServerFrame recv(long timeoutMillis) {
+        public Frame.@NonNull ServerFrame receive() throws IOException {
             try {
-                if (welcomed && block) {
-                    receiving.countDown();
-                    release.await();
-                }
-                var frame = incoming.poll(timeoutMillis, TimeUnit.MILLISECONDS);
-                welcomed = true;
+                var frame = incoming.take();
+                if (frame == END) throw new IOException("Transport closed");
                 return frame;
             } catch (InterruptedException failure) {
                 Thread.currentThread().interrupt();
-                throw new IllegalStateException(failure);
+                throw new IOException(failure);
             }
         }
 
         @Override
         public void close() {
             closed.countDown();
+            release.countDown();
+            if (!incoming.offer(END)) throw new AssertionError("Cannot wake reader");
         }
     }
 }

@@ -95,6 +95,7 @@ class MateAgentLifecycleTest {
         when(child.submit(anyString()))
                 .thenAnswer(
                         call -> {
+                            assertTrue(Thread.currentThread().isVirtual());
                             submitted.countDown();
                             return request;
                         });

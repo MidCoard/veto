@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
@@ -43,8 +44,10 @@ public class LocalSlmScreeningProvider implements SlmScreeningProvider {
             return Optional.empty();
         }
         String prompt = buildPrompt(call, def, activeTask, thought, executionContext);
+        CompletableFuture<String> pending = null;
         try {
-            String response = bridge.infer(prompt, "veto-screening").get(10, TimeUnit.SECONDS);
+            pending = bridge.infer(prompt, "veto-screening");
+            String response = pending.get(10, TimeUnit.SECONDS);
             if (response == null) {
                 return Optional.empty();
             }
@@ -59,9 +62,15 @@ public class LocalSlmScreeningProvider implements SlmScreeningProvider {
             }
             log.debug("LocalSlmScreeningProvider produced an unparseable response: '{}'", response);
             return Optional.empty();
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            return Optional.empty();
         } catch (Exception e) {
             log.warn("LocalSlmScreeningProvider inference failed: {}", safe(e.getMessage()));
             return Optional.empty();
+        } finally {
+            if (pending != null && !pending.isDone())
+                log.debug("Local screening inference cancelled: {}", pending.cancel(true));
         }
     }
 

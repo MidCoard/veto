@@ -19,23 +19,23 @@ public class WebSocketConfig implements WebSocketConfigurer {
     private static final @NonNull Logger log =
             LoggerFactory.getLogger("top.focess.veto.bus.WebSocketConfig");
 
-    private final @NonNull VetoWebSocketHandler vetoWebSocketHandler;
+    private final @NonNull WebSocketServer webSocketServer;
     private final @NonNull VetoWebSocketAuthInterceptor authInterceptor;
     private final @NonNull BusConfiguration busConfiguration;
 
     /** Creates the configuration with its handler, auth interceptor, and bus settings. */
     public WebSocketConfig(
-            @NonNull VetoWebSocketHandler vetoWebSocketHandler,
+            @NonNull WebSocketServer webSocketServer,
             @NonNull VetoWebSocketAuthInterceptor authInterceptor,
             @NonNull BusConfiguration busConfiguration) {
-        this.vetoWebSocketHandler = vetoWebSocketHandler;
+        this.webSocketServer = webSocketServer;
         this.authInterceptor = authInterceptor;
         this.busConfiguration = busConfiguration;
     }
 
     @Override
     public void registerWebSocketHandlers(@NonNull WebSocketHandlerRegistry registry) {
-        registry.addHandler(vetoWebSocketHandler, "/ws/veto/bus")
+        registry.addHandler(webSocketServer, "/ws/veto/bus")
                 .addInterceptors(authInterceptor)
                 .setAllowedOriginPatterns(
                         busConfiguration

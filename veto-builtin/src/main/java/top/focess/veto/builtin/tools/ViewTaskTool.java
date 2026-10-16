@@ -2,8 +2,6 @@ package top.focess.veto.builtin.tools;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import java.util.List;
-import java.util.Optional;
-import java.util.concurrent.CancellationException;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.api.agent.screening.Danger;
 import top.focess.veto.api.agent.tool.Doc;
@@ -126,7 +124,7 @@ public final class ViewTaskTool extends NativeTool<ViewTaskTool.Args> {
     }
 
     @Override
-    public @NonNull String execute(@NonNull Args args) {
+    public @NonNull String execute(@NonNull Args args) throws InterruptedException {
         return execute(args, taskControlCapability());
     }
 
@@ -137,7 +135,8 @@ public final class ViewTaskTool extends NativeTool<ViewTaskTool.Args> {
     }
 
     /** Runs the tool against the supplied capability. */
-    public @NonNull String execute(@NonNull Args args, @NonNull TaskControlCapability capability) {
+    public @NonNull String execute(@NonNull Args args, @NonNull TaskControlCapability capability)
+            throws InterruptedException {
         String taskId = args.taskId();
         if (taskId == null || taskId.isBlank()) {
             var all = capability.list();
@@ -146,7 +145,7 @@ public final class ViewTaskTool extends NativeTool<ViewTaskTool.Args> {
         } else {
             var found =
                     Boolean.TRUE.equals(args.waitForExit())
-                            ? awaitExit(capability, taskId)
+                            ? capability.awaitExit(taskId)
                             : capability.status(taskId);
             if (found.isEmpty())
                 return ToolErrors.failure(
@@ -192,16 +191,6 @@ public final class ViewTaskTool extends NativeTool<ViewTaskTool.Args> {
             @NonNull String recentOutput,
             @NonNull String outputCapture,
             @NonNull List<String> inputFailures) {}
-
-    private static @NonNull Optional<TaskInfo> awaitExit(
-            @NonNull TaskControlCapability capability, @NonNull String taskId) {
-        try {
-            return capability.awaitExit(taskId);
-        } catch (InterruptedException interrupted) {
-            Thread.currentThread().interrupt();
-            throw new CancellationException("Task result wait interrupted");
-        }
-    }
 
     private static @NonNull TaskSummary summary(@NonNull TaskInfo task) {
         return new TaskSummary(task.taskId(), task.command(), task.alive(), task.exitCode());

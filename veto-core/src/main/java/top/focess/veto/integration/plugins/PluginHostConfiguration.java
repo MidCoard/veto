@@ -38,13 +38,13 @@ public class PluginHostConfiguration {
         ready.complete(null);
     }
 
-    /** Provides the generic runtime {@code PluginHost} (invocation, publish, invalidate, wake). */
+    /** Provides the generic runtime {@code PluginHost} (invocation, publish, wake). */
     @Bean
     public @NonNull PluginHostServices runtimeHostServices(
             @NonNull ObjectProvider<@NonNull SessionAgentRegistry> agents,
             @NonNull ObjectProvider<@NonNull SessionService> sessions,
             @NonNull ObjectProvider<@NonNull KeysteadVault> vault,
-            @NonNull ObjectProvider<@NonNull SessionActions> invalidations) {
+            @NonNull ObjectProvider<@NonNull SessionActions> actions) {
         PluginHost host =
                 new PluginHost() {
                     public void whenReady(@NonNull Runnable callback) {
@@ -76,8 +76,7 @@ public class PluginHostConfiguration {
                             @NonNull String topic,
                             JsonValue.@NonNull ObjectValue facts) {
                         var mapper = new ObjectMapper();
-                        invalidations
-                                .getObject()
+                        actions.getObject()
                                 .publish(
                                         new Frame.PluginAction(
                                                 scope,

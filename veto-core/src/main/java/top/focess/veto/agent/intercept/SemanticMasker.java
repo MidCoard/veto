@@ -1,6 +1,7 @@
 package top.focess.veto.agent.intercept;
 
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -99,14 +100,14 @@ public class SemanticMasker {
         if (bridge == null || !bridge.isAvailable()) {
             return new MaskResult(maskFloor.apply(observation), null);
         }
+        CompletableFuture<String> pending = null;
         try {
             String prompt = buildPrompt(observation, call, def);
             // Bound the wait: a wedged bridge must not stall the calling virtual thread.
             // On timeout / interrupt / execution failure, fall back to the masking floor
             // (the floor is authoritative per the Trust Model).
-            String response =
-                    bridge.infer(prompt, "veto-semantic-mask")
-                            .get(SLM_TIMEOUT_MS, TimeUnit.MILLISECONDS);
+            pending = bridge.infer(prompt, "veto-semantic-mask");
+            String response = pending.get(SLM_TIMEOUT_MS, TimeUnit.MILLISECONDS);
             Matcher m = RISK_PATTERN.matcher(response);
             if (!m.find()) {
                 return new MaskResult(maskFloor.apply(observation), null);
@@ -146,6 +147,9 @@ public class SemanticMasker {
             log.debug(
                     "SemanticMasker: SLM inference failed, falling back: {}", safe(e.getMessage()));
             return new MaskResult(maskFloor.apply(observation), null);
+        } finally {
+            if (pending != null && !pending.isDone())
+                log.debug("Semantic masking inference cancelled: {}", pending.cancel(true));
         }
     }
 

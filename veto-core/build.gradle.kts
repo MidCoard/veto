@@ -80,8 +80,6 @@ dependencies {
     implementation("top.focess:focess-command:2.2.1")
     implementation("top.focess:focess-scheduler:2.0.0")
 
-    // ZMQ transport (shared with veto-protocol)
-    implementation("org.zeromq:jeromq:0.6.0")
 
     // Encryption
     implementation("org.bouncycastle:bcprov-jdk18on:1.84")

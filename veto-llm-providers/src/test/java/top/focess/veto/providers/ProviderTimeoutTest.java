@@ -13,12 +13,15 @@ import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.time.Duration;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 import top.focess.veto.api.llm.LlmClient;
 import top.focess.veto.api.llm.LlmOptions;
 import top.focess.veto.api.llm.ProviderType;
@@ -40,6 +43,47 @@ class ProviderTimeoutTest {
                             mapper,
                             (source, data) -> "");
             verifyTimeout(client, ProviderType.DEEPSEEK, endpoint);
+        }
+    }
+
+    @Test
+    @Timeout(10)
+    void deepSeekPropagatesInterruptionOfAnAdmittedHttpCall() throws Exception {
+        try (var endpoint = new StalledEndpoint()) {
+            var client =
+                    new DeepSeekLlmClient(
+                            endpoint.url(),
+                            "synthetic-key",
+                            "DeepSeek",
+                            mapper,
+                            (source, data) -> "");
+            var outcome = new CompletableFuture<Throwable>();
+            var worker =
+                    Thread.ofVirtual()
+                            .start(
+                                    () -> {
+                                        try {
+                                            client.complete(
+                                                    request(
+                                                            ProviderType.DEEPSEEK,
+                                                            endpoint,
+                                                            Duration.ofSeconds(30)));
+                                            outcome.complete(
+                                                    new AssertionError(
+                                                            "Interrupted HTTP request succeeded"));
+                                        } catch (Throwable failure) {
+                                            outcome.complete(failure);
+                                        }
+                                    });
+            try {
+                assertTrue(endpoint.entered.await(2, TimeUnit.SECONDS));
+                worker.interrupt();
+                assertInstanceOf(InterruptedException.class, outcome.get(2, TimeUnit.SECONDS));
+            } finally {
+                worker.interrupt();
+                worker.join(2_000);
+            }
+            assertFalse(worker.isAlive());
         }
     }
 
@@ -109,6 +153,24 @@ class ProviderTimeoutTest {
             @NonNull LlmClient client,
             @NonNull ProviderType provider,
             @NonNull StalledEndpoint endpoint) {
+        assertTimeoutPreemptively(
+                Duration.ofSeconds(5),
+                () ->
+                        assertThrows(
+                                RuntimeException.class,
+                                () ->
+                                        client.complete(
+                                                request(
+                                                        provider,
+                                                        endpoint,
+                                                        Duration.ofMillis(500)))));
+        assertTrue(endpoint.requests.get() > 0, "The request must reach the stalled endpoint");
+    }
+
+    private static @NonNull ResolvedRequest request(
+            @NonNull ProviderType provider,
+            @NonNull StalledEndpoint endpoint,
+            @NonNull Duration timeout) {
         var request =
                 new VetoRequest(
                         "",
@@ -117,23 +179,12 @@ class ProviderTimeoutTest {
                         provider,
                         "synthetic-model",
                         "synthetic-reference",
-                        new LlmOptions(null, null, 16, Duration.ofMillis(500), null),
+                        new LlmOptions(null, null, 16, timeout, null),
                         List.of(),
                         endpoint.url(),
                         false,
                         ResponseContract.ordinary());
-        assertTimeoutPreemptively(
-                Duration.ofSeconds(5),
-                () ->
-                        assertThrows(
-                                RuntimeException.class,
-                                () ->
-                                        client.complete(
-                                                new ResolvedRequest(
-                                                        request,
-                                                        endpoint.url(),
-                                                        "synthetic-key"))));
-        assertTrue(endpoint.requests.get() > 0, "The request must reach the stalled endpoint");
+        return new ResolvedRequest(request, endpoint.url(), "synthetic-key");
     }
 
     private static final class StalledEndpoint implements AutoCloseable {
@@ -141,6 +192,7 @@ class ProviderTimeoutTest {
         private final @NonNull ExecutorService workers =
                 Executors.newVirtualThreadPerTaskExecutor();
         private final @NonNull CountDownLatch release = new CountDownLatch(1);
+        private final @NonNull CountDownLatch entered = new CountDownLatch(1);
         private final @NonNull AtomicInteger requests = new AtomicInteger();
 
         private StalledEndpoint() throws IOException {
@@ -150,6 +202,7 @@ class ProviderTimeoutTest {
                     "/",
                     exchange -> {
                         requests.incrementAndGet();
+                        entered.countDown();
                         try {
                             release.await();
                         } catch (InterruptedException interrupted) {

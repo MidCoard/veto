@@ -102,7 +102,7 @@ public final class GroupRuntime implements AgentConfiguration, GroupObservations
         var storage = context.service(PluginStorage.class).orElse(null);
         history = storage == null ? null : new GroupHistoryStore(storage);
         if (history != null) groups.attachHistory(history);
-        if (host != null) groups.attachInvalidations(host);
+        if (host != null) groups.attachHost(host);
         AtomicReference<GroupRuntime> readyRuntime = new AtomicReference<>();
         spawner =
                 new GroupSpawner(

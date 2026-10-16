@@ -41,7 +41,7 @@ import top.focess.veto.VetoApplication;
 import top.focess.veto.agent.tool.ToolEngine;
 import top.focess.veto.agent.tool.ToolEngineImpl;
 import top.focess.veto.bus.VetoWebSocketAuthInterceptor;
-import top.focess.veto.bus.VetoWebSocketHandler;
+import top.focess.veto.bus.WebSocketServer;
 import top.focess.veto.contract.Frame;
 import top.focess.veto.contract.FrameCodec;
 import top.focess.veto.contract.Version;
@@ -387,8 +387,7 @@ class VetoApplicationTests {
 
     private @NonNull WsSession nativeWebSocket(@NonNull String token) {
         var value =
-                ReflectionTestUtils.getField(
-                        context.getBean(VetoWebSocketHandler.class), "connections");
+                ReflectionTestUtils.getField(context.getBean(WebSocketServer.class), "connections");
         if (!(value instanceof Map<?, ?> connections))
             throw new AssertionError("Missing connections");
         for (var connection : connections.values()) {

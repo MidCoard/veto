@@ -5,12 +5,14 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import org.jline.reader.*;
 import org.jline.terminal.TerminalBuilder;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import top.focess.veto.api.util.Threads;
 import top.focess.veto.contract.Delta;
 import top.focess.veto.contract.Frame;
 import top.focess.veto.contract.ProtocolClient;
@@ -21,7 +23,7 @@ import top.focess.veto.terminal.client.ClientView;
 import top.focess.veto.terminal.client.Logging;
 import top.focess.veto.terminal.client.StyleToken;
 import top.focess.veto.terminal.client.StyledText;
-import top.focess.veto.transport.zmq.ZmqChannel;
+import top.focess.veto.transport.tcp.TcpConnection;
 
 /**
  * Main interactive REPL terminal controller for Veto Core.
@@ -80,7 +82,7 @@ public class VetoTerminal {
     /** The Mordant terminal used for styled (ANSI) console output. */
     private final @NonNull Terminal t;
 
-    /** IPC connection to the backend (transport-agnostic; ZMQ locally). */
+    /** Protocol connection to the backend over TCP. */
     private final @NonNull ProtocolClient client;
 
     /** Orders interaction transitions with their nonblocking protocol queue admission. */
@@ -173,8 +175,7 @@ public class VetoTerminal {
         // --- incoming consumer thread ---
         // Drains frames from the connection through the session, which drives rendering back via
         // TerminalView and returns the next frame to dispatch (if any).
-        Thread consumerThread = createConsumerThread();
-        consumerThread.start();
+        Thread consumerThread = Thread.ofVirtual().name("veto-incoming").start(this::consumeFrames);
 
         try {
             // Enter the main interactive loop.
@@ -182,50 +183,30 @@ public class VetoTerminal {
         } finally {
             // Stop rendering before restoring the terminal and closing its status bar.
             running = false;
-            hintWidgets.disable();
-            consumerThread.interrupt();
             client.close();
-            try {
-                consumerThread.join(2_000);
-            } catch (InterruptedException interrupted) {
-                Thread.currentThread().interrupt();
-            } finally {
-                status.close();
-            }
+            Threads.awaitTermination(consumerThread, 2_000);
+            hintWidgets.disable();
+            status.close();
         }
     }
 
-    private @NonNull Thread createConsumerThread() {
-        return Thread.ofVirtual()
-                .name("veto-incoming")
-                .unstarted(
-                        () -> {
-                            try {
-                                while (running) {
-                                    Frame.ServerFrame frame = client.receive();
-                                    if (frame == null) {
-                                        if (client.isClosed()) {
-                                            if (running)
-                                                acceptFrame(
-                                                        new Frame.Terminate(
-                                                                "Backend connection closed."));
-                                            break;
-                                        }
-                                        continue;
-                                    }
-                                    acceptFrame(frame);
-                                }
-                            } catch (InterruptedException interrupted) {
-                                Thread.currentThread().interrupt();
-                            } catch (RuntimeException failure) {
-                                if (running) {
-                                    log.warn(
-                                            "Terminal receive failed ({})",
-                                            failure.getClass().getSimpleName());
-                                    acceptFrame(new Frame.Terminate("Backend connection failed."));
-                                }
-                            }
-                        });
+    private void consumeFrames() {
+        try {
+            while (running) {
+                var frame = client.receive();
+                if (!running) return;
+                if (frame != null) acceptFrame(frame);
+                else if (client.isClosed()) {
+                    acceptFrame(new Frame.Terminate("Backend connection closed."));
+                    return;
+                }
+            }
+        } catch (Throwable failure) {
+            if (running) {
+                log.warn("Terminal receive failed ({})", failure.getClass().getSimpleName());
+                acceptFrame(new Frame.Terminate("Backend connection failed."));
+            }
+        }
     }
 
     /** An accepted reply enters the outbox before completion can dispatch another command. */
@@ -768,23 +749,34 @@ public class VetoTerminal {
                             .build();
             Terminal mt = MordantTerminal.create();
             System.out.println("Connecting to backend at " + options.address() + " ...");
-            ProtocolClient transport =
+            try (var transport =
                     new ProtocolClient(
-                            () -> ZmqChannel.Client.connect(options.address()),
+                            () -> TcpConnection.connect(options.address()),
                             VetoVersion.VERSION,
-                            workspaceCwd);
-            Version serverVersion = transport.serverProductVersion();
-            System.out.println(
-                    "Connected to veto-core "
-                            + serverVersion
-                            + " (veto-terminal "
-                            + VetoVersion.VERSION
-                            + ").");
-            VetoTerminal vt = new VetoTerminal(mt, transport);
-            Completer completer = vt.new VetoCompleter();
-            LineReader r = LineReaderBuilder.builder().terminal(jt).completer(completer).build();
-            r.setVariable(LineReader.HISTORY_FILE, Path.of(".veto_history"));
-            vt.start(r);
+                            workspaceCwd)) {
+                Version serverVersion = transport.serverProductVersion();
+                System.out.println(
+                        "Connected to veto-core "
+                                + serverVersion
+                                + " (veto-terminal "
+                                + VetoVersion.VERSION
+                                + ").");
+                VetoTerminal vt = new VetoTerminal(mt, transport);
+                Completer completer = vt.new VetoCompleter();
+                LineReader r =
+                        LineReaderBuilder.builder().terminal(jt).completer(completer).build();
+                r.setVariable(LineReader.HISTORY_FILE, Path.of(".veto_history"));
+                vt.start(r);
+            }
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            System.err.println("Backend connection interrupted.");
+        } catch (ExecutionException failure) {
+            var cause = failure.getCause();
+            System.err.println(
+                    "Backend connection failed: "
+                            + (cause == null ? failure.getMessage() : cause.getMessage()));
+            log.debug("Backend connection failed", failure);
         } catch (IOException e) {
             System.err.println("Terminal failed: " + e.getMessage());
         } finally {

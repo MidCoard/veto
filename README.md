@@ -18,7 +18,7 @@ Veto is under active development. The following paths are implemented in this re
 - native file, search, command, background-task, web, memory, skill, and group tools;
 - deterministic tool screening, local-SLM advisory screening, permission grants, and HITL vetoes;
 - session history, long-term memory backends, model-tier profiles, and per-user vault storage;
-- REST, WebSocket, gRPC, and local ZeroMQ transport surfaces;
+- REST, WebSocket, gRPC, and local TCP transport surfaces;
 - an interactive terminal client;
 - a local SLM preparation, training, evaluation, GGUF conversion, and deployment pipeline;
 - an official AgentDojo bridge for security and utility evaluation.
@@ -103,7 +103,7 @@ Important `veto-core` packages:
 | `veto` | llama.cpp bridge, grammar enforcement, the outbound veto gateway, and gateway-level model services |
 | `training` | Training lifecycle and REST endpoints |
 | `controller` | REST API controllers used by veto-ui and benchmark bridges |
-| `terminal` | Backend side of the ZeroMQ terminal protocol |
+| `terminal` | Backend side of the TCP terminal protocol |
 | `bus` | WebSocket/gRPC event and routing infrastructure |
 | `observability` | Audit chain and runtime events |
 
@@ -222,7 +222,7 @@ terminal process directory:
 Additional terminal options:
 
 ```text
---address, -a    backend ZeroMQ address; default tcp://127.0.0.1:5555
+--address, -a    backend TCP address; default tcp://127.0.0.1:5555
 --workspace, -w  absolute workspace root
 --debug, -d      verbose terminal logging
 ```
@@ -441,16 +441,23 @@ is generated output and must not be committed.
   its public `FrameCodec` for UTF-8 bytes and JSON text, with strict parsing in that same codec.
   Authentication, backend dispatch and
   recipient routing belong to the application. Both transports use the same `Frame` hierarchy
-  and `type` discriminator, including `Delta` for streaming events. ZeroMQ transport and
+  and `type` discriminator, including `Delta` for streaming events. TCP transport and
   connection code live in `veto-protocol`; terminal interaction, rendering and logging live in
   `veto-terminal`. `ProtocolClient` runs the terminal handshake, IO, heartbeat and correlation
-  over `ZmqChannel.Client`. Each connection uses one virtual
-  IO worker from transport creation through handshake and cleanup, with bounded queues and private request futures.
+  over `TcpConnection`. Each connection uses separate virtual readers and writers,
+  with bounded queues and private request futures. TCP frames contain a four-byte big-endian
+  payload length followed by UTF-8 JSON; payloads are limited to 1 MiB. Terminal and backend
+  must be updated together; the previous terminal transport is removed, with no fallback.
   Closing wakes readers and pending exchanges immediately and discards unsent application frames.
 On the backend, `TerminalConfiguration` initializes the IPC resource beans before starting `IpcServer`.
 When terminal IPC is enabled, initialization failures abort Spring startup and Spring closes the resources already created.
-Set `veto.terminal.enabled=false` to disable IPC explicitly. On shutdown, Spring stops the server before closing its resources.
-  Spring owns the context and router; one `IpcServer` virtual IO worker uses the router.
+IPC beans require `veto.terminal.enabled=true`; the shipped configuration sets it explicitly. A missing or false
+property disables registration. On shutdown, Spring stops the server before closing its resources.
+  Spring owns the bound `ServerSocket`. The conditional `IpcServer` component receives this listener
+  through constructor injection and owns its virtual acceptor and connection task executor. Each
+  connection has one receive task; output tasks run only while its bounded queue has work. Clients
+  hold no thread handles. Each queue admits at most 256 frames and 8 MiB of payload.
+  Closing the socket unblocks both directions; slow clients cannot block other connections.
   Both terminal IPC and browser WebSocket frames enter the same concrete `ProtocolConnection`,
   then an owned `AgentSession`, then the existing virtual-thread `AgentRunner`. `AgentSessions`
   owns attachments under one lock: one selected session per terminal and all owned sessions per
@@ -465,7 +472,7 @@ Set `veto.terminal.enabled=false` to disable IPC explicitly. On shutdown, Spring
   REJECTED or NO_ACTIVE_REQUEST immediately; the final reply follows settlement. Exact `VetoResult`
   refuses or approves one offered call. `DeclineVetoes` refuses all pending approvals in an owned
   session and returns a correlated scoped Done; it does not cancel arbitrary running execution.
-  Agent output follows `AgentSession -> ProtocolConnection -> IPC outbox / WebSocketWriter`.
+  Agent output follows `AgentSession -> ProtocolConnection -> IpcServer / WebSocketServer`.
   AgentSession numbers deltas and supplies scope-checked agent sinks. Existing domain values such
   as VetoPrompt become frames at the connection; the transport encodes and writes them. Queue
   delivery rechecks authority and attachment identity after switches, logout and deletion.
@@ -475,7 +482,8 @@ Set `veto.terminal.enabled=false` to disable IPC explicitly. On shutdown, Spring
   control admission are bounded; 65,536 unique exchange sequences require a fresh connection.
   Sequences may arrive out of order, but duplicates close the connection without replay. Browser
   reconnect discards unconfirmed exchanges, keeps drafts and refreshes authoritative snapshots.
-  Each WebSocket connection has one virtual writer and a bounded outbox: at most 256 queued messages
+  `WebSocketServer` owns one internal client per socket, including its protocol connection,
+  virtual writer and bounded outbox: at most 256 queued messages
   and 1 MiB of queued UTF-8 payload, plus one in-flight message of at most 1 MiB. Publishers do not
   wait for socket writes; slow peers exceeding the buffer limit are disconnected. The native write
   deadline is 10 seconds, and queued sends recheck authentication. Closing a connection discards
@@ -487,13 +495,15 @@ Set `veto.terminal.enabled=false` to disable IPC explicitly. On shutdown, Spring
   Heartbeat and HeartbeatAck carry no sequence; the browser allows one outstanding heartbeat and
   reconnects if its acknowledgement does not arrive within 10 seconds. Heartbeats are sent 30 seconds
   after the previous acknowledgement. The server uses Tomcat's 90-second WebSocket read-idle timeout
-  to remove silent clients; outgoing events do not reset that timeout. IPC uses a 90-second inactivity
-  threshold checked every 30 seconds. There are no topic subscriptions.
+  to remove silent clients; outgoing events do not reset that timeout. TCP reads allow 90 seconds
+  of idle time and at most 10 seconds to finish a started frame. TCP writes have an independent
+  10-second deadline that closes a stalled socket. The terminal uses the same 30-second heartbeat
+  interval and 10-second acknowledgement deadline, independently of application IO. There are no topic subscriptions.
   Thread safety: `ProtocolClient` supports concurrent callers, and `FrameCodec` supports concurrent
   calls with stable inputs. `Version` and immutable frame values may be shared freely. `Frame.Veto`
   arguments, `Frame.PluginAction` data and `Delta.ToolCall` arguments retain mutable payloads;
-  finish building them before enqueueing and leave them read-only afterward. ZMQ channels require
-  one exclusive owner for send, receive and close; a thread start/join handoff may transfer ownership.
+  finish building them before enqueueing and leave them read-only afterward. `FrameTransport`
+  permits one reader and one writer concurrently; close is thread-safe and unblocks pending IO.
   Prompt/Input is terminal-only text interaction. Veto/VetoResult carries human approvals on both
   transports, while gateway enforcement remains backend-owned. Approval
   frames originate in the agent and pass through the owning runtime session; pending
@@ -503,7 +513,9 @@ Set `veto.terminal.enabled=false` to disable IPC explicitly. On shutdown, Spring
   operations: GlobalScope for connection-local output, SessionScope for session resources, AgentScope
   for an agent (including its owning account and session). Terminal deltas also render while idle.
   Compaction feedback uses the generic Notice renderer. PluginAction transports custom plugin
-  facts; current clients consume resource invalidations, not custom plugin-event payloads. Client-triggered gateway processing is not part of the wire protocol.
+  data consumed by the owning plugin frontend. Core Action refreshes core resources; plugin
+  controllers supply initial state, recovery and bounded detail pages. Client-triggered gateway
+  processing is not part of the wire protocol.
   There is no outbound Java cloud bus or remote task executor.
   Browser message types, JSON validation, schema and wire fixtures belong to
   `veto-ui/src/protocol` and are bundled with the UI. Update them alongside Java wire-contract

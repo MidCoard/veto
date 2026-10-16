@@ -16,7 +16,6 @@ import top.focess.veto.api.agent.tool.ToolResultFormat;
 import top.focess.veto.api.agent.tool.ToolResultStatus;
 import top.focess.veto.api.agent.tool.ToolSecurity;
 import top.focess.veto.api.agent.tool.UniqueBy;
-import top.focess.veto.builtin.questions.AnswerBatch;
 import top.focess.veto.builtin.questions.Question;
 import top.focess.veto.builtin.questions.QuestionRuntime;
 
@@ -120,18 +119,8 @@ public final class AskUserTool extends AgentTool<AskUserTool.Args> {
     }
 
     @Override
-    public @NonNull String execute(@NonNull Args args) throws Exception {
-        AnswerBatch answer;
-        try {
-            answer = runtime.ask(args.questions());
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new ToolExecutionException(
-                    ToolResultStatus.CANCELLED,
-                    ToolResultFormat.PLAINTEXT,
-                    ToolErrorCode.LIFECYCLE.TOOL_INTERRUPTED,
-                    "Interrupted: the wait for user answers was interrupted.");
-        }
+    public @NonNull String execute(@NonNull Args args) throws InterruptedException {
+        var answer = runtime.ask(args.questions());
         if (answer.cancelled()) {
             throw new ToolExecutionException(
                     ToolResultStatus.CANCELLED,

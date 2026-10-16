@@ -30,9 +30,15 @@ async function load(key, path) {
   const timers = new Set();
   const schedule = (fn, ms, ...args) => { const timer = setTimeout(() => { timers.delete(timer); fn(...args); }, ms); timers.add(timer); return timer; };
   const interval = (fn, ms, ...args) => { const timer = setInterval(fn, ms, ...args); timers.add(timer); return timer; };
-  const dispose = () => { input.end(); stdout.destroy(); for (const timer of timers) {clearTimeout(timer); clearInterval(timer);} for (const waiter of pending.values()) waiter.reject(new Error('Closed')); pending.clear(); };
+  const cancel = timer => {
+    clearTimeout(timer);
+    if (!timers.delete(timer) && (typeof timer === 'number' || typeof timer === 'string')) {
+      for (const owned of timers) if (String(+owned) === String(timer)) { timers.delete(owned); break; }
+    }
+  };
+  const dispose = () => { input.end(); stdout.destroy(); for (const timer of timers) clearTimeout(timer); timers.clear(); for (const waiter of pending.values()) waiter.reject(new Error('Closed')); pending.clear(); };
   const context = vm.createContext({Buffer, URL, URLSearchParams, TextEncoder, TextDecoder,
-    setTimeout:schedule, setInterval:interval, clearTimeout, clearInterval, queueMicrotask,
+    setTimeout:schedule, setInterval:interval, clearTimeout:cancel, clearInterval:cancel, queueMicrotask,
     console:new Console(process.stderr, process.stderr),
     process:{stdin:input, stdout, stderr:process.stderr, env:{}, argv:[process.execPath,path],
       platform:process.platform, arch:process.arch, versions:process.versions,

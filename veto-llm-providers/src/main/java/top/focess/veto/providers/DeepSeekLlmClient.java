@@ -6,6 +6,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -56,7 +57,8 @@ final class DeepSeekLlmClient implements LlmClient {
     }
 
     @Override
-    public @NonNull RawCompletion complete(@NonNull ResolvedRequest resolved) {
+    public @NonNull RawCompletion complete(@NonNull ResolvedRequest resolved)
+            throws InterruptedException {
         VetoRequest request = resolved.request();
         try {
             List<Function> tools =
@@ -191,18 +193,7 @@ final class DeepSeekLlmClient implements LlmClient {
                             nativeCalls,
                             nativeStates(output, request.modelName()))
                     .withReasoning(extractReasoning(output));
-        } catch (ModelCapabilityException | ModelSchemaException e) {
-            throw e;
-        } catch (InterruptedException e) {
-            // Restore the flag for the caller, and say WHAT happened - InterruptedException carries
-            // no message, so the generic wrap below would surface a useless "... failed: null".
-            Thread.currentThread().interrupt();
-            throw new ModelCapabilityException(
-                    providerName
-                            + " REST call interrupted (the agent thread was interrupted mid-request"
-                            + " - a cancel, a shutdown, or external interference)",
-                    e);
-        } catch (Exception e) {
+        } catch (IOException e) {
             throw new ModelCapabilityException(
                     providerName
                             + " REST call failed: "

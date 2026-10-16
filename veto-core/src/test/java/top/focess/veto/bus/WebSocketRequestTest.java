@@ -66,8 +66,8 @@ class WebSocketRequestTest {
     private final @NonNull SessionRepository repository = mock(SessionRepository.class);
     private final @NonNull LoginSessionManager tokens = new LoginSessionManager();
     private final @NonNull String token = tokens.createLoginSession(TestUsers.ALICE, "alice");
-    private final @NonNull VetoWebSocketHandler handler =
-            new VetoWebSocketHandler(
+    private final @NonNull WebSocketServer handler =
+            new WebSocketServer(
                     sessions, commands, tokens, TestAgentSessions.create(repository, agents));
     private final @NonNull StandardWebSocketSession socket = mock(StandardWebSocketSession.class);
     private final @NonNull VetoAgent primary = mock(VetoAgent.class);
@@ -163,6 +163,39 @@ class WebSocketRequestTest {
         var done = assertInstanceOf(Frame.Done.class, receive());
         assertEquals(2, done.seq());
         assertEquals(3, done.turnNumber());
+    }
+
+    @Test
+    void websocketCancellationTargetsOneRequestAndAcknowledgesBeforeInlineSettlement()
+            throws Exception {
+        var first = request("first");
+        var second = request("second");
+        when(primary.submitRequest(eq("first"), any(), any(), isNull(), any()))
+                .thenAnswer(invocation -> admit(invocation, first));
+        when(primary.submitRequest(eq("second"), any(), any(), isNull(), any()))
+                .thenAnswer(invocation -> admit(invocation, second));
+        send(new Frame.Request(2, sessionId, null, "first"));
+        assertEquals(2, assertInstanceOf(Frame.RequestAccepted.class, receive()).seq());
+        send(new Frame.Request(3, sessionId, null, "second"));
+        assertEquals(3, assertInstanceOf(Frame.RequestAccepted.class, receive()).seq());
+        when(first.requestCancellation())
+                .thenAnswer(
+                        ignored -> {
+                            assertTrue(
+                                    first.result()
+                                            .complete(AgentResult.success("cancelled", Map.of())));
+                            assertTrue(first.settled().complete(true));
+                            return true;
+                        });
+
+        send(new Frame.Cancel(4, 2));
+        var cancelled = assertInstanceOf(Frame.CancelResult.class, receive());
+        assertEquals(4, cancelled.seq());
+        assertEquals(Frame.CancelStatus.ACCEPTED, cancelled.status());
+        assertEquals(2, assertInstanceOf(Frame.Done.class, receive()).seq());
+        verify(second, never()).requestCancellation();
+        send(new Frame.Heartbeat());
+        assertInstanceOf(Frame.HeartbeatAck.class, receive());
     }
 
     @Test

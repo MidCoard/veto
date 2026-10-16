@@ -128,6 +128,9 @@ class ScriptPluginTest {
                         () -> {
                             try {
                                 return script.invoke(tool, arguments);
+                            } catch (InterruptedException interrupted) {
+                                Thread.currentThread().interrupt();
+                                throw new PluginFailure(PluginFailure.Code.CANCELLED);
                             } catch (IOException failure) {
                                 throw new PluginFailure(PluginFailure.Code.INTERNAL_FAILURE);
                             }
@@ -186,6 +189,9 @@ class ScriptPluginTest {
                                                     secondScript.tools().getFirst(),
                                                     JSON.createObjectNode().put("text", "a😀b"))
                                             .asInt();
+                                } catch (InterruptedException interrupted) {
+                                    Thread.currentThread().interrupt();
+                                    throw new PluginFailure(PluginFailure.Code.CANCELLED);
                                 } catch (IOException failure) {
                                     throw new PluginFailure(PluginFailure.Code.INTERNAL_FAILURE);
                                 }

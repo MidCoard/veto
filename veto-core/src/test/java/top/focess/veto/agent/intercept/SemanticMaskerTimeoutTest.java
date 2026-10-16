@@ -63,7 +63,8 @@ class SemanticMaskerTimeoutTest {
         // block the caller beyond the configured SLM_TIMEOUT_MS.
         LlamaCppBridge bridge = mock(LlamaCppBridge.class);
         when(bridge.isAvailable()).thenReturn(true);
-        when(bridge.infer(anyString(), anyString())).thenReturn(new CompletableFuture<>());
+        var pending = new CompletableFuture<String>();
+        when(bridge.infer(anyString(), anyString())).thenReturn(pending);
         SemanticMasker masker = masker(bridge);
 
         long start = System.currentTimeMillis();
@@ -83,6 +84,7 @@ class SemanticMaskerTimeoutTest {
         assertTrue(
                 elapsed < SemanticMasker.SLM_TIMEOUT_MS + 1_000L,
                 "masker must not block beyond the SLM timeout (took " + elapsed + "ms)");
+        assertTrue(pending.isCancelled(), "timed-out inference must release its HTTP request");
     }
 
     @Test

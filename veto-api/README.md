@@ -277,8 +277,14 @@ those effects are optional should keep using `context.service(PluginHost.class)`
 
 `PluginHost.invocation(tool)` derives owner, session, agent, request, and call facts from a
 live authorized invocation; plugin-supplied identity text grants nothing. `await` attaches
-foreground waiting to that invocation. `wake` is only a scheduling hint. `publish` and
-`invalidate` require an authorized selected session. `whenReady` runs after host migrations,
+foreground waiting to that invocation. `wake` is only a scheduling hint. `publish`
+requires an authorized selected session and carries plugin-defined JSON data in
+`PluginAction.data`; the plugin frontend receives it through `subscribeAction` and owns
+its state and rendering. Core `Action` is reserved for core resources. Existing plugin
+controllers supply initial state, recovery and bounded pages/details. `subscribeRecovery`
+requests focus/visibility recovery; `connected` supplies reconnect state. Builtin questions
+publish complete agent-scoped pending snapshots, using `list` only for initial load and
+recovery. Publication does not revoke the session or its scope. `whenReady` runs after host migrations,
 but its callback receives no automatic authorization for later effects.
 
 ## Named services between plugins

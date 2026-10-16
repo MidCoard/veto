@@ -13,7 +13,6 @@ version = "1.0.100"
 
 // Centralized dependency versions shared across all subprojects
 extra["jacksonVersion"] = "2.18.8"
-extra["jeromqVersion"] = "0.6.0"
 extra["slf4jVersion"] = "2.0.13"
 extra["logbackVersion"] = "1.5.34"
 extra["jlineVersion"] = "3.26.1"

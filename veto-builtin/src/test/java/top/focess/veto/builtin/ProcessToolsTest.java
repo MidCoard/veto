@@ -2,6 +2,7 @@ package top.focess.veto.builtin;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.BufferedReader;
@@ -28,6 +29,7 @@ import top.focess.veto.api.process.Command;
 import top.focess.veto.api.process.CommandResult;
 import top.focess.veto.api.process.ProcessHost;
 import top.focess.veto.builtin.process.ProcessRuntime;
+import top.focess.veto.builtin.process.TaskControlCapability;
 import top.focess.veto.builtin.process.TaskEvents;
 import top.focess.veto.builtin.tools.InputTaskTool;
 import top.focess.veto.builtin.tools.RunCommandTool;
@@ -38,6 +40,20 @@ import top.focess.veto.builtin.tools.ViewTaskTool;
 /** API-only feature journey; host admission/containment is tested separately in core. */
 @Timeout(10)
 class ProcessToolsTest {
+    @Test
+    void viewTaskPreservesCheckedInterruptionFromItsExitWait() throws Exception {
+        var capability = mock(TaskControlCapability.class);
+        var interrupted = new InterruptedException("cancelled task wait");
+        when(capability.awaitExit("waiting")).thenThrow(interrupted);
+        var view = new ViewTaskTool(capability);
+        assertSame(
+                interrupted,
+                assertThrows(
+                        InterruptedException.class,
+                        () -> view.execute(new ViewTaskTool.Args("waiting", true))));
+        assertFalse(Thread.currentThread().isInterrupted());
+    }
+
     @Test
     void preparedTaskInputAndEofProduceOutputAndPreserveOrigin() throws Exception {
         var host = new Host();
@@ -141,8 +157,6 @@ class ProcessToolsTest {
         }
 
         public void wake(@NonNull UUID userId, @NonNull String session, @NonNull String agent) {}
-
-        public void invalidate(@NonNull String session, @NonNull String resource) {}
 
         public @NonNull CommandResult runApproved() {
             throw new UnsupportedOperationException();

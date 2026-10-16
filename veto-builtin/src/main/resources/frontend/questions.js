@@ -7,7 +7,7 @@ export function activate(host) {
     const React = host.React;
     const { useState, useRef, useEffect } = React;
     const OTHER = Symbol('other');
-    function Card({ batch, context, refresh }) {
+    function Card({ batch, context, invoke }) {
         const t = strings[context.locale.startsWith('zh') ? 'zh' : 'en'];
         const [choices, setChoices] = useState({});
         const [other, setOther] = useState({});
@@ -15,7 +15,13 @@ export function activate(host) {
         const [submitting, setSubmitting] = useState(false);
         const [error, setError] = useState(null);
         const controller = useRef();
-        useEffect(() => () => controller.current?.abort(), []);
+        useEffect(() => {
+            if (!context.connected) {
+                pending.current = false;
+                setSubmitting(false);
+            }
+            return () => controller.current?.abort();
+        }, [context.connected]);
         const answers = {};
         for (const question of batch.questions) {
             const choice = choices[question.id];
@@ -34,9 +40,7 @@ export function activate(host) {
             const request = new AbortController();
             controller.current = request;
             try {
-                await context.invoke(action, { callId: batch.callId, ...(action === 'answer' ? { answers } : {}) }, request.signal);
-                if (!request.signal.aborted)
-                    refresh(batch.callId);
+                await invoke(action, { callId: batch.callId, ...(action === 'answer' ? { answers } : {}) }, request.signal);
             }
             catch (caught) {
                 if (!request.signal.aborted) {
@@ -75,31 +79,52 @@ export function activate(host) {
         const [snapshot, setSnapshot] = useState({ identity, items: [] });
         const [error, setError] = useState(false);
         const [loading, setLoading] = useState(true);
-        const [revision, setRevision] = useState(0);
+        const current = useRef({ revision: -1 });
+        const reload = useRef();
+        function receive(data, connection) {
+            if (connection !== current.current || data.agentId !== context.agent || data.revision < connection.revision)
+                return;
+            connection.revision = data.revision;
+            setSnapshot({ identity, items: data.items });
+            setError(false);
+            setLoading(false);
+        }
+        async function invoke(action, arguments_, signal) {
+            const connection = current.current;
+            const data = await context.invoke(action, arguments_, signal);
+            if (!signal.aborted)
+                receive(data, connection);
+        }
         useEffect(() => {
+            const connection = { revision: -1 };
+            current.current = connection;
+            setError(false);
+            setLoading(true);
+            if (!context.connected)
+                return;
             const controller = new AbortController();
             let generation = 0;
-            const load = async () => { const request = ++generation; try {
-                const data = await context.invoke('list', {}, controller.signal);
-                if (!controller.signal.aborted && request === generation) {
-                    setSnapshot({ identity, items: data.items });
-                    setError(false);
-                    setLoading(false);
+            const load = async () => {
+                const request = ++generation;
+                const revision = connection.revision;
+                try {
+                    await invoke('list', {}, controller.signal);
                 }
-            }
-            catch {
-                if (!controller.signal.aborted && request === generation) {
-                    setError(true);
-                    setLoading(false);
+                catch {
+                    if (!controller.signal.aborted && request === generation && connection.revision === revision) {
+                        setError(true);
+                        setLoading(false);
+                    }
                 }
-            } };
-            const unsubscribe = context.subscribe('interactions', () => void load());
-            if (context.connected)
-                void load();
-            return () => { controller.abort(); unsubscribe(); };
-        }, [identity, context.connected, context.invoke, context.subscribe, revision]);
+            };
+            reload.current = load;
+            const unsubscribe = context.subscribeAction('questions_changed', data => receive(data, connection));
+            // The host calls resource subscriptions on focus/visibility recovery.
+            const recover = context.subscribeRecovery(() => void load());
+            void load();
+            return () => { controller.abort(); unsubscribe(); recover(); reload.current = undefined; };
+        }, [identity, context.connected, context.invoke, context.subscribeRecovery, context.subscribeAction]);
         const items = snapshot.identity === identity ? snapshot.items : [];
-        const refresh = (callId) => { setSnapshot(previous => ({ ...previous, items: previous.items.filter(item => item.callId !== callId) })); setRevision(value => value + 1); };
         return React.createElement("div", { className: "veto-questions" },
             React.createElement("style", null, css),
             !context.connected && items.length > 0 && React.createElement("p", { className: "q-status", role: "status" }, t.offline),
@@ -107,8 +132,8 @@ export function activate(host) {
             error && React.createElement("p", { role: "alert" },
                 t.error,
                 " ",
-                React.createElement("button", { type: "button", disabled: !context.connected, onClick: () => setRevision(value => value + 1) }, t.retry)),
-            items.map(batch => React.createElement(Card, { key: `${identity}/${batch.callId}`, batch: batch, context: context, refresh: refresh })));
+                React.createElement("button", { type: "button", disabled: !context.connected, onClick: () => void reload.current?.() }, t.retry)),
+            items.map(batch => React.createElement(Card, { key: `${identity}/${batch.callId}`, batch: batch, context: context, invoke })));
     }
     host.registerPanel('questions', 'conversation.footer', Panel);
 }

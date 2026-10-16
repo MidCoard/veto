@@ -5,6 +5,7 @@ import org.jspecify.annotations.NonNull;
 import top.focess.veto.agent.tool.ToolCallContextHolder;
 import top.focess.veto.api.plugin.PluginHost;
 import top.focess.veto.api.plugin.Scope;
+import top.focess.veto.api.plugin.contract.JsonValue;
 
 /** Test host for runner wait assertions; production authorization is exercised separately. */
 public final class QuestionTestSupport {
@@ -31,7 +32,10 @@ public final class QuestionTestSupport {
             public void wake(
                     @NonNull UUID userId, @NonNull String session, @NonNull String agent) {}
 
-            public void invalidate(@NonNull String session, @NonNull String resource) {}
+            public void publish(
+                    Scope.@NonNull SessionScope scope,
+                    @NonNull String topic,
+                    JsonValue.@NonNull ObjectValue facts) {}
         };
     }
 }

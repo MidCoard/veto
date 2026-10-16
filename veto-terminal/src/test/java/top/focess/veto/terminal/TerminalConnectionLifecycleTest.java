@@ -4,14 +4,19 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.io.IOException;
+import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.jspecify.annotations.NonNull;
-import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
-import top.focess.veto.contract.ClientTransport;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import top.focess.veto.contract.Frame;
+import top.focess.veto.contract.FrameTransport;
 import top.focess.veto.contract.ProtocolClient;
 import top.focess.veto.contract.Version;
 import top.focess.veto.terminal.client.ClientSession;
@@ -19,12 +24,14 @@ import top.focess.veto.terminal.client.ClientView;
 import top.focess.veto.terminal.client.StyledText;
 
 class TerminalConnectionLifecycleTest {
-    @Test
+    @ParameterizedTest
+    @ValueSource(booleans = {true, false})
     @Timeout(10)
-    void closedConnectionTerminatesVirtualConsumerInsteadOfSpinning() throws Exception {
+    void closedConnectionTerminatesVirtualConsumerWithoutInterruption(boolean alreadyClosed)
+            throws Exception {
         var client = new ProtocolClient(Peer::new);
         try {
-            client.close();
+            if (alreadyClosed) client.close();
             var terminal = new VetoTerminal(MordantTerminal.create(), client);
             var terminations = new AtomicInteger();
             var view =
@@ -52,44 +59,68 @@ class TerminalConnectionLifecycleTest {
             var running = VetoTerminal.class.getDeclaredField("running");
             running.setAccessible(true);
             running.setBoolean(terminal, true);
-            var factory = VetoTerminal.class.getDeclaredMethod("createConsumerThread");
-            factory.setAccessible(true);
-            var consumer = (Thread) factory.invoke(terminal);
-            if (consumer == null) throw new AssertionError("Missing terminal consumer");
+            var consume = VetoTerminal.class.getDeclaredMethod("consumeFrames");
+            consume.setAccessible(true);
+            var completed = new CompletableFuture<Void>();
+            var interrupted = new AtomicBoolean();
+            var consumer =
+                    Thread.ofVirtual()
+                            .start(
+                                    () -> {
+                                        try {
+                                            consume.invoke(terminal);
+                                            interrupted.set(Thread.currentThread().isInterrupted());
+                                            completed.complete(null);
+                                        } catch (ReflectiveOperationException failure) {
+                                            completed.completeExceptionally(failure);
+                                        }
+                                    });
             assertTrue(consumer.isVirtual());
-            consumer.start();
+            if (!alreadyClosed) {
+                assertTrue(consumer.isAlive());
+                client.close();
+            }
+            completed.get(1, TimeUnit.SECONDS);
             consumer.join(1_000);
             assertFalse(consumer.isAlive());
+            assertFalse(interrupted.get());
             assertEquals(1, terminations.get());
         } finally {
             client.close();
         }
     }
 
-    private static final class Peer implements ClientTransport {
-        private final @NonNull LinkedBlockingQueue<Frame.@NonNull ServerFrame> incoming =
+    private static final class Peer implements FrameTransport {
+        private final @NonNull LinkedBlockingQueue<@NonNull Optional<@NonNull Frame>> incoming =
                 new LinkedBlockingQueue<>();
+        private boolean closed;
 
         @Override
-        public void send(Frame.@NonNull ClientFrame frame) {
+        public synchronized void send(@NonNull Frame frame) throws IOException {
+            if (closed) throw new IOException("Peer closed");
             if (frame instanceof Frame.Hello hello
                     && !incoming.offer(
-                            new Frame.Welcome(
-                                    Frame.PROTOCOL_VERSION, hello.seq(), Version.UNKNOWN)))
+                            Optional.of(
+                                    new Frame.Welcome(
+                                            Frame.PROTOCOL_VERSION, hello.seq(), Version.UNKNOWN))))
                 throw new AssertionError("Cannot queue handshake");
         }
 
         @Override
-        public Frame.ServerFrame recv(long timeoutMillis) {
+        public @NonNull Frame receive() throws IOException {
             try {
-                return incoming.poll(timeoutMillis, TimeUnit.MILLISECONDS);
+                return incoming.take().orElseThrow(() -> new IOException("Peer closed"));
             } catch (InterruptedException interrupted) {
                 Thread.currentThread().interrupt();
-                throw new IllegalStateException(interrupted);
+                throw new IOException("Receive interrupted", interrupted);
             }
         }
 
         @Override
-        public void close() {}
+        public synchronized void close() {
+            if (closed) return;
+            closed = true;
+            if (!incoming.offer(Optional.empty())) throw new AssertionError("Cannot signal close");
+        }
     }
 }

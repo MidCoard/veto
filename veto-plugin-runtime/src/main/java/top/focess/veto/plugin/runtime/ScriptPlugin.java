@@ -90,6 +90,9 @@ public final class ScriptPlugin extends VetoPlugin {
                                     var result = invoke(tool, PluginJson.toNode(arguments));
                                     cancellation.checkCancelled();
                                     return PluginJson.fromNode(result);
+                                } catch (InterruptedException interrupted) {
+                                    Thread.currentThread().interrupt();
+                                    throw new PluginFailure(PluginFailure.Code.CANCELLED);
                                 } catch (IOException failure) {
                                     throw new PluginFailure(PluginFailure.Code.INTERNAL_FAILURE);
                                 } catch (IllegalArgumentException failure) {
@@ -143,7 +146,7 @@ public final class ScriptPlugin extends VetoPlugin {
     }
 
     @NonNull JsonNode invoke(@NonNull ScriptTool tool, @NonNull JsonNode arguments)
-            throws IOException {
+            throws IOException, InterruptedException {
         if (!active()) throw new IOException("Plugin is unavailable");
         if (tools().stream().noneMatch(registered -> registered == tool))
             throw new IOException("Unknown plugin tool");

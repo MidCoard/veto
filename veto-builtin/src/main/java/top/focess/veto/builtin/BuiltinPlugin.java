@@ -11,6 +11,7 @@ import top.focess.veto.api.plugin.VetoPlugin;
 import top.focess.veto.api.plugin.agent.AgentHost;
 import top.focess.veto.api.plugin.contract.JsonValue;
 import top.focess.veto.api.plugin.contract.StandardContributionPoints;
+import top.focess.veto.api.util.Resources;
 import top.focess.veto.builtin.group.*;
 import top.focess.veto.builtin.memory.MemoryRuntime;
 import top.focess.veto.builtin.memory.MemoryTools;
@@ -181,21 +182,15 @@ public final class BuiltinPlugin extends VetoPlugin {
 
     @Override
     public void stopping() {
-        RuntimeException failure = closeOne(null, questions::close);
-        failure = closeOne(failure, () -> processes.tasks().close());
-        if (failure != null) throw failure;
+        try {
+            questions.close();
+        } catch (Throwable failure) {
+            Resources.closeOnFailure(processes.tasks(), failure);
+            throw failure;
+        }
+        processes.tasks().close();
     }
 
     @Override
     public void close() {}
-
-    private static RuntimeException closeOne(RuntimeException failure, @NonNull Runnable closer) {
-        try {
-            closer.run();
-        } catch (RuntimeException error) {
-            if (failure == null) return error;
-            failure.addSuppressed(error);
-        }
-        return failure;
-    }
 }

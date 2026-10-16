@@ -22,6 +22,62 @@ import top.focess.veto.plugin.runtime.*;
 
 class PluginLlmProvidersTest {
     @Test
+    void checkedProviderInterruptionRetainsItsCauseAndThreadSignal() throws Exception {
+        var implementation = mock(LlmProvider.class);
+        when(implementation.type()).thenReturn(ProviderType.OPENAI);
+        when(implementation.defaultBaseUrl()).thenReturn("https://prepared.example");
+        var interruption = new InterruptedException("cancelled");
+        when(implementation.complete(any(ResolvedRequest.class))).thenThrow(interruption);
+        try (var fixture =
+                new WorkflowPluginFixture(
+                        List.of(
+                                Contribution.of(
+                                        StandardContributionPoints.LLM_PROVIDERS,
+                                        "provider",
+                                        implementation)))) {
+            var providers =
+                    new PluginLlmProviders(
+                            fixture.manager,
+                            new ObjectMapper(),
+                            mock(AuditLogger.class),
+                            fixture.sessions);
+            var request =
+                    new VetoRequest(
+                            "system",
+                            "hello",
+                            List.of(),
+                            ProviderType.OPENAI,
+                            "test-model",
+                            "test-reference",
+                            LlmOptions.defaults(),
+                            List.of(),
+                            "https://prepared.example",
+                            true,
+                            ResponseContract.ordinary());
+            try {
+                var failure =
+                        assertThrows(
+                                ModelCapabilityException.class,
+                                () ->
+                                        providers
+                                                .require(ProviderType.OPENAI)
+                                                .execute(
+                                                        new ResolvedRequest(
+                                                                request,
+                                                                "https://prepared.example",
+                                                                "synthetic")));
+                assertSame(
+                        interruption,
+                        assertInstanceOf(InterruptedException.class, failure.getCause()));
+                assertTrue(Thread.currentThread().isInterrupted());
+            } finally {
+                assertTrue(
+                        Thread.interrupted(), "test must clear its retained cancellation signal");
+            }
+        }
+    }
+
+    @Test
     void providerMetadataIsCapturedAtPreparationAndNeverCallsTheRetiredPlugin() throws Exception {
         var implementation = mock(LlmProvider.class);
         when(implementation.type()).thenReturn(ProviderType.OPENAI);

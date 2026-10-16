@@ -1,10 +1,12 @@
 package top.focess.veto.builtin.questions;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import java.math.BigDecimal;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
 import java.util.function.Predicate;
 import org.jspecify.annotations.NonNull;
@@ -15,23 +17,27 @@ import top.focess.veto.api.event.SessionDeletedEvent;
 import top.focess.veto.api.event.UserLogoutEvent;
 import top.focess.veto.api.plugin.PluginHost;
 import top.focess.veto.api.plugin.Scope;
+import top.focess.veto.api.plugin.contract.JsonValue;
+import top.focess.veto.api.plugin.contract.JsonValues;
 
 /**
- * Plugin-owned, in-memory rendezvous. Only the host supplies invocation identities.
+ * Thread-safe, plugin-owned, in-memory rendezvous. Only the host supplies invocation identities.
  *
  * <p>Admitted tool calls, frontend answers and lifecycle cancellation may run concurrently. The
- * runtime monitor serializes registration with close and bulk cancellation; concurrent lookup and
- * atomic future completion settle a batch at most once. The asking thread waits outside the
- * monitor. Completing a future may run its callbacks inline, including invalidation; callbacks must
- * not block waiting for another thread to register or close on the same monitor. Pending views are
- * weakly consistent snapshots rather than a transaction across all batches.
+ * runtime monitor owns pending batches, revisions and ordered state publications. Atomic future
+ * completion settles a batch at most once. The asking thread waits outside the monitor. Completing
+ * a future may run its callbacks inline, including state publication; callbacks must not block
+ * waiting for another thread to register or close on the same monitor. Returned snapshots contain
+ * only the requested owner, session and agent's pending batches.
  */
 public final class QuestionRuntime implements Listener, AutoCloseable {
     private final @NonNull PluginHost host;
-    private final @NonNull ConcurrentHashMap<Key, Pending> pending = new ConcurrentHashMap<>();
+    private final @NonNull Map<Key, Pending> pending = new HashMap<>();
+    private final @NonNull ObjectMapper mapper = new ObjectMapper();
+    private long revision;
     private boolean closed;
 
-    /** Creates the rendezvous with its required invocation and invalidation host. */
+    /** Creates the rendezvous with its invocation and state publication host. */
     public QuestionRuntime(@NonNull PluginHost host) {
         this.host = host;
     }
@@ -74,11 +80,21 @@ public final class QuestionRuntime implements Listener, AutoCloseable {
                     "Question batch already pending: " + invocation.callId());
         future.whenComplete(
                 (ignored, error) -> {
-                    pending.remove(key, value);
-                    invalidate(scope);
+                    synchronized (this) {
+                        if (pending.remove(key, value)) {
+                            revision++;
+                            publishQuestionState(scope);
+                        }
+                    }
                 });
-        invalidate(scope);
-        return future;
+        try {
+            revision++;
+            publishQuestionState(scope);
+            return future;
+        } catch (Throwable failure) {
+            future.cancel(false);
+            throw failure;
+        }
     }
 
     /** A registered batch awaiting answers, as shown by the frontend. */
@@ -89,7 +105,8 @@ public final class QuestionRuntime implements Listener, AutoCloseable {
     }
 
     /** Returns the pending batches for the scope, ordered by call id. */
-    public @NonNull List<PendingQuestionBatch> pendingFor(Scope.@NonNull AgentScope scope) {
+    public synchronized @NonNull List<PendingQuestionBatch> pendingFor(
+            Scope.@NonNull AgentScope scope) {
         return pending.values().stream()
                 .filter(value -> value.key().scope().equals(scope))
                 .sorted(Comparator.comparing(value -> value.key().callId()))
@@ -97,8 +114,17 @@ public final class QuestionRuntime implements Listener, AutoCloseable {
                 .toList();
     }
 
+    /** Returns the same agent state and revision used by live question actions. */
+    public synchronized JsonValue.@NonNull ObjectValue snapshot(Scope.@NonNull AgentScope scope) {
+        return new JsonValue.ObjectValue(
+                Map.of(
+                        "agentId", new JsonValue.StringValue(scope.agent()),
+                        "revision", new JsonValue.NumberValue(BigDecimal.valueOf(revision)),
+                        "items", JsonValues.from(mapper.valueToTree(pendingFor(scope)))));
+    }
+
     /** Completes a pending batch with validated answers; returns whether it settled. */
-    public boolean answer(
+    public synchronized boolean answer(
             Scope.@NonNull AgentScope scope,
             @NonNull String callId,
             @NonNull Map<@NonNull String, @NonNull String> answers) {
@@ -114,7 +140,7 @@ public final class QuestionRuntime implements Listener, AutoCloseable {
     }
 
     /** Completes a pending batch as cancelled; returns whether it settled. */
-    public boolean cancel(Scope.@NonNull AgentScope scope, @NonNull String callId) {
+    public synchronized boolean cancel(Scope.@NonNull AgentScope scope, @NonNull String callId) {
         var value = pending.get(new Key(scope, callId));
         return value != null && value.future().complete(new AnswerBatch(Map.of(), true));
     }
@@ -148,11 +174,13 @@ public final class QuestionRuntime implements Listener, AutoCloseable {
         cancelWhere(scope -> true);
     }
 
-    private void invalidate(Scope.@NonNull AgentScope scope) {
+    /** Publishes the complete agent state while the runtime monitor preserves revision order. */
+    private void publishQuestionState(Scope.@NonNull AgentScope scope) {
+        var state = snapshot(scope);
         try {
-            host.invalidate(scope.sessionScope(), "interactions");
+            host.publish(scope.sessionScope(), "questions_changed", state);
         } catch (IllegalStateException | SecurityException ignored) {
-            // Revocation must still settle all waiters when the host rejects late notifications.
+            // Revocation must still settle all waiters when the host rejects late publication.
         }
     }
 

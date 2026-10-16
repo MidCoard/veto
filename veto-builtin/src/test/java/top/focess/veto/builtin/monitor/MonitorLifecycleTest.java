@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -23,6 +24,11 @@ import top.focess.veto.api.plugin.storage.PluginStorage;
 class MonitorLifecycleTest {
     private final @NonNull PluginStorage storage = new MemoryPluginStorage();
     private final @NonNull AtomicInteger wakeups = new AtomicInteger();
+
+    private record Publication(
+            @NonNull String session, @NonNull String topic, JsonValue.@NonNull ObjectValue data) {}
+
+    private final @NonNull List<Publication> publications = new ArrayList<>();
     private final @NonNull PluginHost host =
             new PluginHost() {
                 public @NonNull Invocation invocation(@NonNull String tool) {
@@ -39,7 +45,12 @@ class MonitorLifecycleTest {
                     wakeups.incrementAndGet();
                 }
 
-                public void invalidate(@NonNull String session, @NonNull String resource) {}
+                public void publish(
+                        @NonNull String session,
+                        @NonNull String topic,
+                        JsonValue.@NonNull ObjectValue data) {
+                    publications.add(new Publication(session, topic, data));
+                }
             };
 
     private @NonNull MonitorRuntime runtime() {
@@ -184,6 +195,82 @@ class MonitorLifecycleTest {
                                     args));
             assertTrue(frontend.module().contains("registerInspector"));
         }
+    }
+
+    @Test
+    void publishesBoundedRowsWithTheSameRevisionAsTheControllerSnapshot() throws Exception {
+        try (var runtime = runtime()) {
+            var service = runtime.service();
+            var user = UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376");
+            var row =
+                    service.createTimer(
+                            user,
+                            "session",
+                            "agent",
+                            "Review".repeat(500),
+                            Instant.now().plusSeconds(60));
+            var frontend = new MonitorFrontend(service);
+            var scope = new Scope.AgentScope(user, "session", "agent");
+            var list =
+                    (JsonValue.ObjectValue)
+                            frontend.handle(scope, "list", new JsonValue.ObjectValue(Map.of()));
+            var publication = publications.getLast();
+            assertEquals("session", publication.session());
+            assertEquals("monitor_changed", publication.topic());
+            assertEquals(
+                    list.values().get("revision"), publication.data().values().get("revision"));
+            if (!(list.values().get("items") instanceof JsonValue.ArrayValue items))
+                throw new AssertionError("Monitor list must contain an items array");
+            assertEquals(items.values().getFirst(), publication.data().values().get("item"));
+            if (!(publication.data().values().get("item") instanceof JsonValue.ObjectValue item))
+                throw new AssertionError("Monitor action must contain its item");
+            if (!(item.values().get("purpose") instanceof JsonValue.StringValue purpose))
+                throw new AssertionError("Monitor item must contain purpose text");
+            assertEquals(2000, purpose.value().length());
+            assertEquals(new JsonValue.BooleanValue(true), item.values().get("purposeTruncated"));
+            assertFalse(item.values().containsKey("activationStates"));
+            assertFalse(item.values().containsKey("pendingEvents"));
+            var before = publication.data().values().get("revision");
+            service.control(user, "session", "agent", row.id(), "pause");
+            var changed = publications.getLast().data();
+            assertNotEquals(before, changed.values().get("revision"));
+            if (!(changed.values().get("item") instanceof JsonValue.ObjectValue updated))
+                throw new AssertionError("Monitor control must publish its updated item");
+            assertEquals(new JsonValue.StringValue("PAUSED"), updated.values().get("state"));
+            int count = publications.size();
+            service.control(user, "session", "agent", row.id(), "pause");
+            assertEquals(
+                    count, publications.size(), "Unchanged records produce no duplicate action");
+        }
+    }
+
+    @Test
+    void failedPersistenceDoesNotPublishOrAdvanceTheSnapshot() {
+        var repository =
+                new MonitorRepository() {
+                    public @NonNull List<MonitorEntity> findAll() {
+                        return List.of();
+                    }
+
+                    public @NonNull MonitorEntity save(@NonNull MonitorEntity entity) {
+                        throw new IllegalStateException("Storage unavailable");
+                    }
+                };
+        var service =
+                new MonitorService(
+                        repository,
+                        new ObjectMapper().findAndRegisterModules(),
+                        () -> List.of(),
+                        host);
+        var user = UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376");
+        assertThrows(
+                IllegalStateException.class,
+                () ->
+                        service.createTimer(
+                                user, "session", "agent", "Review", Instant.now().plusSeconds(60)));
+        assertTrue(publications.isEmpty());
+        assertEquals(0, service.snapshot(user, "session").revision());
+        assertTrue(service.snapshot(user, "session").records().isEmpty());
     }
 
     @Test

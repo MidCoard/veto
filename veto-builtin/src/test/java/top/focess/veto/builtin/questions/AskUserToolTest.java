@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.*;
 import static top.focess.veto.builtin.questions.QuestionTestSupport.*;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -22,9 +23,13 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.mockito.ArgumentCaptor;
 import top.focess.veto.api.agent.tool.ToolErrorCode;
 import top.focess.veto.api.agent.tool.ToolExecutionException;
 import top.focess.veto.api.agent.tool.ToolResultStatus;
+import top.focess.veto.api.plugin.PluginHost;
+import top.focess.veto.api.plugin.contract.JsonValue;
+import top.focess.veto.api.plugin.contract.JsonValues;
 import top.focess.veto.builtin.tools.AskUserTool;
 
 @Timeout(10)
@@ -108,6 +113,10 @@ class AskUserToolTest {
 
     @Test
     void interruptedExecutionStopsWaitingAndRemovesOnlyItsBatch() throws Exception {
+        var host = mock(PluginHost.class);
+        when(host.invocation("ask_user")).thenReturn(invocation("test-agent", "test-call"));
+        var registry = new QuestionRuntime(host);
+        var tool = new AskUserTool(registry);
         var other = registry.register(invocation("test-agent", "other-call"), questions(1));
         CompletableFuture<Throwable> completed = new CompletableFuture<>();
         AtomicBoolean interrupted = new AtomicBoolean();
@@ -130,14 +139,22 @@ class AskUserToolTest {
                     && System.nanoTime() < deadline) Thread.sleep(5);
             assertEquals(2, registry.pendingFor(scope("test-agent")).size());
             worker.interrupt();
-            var error =
-                    assertInstanceOf(
-                            ToolExecutionException.class, completed.get(2, TimeUnit.SECONDS));
-            assertEquals(ToolResultStatus.CANCELLED, error.status());
-            assertEquals(ToolErrorCode.LIFECYCLE.TOOL_INTERRUPTED, error.errorCode());
-            assertTrue(interrupted.get());
+            assertInstanceOf(InterruptedException.class, completed.get(2, TimeUnit.SECONDS));
+            assertFalse(interrupted.get());
             assertEquals(1, registry.pendingFor(scope("test-agent")).size());
             assertFalse(other.isDone());
+            var states = ArgumentCaptor.forClass(JsonValue.ObjectValue.class);
+            verify(host, times(3))
+                    .publish(
+                            eq(scope("test-agent").sessionScope()),
+                            eq("questions_changed"),
+                            states.capture());
+            var cleared =
+                    new ObjectMapper()
+                            .valueToTree(JsonValues.toMap(states.getAllValues().getLast()));
+            assertEquals(3, cleared.path("revision").asLong());
+            assertEquals(1, cleared.path("items").size());
+            assertEquals("other-call", cleared.path("items").path(0).path("callId").asText());
         } finally {
             worker.interrupt();
             other.cancel(false);

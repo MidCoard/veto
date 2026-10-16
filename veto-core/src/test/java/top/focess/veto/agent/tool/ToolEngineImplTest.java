@@ -41,6 +41,7 @@ import top.focess.veto.api.agent.tool.ToolErrorCode;
 import top.focess.veto.api.agent.tool.ToolErrors;
 import top.focess.veto.api.agent.tool.ToolResult;
 import top.focess.veto.api.agent.tool.ToolResultFormat;
+import top.focess.veto.api.agent.tool.ToolResultStatus;
 import top.focess.veto.api.event.BeforeTextCommitEvent;
 import top.focess.veto.api.llm.ToolCall;
 import top.focess.veto.api.llm.ToolResultPresentationMode;
@@ -459,7 +460,7 @@ class ToolEngineImplTest {
         }
 
         @Override
-        public @NonNull String execute(@NonNull FailingAgentArgs args) {
+        public @NonNull String execute(@NonNull FailingAgentArgs args) throws InterruptedException {
             return ToolErrors.failure(ToolErrorCode.GENERIC.TOOL_FAILURE, args.reason());
         }
     }
@@ -608,6 +609,38 @@ class ToolEngineImplTest {
                         "view_file", Map.of("absolutePath", file.toString()), "forged-definition");
         assertThrows(
                 SecurityException.class, () -> executeAuthorized(engine, call, forged, tempDir));
+    }
+
+    @Test
+    void checkedToolInterruptionRetainsCancellationClassification() throws Exception {
+        var tool = spy(new FailingAgentTool());
+        doThrow(new InterruptedException("cancelled"))
+                .when(tool)
+                .execute(any(FailingAgentArgs.class));
+        var context = mock(ApplicationContext.class);
+        when(context.getBeansOfType(AgentTool.class)).thenReturn(Map.of("failingAgentTool", tool));
+        var engine =
+                new ToolEngineImpl(
+                        new ObjectMapper(),
+                        List.of(),
+                        context,
+                        mock(SessionPlugins.class),
+                        mock(EventManager.class));
+        engine.init();
+        try {
+            var result =
+                    executeAuthorized(
+                            engine,
+                            new ToolCall(
+                                    "failing_agent", Map.of("reason", "cancelled"), "interrupted"),
+                            definition(engine, "failing_agent"),
+                            Path.of("."));
+            assertEquals(ToolResultStatus.CANCELLED, result.status());
+            assertEquals(ToolErrorCode.LIFECYCLE.TOOL_INTERRUPTED, result.errorCode());
+            assertTrue(Thread.currentThread().isInterrupted());
+        } finally {
+            assertTrue(Thread.interrupted(), "test must clear its retained cancellation signal");
+        }
     }
 
     @Test

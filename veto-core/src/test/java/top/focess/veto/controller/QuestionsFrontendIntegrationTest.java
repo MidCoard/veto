@@ -43,11 +43,17 @@ class QuestionsFrontendIntegrationTest {
             var future = fixture.registerQuestions("call", questions(10));
             perform(fixture, "list", Map.of())
                     .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.agentId").value("agent"))
+                    .andExpect(jsonPath("$.revision").value(1))
                     .andExpect(jsonPath("$.items[0].questions.length()").value(10));
             Map<String, String> answers = new LinkedHashMap<>();
             for (int i = 0; i < 10; i++) answers.put("q_" + i, i == 9 ? "custom answer" : "A");
             var args = Map.<String, Object>of("callId", "call", "answers", answers);
-            perform(fixture, "answer", args).andExpect(status().isOk());
+            perform(fixture, "answer", args)
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.agentId").value("agent"))
+                    .andExpect(jsonPath("$.revision").value(2))
+                    .andExpect(jsonPath("$.items.length()").value(0));
             assertEquals(answers, future.join().answers());
             perform(fixture, "list", Map.of()).andExpect(jsonPath("$.items.length()").value(0));
             perform(fixture, "answer", args).andExpect(status().isBadRequest());
@@ -77,7 +83,11 @@ class QuestionsFrontendIntegrationTest {
                 assertFalse(future.isDone());
                 assertEquals(1, fixture.pendingCount());
             }
-            perform(fixture, "cancel", Map.of("callId", "call")).andExpect(status().isOk());
+            perform(fixture, "cancel", Map.of("callId", "call"))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.agentId").value("agent"))
+                    .andExpect(jsonPath("$.revision").value(2))
+                    .andExpect(jsonPath("$.items.length()").value(0));
             assertTrue(future.join().cancelled());
             perform(fixture, "cancel", Map.of("callId", "call")).andExpect(status().isBadRequest());
         }

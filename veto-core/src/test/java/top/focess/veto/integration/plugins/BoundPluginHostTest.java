@@ -54,24 +54,14 @@ class BoundPluginHostTest {
                     new Scope.SessionScope(
                             UUID.fromString("709930b5-15f4-5ae0-8194-4a8c3f8b5713"),
                             fixture.session.getId());
-            var facts = new JsonValue.ObjectValue(Map.of());
+            var facts =
+                    new JsonValue.ObjectValue(Map.of("state", new JsonValue.StringValue("ready")));
             assertThrows(SecurityException.class, () -> host.publish(invalid, "changed", facts));
-            assertThrows(SecurityException.class, () -> host.invalidate(invalid, "groups"));
             verifyNoInteractions(delegate);
             host.publish(valid, "changed", facts);
-            host.invalidate(valid, "groups");
             verify(delegate).publish(valid, "test.plugin:changed", facts);
-            verify(delegate)
-                    .publish(
-                            any(Scope.SessionScope.class),
-                            eq("test.plugin:resource_changed"),
-                            eq(
-                                    new JsonValue.ObjectValue(
-                                            Map.of(
-                                                    "resource",
-                                                    new JsonValue.StringValue("groups")))));
             assertEquals(valid.userId(), grant.scope().userId());
-            host.invalidate(grant.scope(), "groups");
+            host.publish(grant.scope(), "changed", facts);
         }
     }
 
@@ -178,26 +168,21 @@ class BoundPluginHostTest {
                     .thenReturn(new PluginStorage.Page<>(List.of(fixture.scope), null));
             var host =
                     new BoundPluginHost(delegate, fixture.plugin, fixture.storage, fixture.scopes);
-            host.invalidate(fixture.session.getId(), "groups");
+            var facts =
+                    new JsonValue.ObjectValue(Map.of("state", new JsonValue.StringValue("ready")));
+            host.publish(fixture.session.getId(), "changed", facts);
             host.wake(
                     UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"),
                     fixture.session.getId(),
                     fixture.childId);
             verify(delegate)
-                    .publish(
-                            any(Scope.SessionScope.class),
-                            eq("test.plugin:resource_changed"),
-                            eq(
-                                    new JsonValue.ObjectValue(
-                                            Map.of(
-                                                    "resource",
-                                                    new JsonValue.StringValue("groups")))));
+                    .publish(any(Scope.SessionScope.class), eq("test.plugin:changed"), eq(facts));
             verify(delegate)
                     .wake(
                             UUID.fromString("36fc510c-70b8-5be2-b3cc-c9d1bc0c6376"),
                             fixture.session.getId(),
                             fixture.childId);
-            assertThrows(SecurityException.class, () -> host.invalidate("foreign", "groups"));
+            assertThrows(SecurityException.class, () -> host.publish("foreign", "changed", facts));
             assertThrows(
                     SecurityException.class,
                     () ->
@@ -216,7 +201,7 @@ class BoundPluginHostTest {
                     .thenThrow(new SecurityException("deselected"));
             assertThrows(
                     SecurityException.class,
-                    () -> host.invalidate(fixture.session.getId(), "groups"));
+                    () -> host.publish(fixture.session.getId(), "changed", facts));
             verifyNoMoreInteractions(delegate);
         }
     }

@@ -1,6 +1,5 @@
 package top.focess.veto.api.plugin;
 
-import java.util.Map;
 import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.api.agent.workflow.PluginAwait;
@@ -113,32 +112,5 @@ public interface PluginHost {
             @NonNull String topic,
             JsonValue.@NonNull ObjectValue facts) {
         throw new IllegalStateException("Scoped plugin event publication is unavailable");
-    }
-
-    /**
-     * Invalidates a plugin-owned resource for an authorized session.
-     *
-     * @param sessionId session whose resource changed
-     * @param resource plugin-defined resource identifier
-     */
-    default void invalidate(@NonNull String sessionId, @NonNull String resource) {
-        publish(
-                sessionId,
-                "resource_changed",
-                new JsonValue.ObjectValue(Map.of("resource", new JsonValue.StringValue(resource))));
-    }
-
-    /**
-     * Invalidates a resource in the session identified by one scope value after host authorization.
-     *
-     * @param scope host identity of the target login name and session; the complete identity is
-     *     checked by the bound host, and a storage grant's account-ID scope is not interchangeable
-     * @param resource plugin-defined resource identifier
-     */
-    default void invalidate(Scope.@NonNull SessionScope scope, @NonNull String resource) {
-        publish(
-                scope,
-                "resource_changed",
-                new JsonValue.ObjectValue(Map.of("resource", new JsonValue.StringValue(resource))));
     }
 }

@@ -1,4 +1,4 @@
-# "terminal" profile — enables ZMQ for local terminal testing
+# "terminal" profile — enables TCP for local terminal testing
 veto:
   terminal:
     enabled: true

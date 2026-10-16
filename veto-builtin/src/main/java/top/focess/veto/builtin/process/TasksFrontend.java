@@ -96,6 +96,13 @@ public final class TasksFrontend implements FrontendContribution {
 
     private @NonNull Map<String, @Nullable Object> row(
             Scope.@NonNull AgentScope scope, @NonNull TaskInfo task) {
+        var result = row(task);
+        result.put("recentOutput", prefix(tasks.output(scope, task.taskId(), 20).orElse(""), 512));
+        return result;
+    }
+
+    /** Bounded task metadata shared by controller reads and live lifecycle publications. */
+    static @NonNull Map<String, @Nullable Object> row(@NonNull TaskInfo task) {
         Map<String, @Nullable Object> result = new LinkedHashMap<>();
         result.put("taskId", task.taskId());
         result.put("taskInstanceId", task.taskInstanceId().toString());
@@ -110,7 +117,6 @@ public final class TasksFrontend implements FrontendContribution {
         var finished = task.finishedAt();
         result.put("finishedAt", finished == null ? null : finished.toString());
         result.put("uptimeSeconds", task.uptimeSeconds());
-        result.put("recentOutput", prefix(tasks.output(scope, task.taskId(), 20).orElse(""), 512));
         return result;
     }
 

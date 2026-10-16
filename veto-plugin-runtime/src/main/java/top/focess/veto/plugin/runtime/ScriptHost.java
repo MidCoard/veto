@@ -140,7 +140,7 @@ public final class ScriptHost implements AutoCloseable {
             @NonNull Path entry,
             @NonNull String handler,
             @NonNull JsonNode arguments)
-            throws IOException {
+            throws IOException, InterruptedException {
         if (!registered(key)) throw new IOException("Plugin not registered");
         return exchange(
                 "invoke",
@@ -159,6 +159,8 @@ public final class ScriptHost implements AutoCloseable {
         if (current != null && current.isAlive())
             try {
                 exchange("unload", ScriptPlugin.JSON.createObjectNode().put("plugin", key));
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
             } catch (IOException ignored) {
             }
     }
@@ -194,7 +196,7 @@ public final class ScriptHost implements AutoCloseable {
     }
 
     private @NonNull JsonNode exchange(@NonNull String method, @NonNull JsonNode params)
-            throws IOException {
+            throws IOException, InterruptedException {
         boolean acquired = false;
         List<Runnable> failures = List.of();
         try {
@@ -258,13 +260,10 @@ public final class ScriptHost implements AutoCloseable {
                     terminate(worker);
                     failures = drainFailures();
                     future.cancel(true);
-                    if (e instanceof InterruptedException) Thread.currentThread().interrupt();
-                    throw new IOException("Plugin invocation failed");
+                    if (e instanceof InterruptedException interrupted) throw interrupted;
+                    throw new IOException("Plugin invocation failed", e);
                 }
             }
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new IOException("Plugin invocation cancelled");
         } finally {
             if (acquired) lock.unlock();
             notifyFailures(failures);

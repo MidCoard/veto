@@ -17,6 +17,40 @@ import org.junit.jupiter.api.Timeout;
 @Timeout(10)
 class ScriptHostConcurrencyTest {
     @Test
+    void interruptionBeforeLockAdmissionPropagatesWithoutStartingTheHost() throws Exception {
+        try (var host = new ScriptHost(Path.of("unused-node"), 5_000)) {
+            host.register("plugin", () -> {});
+            var outcome = new CompletableFuture<Throwable>();
+            var interrupted = new AtomicBoolean();
+            var caller =
+                    Thread.ofVirtual()
+                            .start(
+                                    () -> {
+                                        Thread.currentThread().interrupt();
+                                        try {
+                                            host.invoke(
+                                                    "plugin",
+                                                    Path.of("unused.mjs"),
+                                                    "unused",
+                                                    ScriptPlugin.JSON.createObjectNode());
+                                            outcome.complete(
+                                                    new AssertionError(
+                                                            "Interrupted invocation succeeded"));
+                                        } catch (Throwable failure) {
+                                            interrupted.set(Thread.currentThread().isInterrupted());
+                                            outcome.complete(failure);
+                                        }
+                                    });
+            assertInstanceOf(InterruptedException.class, outcome.get(2, TimeUnit.SECONDS));
+            caller.join(2_000);
+            assertFalse(caller.isAlive());
+            assertFalse(interrupted.get());
+            assertEquals(-1, host.processId());
+            assertTrue(host.registered("plugin"));
+        }
+    }
+
+    @Test
     void concurrentFailurePathsNotifyOnceOutsideTheTransportLock() throws Exception {
         try (var host = new ScriptHost(Path.of("unused-node"), 1000);
                 var calls = Executors.newVirtualThreadPerTaskExecutor()) {

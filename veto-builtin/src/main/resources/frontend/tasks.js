@@ -29,31 +29,61 @@ export function activate(host) {
  function Tasks({context,onCount}) {
   const t=context.locale.startsWith('zh')?words.zh:words.en;
   const [items,setItems]=useState(null),[stale,setStale]=useState(true),[error,setError]=useState(false),[actionError,setActionError]=useState(false),[busy,setBusy]=useState(null),[total,setTotal]=useState(null),[next,setNext]=useState(null),[revision,setRevision]=useState(0);
-  const refresh=useRef(()=>{}),action=useRef(null),lock=useRef(false);
+  const refresh=useRef(()=>{}),receive=useRef(()=>{}),action=useRef(null),lock=useRef(false);
   useEffect(()=>{onCount?.(!context.connected||stale||error?null:total);},[onCount,context.connected,stale,error,total]);
   useEffect(()=>{
-   let disposed=false,request=null,version=0;
+   let disposed=false,request=null,version=0,visible=null,continuation=null;
+   const removedInstances=new Set();
    const load=async(offset=0)=>{
     if(disposed||!context.connected)return;
     const current=++version;request?.abort();request=new AbortController();setStale(true);
     try{const result=await context.invoke('list',{offset,limit:20},request.signal);if(disposed||current!==version)return;
      if(!Array.isArray(result?.items)||result.items.some(item=>typeof item.taskId!=='string'||typeof item.taskInstanceId!=='string'))throw new Error('Invalid task list');
-     setItems(previous=>offset?[...(previous??[]),...result.items]:result.items);setTotal(result.total);setNext(typeof result.nextOffset==='number'&&result.nextOffset<result.total?result.nextOffset:null);if(!offset)setRevision(value=>value+1);setError(false);setStale(false);
+     visible=offset?[...(visible??[]),...result.items]:result.items;
+     continuation=typeof result.nextOffset==='number'&&result.nextOffset<result.total?result.nextOffset:null;
+     setItems(visible);setTotal(result.total);setNext(continuation);if(!offset)setRevision(value=>value+1);setError(false);setStale(false);
     }catch(failure){if(!disposed&&current===version&&failure?.name!=='AbortError')setError(true);}
    };
    refresh.current=load;
-   const unsubscribe=context.subscribe('tasks',load);
+   const update=(topic,data)=>{
+    if(disposed||!context.connected||data.agentId!==context.agent)return;
+    const task=data.task;
+    if(typeof task?.taskId!=='string'||typeof task.taskInstanceId!=='string')return;
+    if(removedInstances.has(task.taskInstanceId))return;
+    if(visible?.some(item=>item.taskId===task.taskId&&item.taskInstanceId!==task.taskInstanceId))return;
+    const previous=visible?.find(item=>item.taskInstanceId===task.taskInstanceId);
+    if(previous&&previous.taskId!==task.taskId)return;
+    // A delayed start cannot turn an already exited instance back into a running task.
+    if(previous&&!previous.alive&&task.alive)return;
+    if(topic==='task_removed')removedInstances.add(task.taskInstanceId);
+    ++version;request?.abort();
+    if(visible===null){void load();return;}
+    const removed=topic==='task_removed';
+    if(removed)visible=visible.filter(item=>item.taskInstanceId!==task.taskInstanceId);
+    else if(previous)visible=visible.map(item=>item.taskInstanceId===task.taskInstanceId?{...item,...task}:item);
+    else if(continuation===null)visible=[...visible,task];
+    visible.sort((left,right)=>Number(right.alive)-Number(left.alive)||String(left.startedAt).localeCompare(String(right.startedAt))||left.taskId.localeCompare(right.taskId));
+    setItems([...visible]);setError(false);
+    if(topic==='task_exited'&&previous?.alive)setRevision(value=>value+1);
+    // Offset pages can move when membership or alive-first ordering changes.
+    // Reconcile that bounded page through this plugin's controller, after applying visible data.
+    if(continuation!==null){void load();return;}
+    setTotal(visible.length);setNext(null);setStale(false);
+   };
+   receive.current=update;
+   const subscriptions=['task_started','task_exited','task_removed'].map(topic=>context.subscribeAction(topic,data=>update(topic,data)));
+   const recover=context.subscribeRecovery(()=>void load());
    if(context.connected)void load();else setStale(true);
 
-   return()=>{disposed=true;++version;request?.abort();action.current?.abort();lock.current=false;setBusy(null);unsubscribe();};
-  },[context.session,context.agent,context.connected,context.invoke,context.subscribe]);
+   return()=>{disposed=true;++version;request?.abort();action.current?.abort();lock.current=false;setBusy(null);subscriptions.forEach(unsubscribe=>unsubscribe());recover();};
+  },[context.session,context.agent,context.connected,context.invoke,context.subscribeAction,context.subscribeRecovery]);
   const control=async task=>{
    if(lock.current||!context.connected||stale||error)return;
    lock.current=true;setBusy(task.taskInstanceId);setActionError(false);
    const controller=new AbortController();action.current=controller;
-   try{await context.invoke('stopOrRemove',{taskId:task.taskId,taskInstanceId:task.taskInstanceId},controller.signal);}
-   catch(failure){if(!controller.signal.aborted&&failure?.name!=='AbortError')setActionError(true);}
-   finally{if(!controller.signal.aborted){lock.current=false;setBusy(null);void refresh.current();}}
+   try{const result=await context.invoke('stopOrRemove',{taskId:task.taskId,taskInstanceId:task.taskInstanceId},controller.signal);if(!controller.signal.aborted)receive.current(result.status==='removed'?'task_removed':'task_exited',{agentId:context.agent,task:result.task});}
+   catch(failure){if(!controller.signal.aborted&&failure?.name!=='AbortError'){setActionError(true);void refresh.current();}}
+   finally{if(!controller.signal.aborted){lock.current=false;setBusy(null);}}
   };
   return h('div',{className:'veto-tasks'},h('style',null,css),
    !context.connected&&h('p',{className:'notice dim',role:'status'},t.offline),

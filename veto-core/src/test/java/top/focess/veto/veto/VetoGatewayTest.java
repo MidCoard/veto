@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
 
+import java.util.concurrent.CompletableFuture;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -36,6 +37,24 @@ class VetoGatewayTest {
                 .when(emptyPlugins.applyObservationMiddleware(anyString()))
                 .thenAnswer(invocation -> invocation.getArgument(0));
         vetoGateway = new VetoGateway(config, llamaCppBridge, emptyPlugins, auditLogger);
+    }
+
+    @Test
+    void interruptedAnalysisCancelsInferenceAndBlocksOutboundProcessing() {
+        var pending = new CompletableFuture<String>();
+        when(llamaCppBridge.isAvailable()).thenReturn(true);
+        when(llamaCppBridge.infer(anyString(), anyString())).thenReturn(pending);
+        Thread.currentThread().interrupt();
+        try {
+            var result = vetoGateway.processOutbound("payload", "dag", "request", "test");
+            assertEquals(VetoGateway.VetoDecision.BLOCK, result.decision());
+            assertTrue(result.processedPayload().isEmpty());
+            assertTrue(Thread.currentThread().isInterrupted());
+            assertTrue(pending.isCancelled());
+            verifyNoInteractions(auditLogger);
+        } finally {
+            assertTrue(Thread.interrupted(), "test must clear its retained cancellation signal");
+        }
     }
 
     @Test

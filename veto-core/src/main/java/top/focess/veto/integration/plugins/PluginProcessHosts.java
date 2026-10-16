@@ -29,6 +29,7 @@ import top.focess.veto.api.plugin.storage.PluginStorage;
 import top.focess.veto.api.process.Command;
 import top.focess.veto.api.process.CommandResult;
 import top.focess.veto.api.process.ProcessHost;
+import top.focess.veto.api.util.Resources;
 import top.focess.veto.integration.plugins.storage.PluginStorageFactory;
 import top.focess.veto.plugin.runtime.ManagedPlugin;
 import top.focess.veto.sandbox.SandboxHandle;
@@ -195,21 +196,12 @@ public final class PluginProcessHosts implements PluginProcessHostFactory {
                     running.startDeadline(handle);
                     return running;
                 } catch (Throwable failure) {
-                    try {
-                        running.stop();
-                    } catch (Throwable cleanup) {
-                        failure.addSuppressed(cleanup);
-                    } finally {
-                        plugin.releaseResource(running);
-                    }
+                    Resources.closeOnFailure(running::stop, failure);
+                    plugin.releaseResource(running);
                     throw failure;
                 }
             } catch (Throwable failure) {
-                try {
-                    sandbox.deprovision(sandboxId);
-                } catch (Throwable cleanup) {
-                    failure.addSuppressed(cleanup);
-                }
+                Resources.closeOnFailure(() -> sandbox.deprovision(sandboxId), failure);
                 throw failure;
             }
         }

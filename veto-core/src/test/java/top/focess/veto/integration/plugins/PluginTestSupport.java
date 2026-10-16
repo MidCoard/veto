@@ -169,9 +169,6 @@ public final class PluginTestSupport {
                             @NonNull UUID userId,
                             @NonNull String sessionId,
                             @NonNull String agentId) {}
-
-                    @Override
-                    public void invalidate(@NonNull String sessionId, @NonNull String resource) {}
                 });
         PluginAgentHostFactory hosts =
                 (plugin, storage) ->

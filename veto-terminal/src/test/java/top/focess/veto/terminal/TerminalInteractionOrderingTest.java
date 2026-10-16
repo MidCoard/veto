@@ -2,6 +2,8 @@ package top.focess.veto.terminal;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import java.io.IOException;
+import java.util.Optional;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
@@ -11,8 +13,8 @@ import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import top.focess.veto.api.plugin.Scope;
-import top.focess.veto.contract.ClientTransport;
 import top.focess.veto.contract.Frame;
+import top.focess.veto.contract.FrameTransport;
 import top.focess.veto.contract.ProtocolClient;
 import top.focess.veto.contract.Version;
 import top.focess.veto.terminal.client.ClientSession;
@@ -125,32 +127,42 @@ class TerminalInteractionOrderingTest {
         }
     }
 
-    private static final class Peer implements ClientTransport {
-        private final @NonNull LinkedBlockingQueue<Frame.@NonNull ServerFrame> incoming =
+    private static final class Peer implements FrameTransport {
+        private final @NonNull LinkedBlockingQueue<@NonNull Optional<@NonNull Frame>> incoming =
                 new LinkedBlockingQueue<>();
         private final @NonNull LinkedBlockingQueue<Frame.@NonNull ClientFrame> sent =
                 new LinkedBlockingQueue<>();
+        private boolean closed;
 
         @Override
-        public void send(Frame.@NonNull ClientFrame frame) {
+        public synchronized void send(@NonNull Frame frame) throws IOException {
+            if (closed) throw new IOException("Peer closed");
             if (frame instanceof Frame.Hello hello) {
                 if (!incoming.offer(
-                        new Frame.Welcome(Frame.PROTOCOL_VERSION, hello.seq(), Version.UNKNOWN)))
+                        Optional.of(
+                                new Frame.Welcome(
+                                        Frame.PROTOCOL_VERSION, hello.seq(), Version.UNKNOWN))))
                     throw new AssertionError("Cannot queue handshake");
-            } else if (!sent.offer(frame)) throw new AssertionError("Cannot record sent frame");
+            } else if (frame instanceof Frame.ClientFrame clientFrame) {
+                if (!sent.offer(clientFrame)) throw new AssertionError("Cannot record sent frame");
+            } else throw new AssertionError("Expected client frame");
         }
 
         @Override
-        public Frame.ServerFrame recv(long timeoutMillis) {
+        public @NonNull Frame receive() throws IOException {
             try {
-                return incoming.poll(timeoutMillis, TimeUnit.MILLISECONDS);
+                return incoming.take().orElseThrow(() -> new IOException("Peer closed"));
             } catch (InterruptedException interrupted) {
                 Thread.currentThread().interrupt();
-                throw new IllegalStateException(interrupted);
+                throw new IOException("Receive interrupted", interrupted);
             }
         }
 
         @Override
-        public void close() {}
+        public synchronized void close() {
+            if (closed) return;
+            closed = true;
+            if (!incoming.offer(Optional.empty())) throw new AssertionError("Cannot signal close");
+        }
     }
 }

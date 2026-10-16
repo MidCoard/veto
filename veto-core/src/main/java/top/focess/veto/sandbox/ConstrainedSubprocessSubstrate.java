@@ -416,17 +416,10 @@ public final class ConstrainedSubprocessSubstrate implements SandboxSubstrate {
             }
         }
         Process last = pipeline.get(pipeline.size() - 1);
-        CappedWait wait;
-        try {
-            wait = waitCapped(pipeline, timeout);
-        } catch (InterruptedException interrupted) {
-            pipeline.forEach(Process::destroyForcibly);
-            throw interrupted;
-        }
+        CappedWait wait = waitCapped(pipeline, timeout);
         String stdout = wait.stdout();
         String stderr = wait.stderr();
         if (!wait.finished()) {
-            pipeline.forEach(Process::destroyForcibly);
             return new CommandResult(-1, stdout, stderr + "\n[timeout]", List.of(-1));
         }
         List<Integer> codes = new ArrayList<>();

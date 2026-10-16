@@ -315,6 +315,16 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
             ExecutionReceipts.discard(ToolCallContextHolder.get());
             return new ToolResult(
                     call.toolName(), callId, e.status(), e.format(), e.content(), e.errorCode());
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            ExecutionReceipts.discard(ToolCallContextHolder.get());
+            return new ToolResult(
+                    call.toolName(),
+                    callId,
+                    ToolResultStatus.CANCELLED,
+                    ToolResultFormat.PLAINTEXT,
+                    "Tool execution interrupted.",
+                    ToolErrorCode.LIFECYCLE.TOOL_INTERRUPTED);
         } catch (Exception e) {
             ExecutionReceipts.discard(ToolCallContextHolder.get());
             log.warn("Tool '{}' execution failed.", call.toolName(), e);

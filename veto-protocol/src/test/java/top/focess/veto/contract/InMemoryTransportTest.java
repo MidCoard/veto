@@ -2,10 +2,12 @@ package top.focess.veto.contract;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-import java.util.ArrayList;
+import java.io.IOException;
+import java.time.Instant;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import org.jspecify.annotations.NonNull;
@@ -13,12 +15,13 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import top.focess.veto.api.plugin.Scope;
+import top.focess.veto.api.util.Threads;
 
 /**
- * Drives {@link ProtocolClient} end-to-end over an in-memory {@link ClientTransport} — no ZMQ. A
- * responder thread plays the backend: it answers Hello (via the transport), Complete, Hint, and
- * Request frames so the connection's handshake, seq correlation, streaming receive, and
- * flush-on-close paths are exercised without a socket.
+ * Drives {@link ProtocolClient} end-to-end over an in-memory {@link FrameTransport}. A responder
+ * thread plays the backend: it answers Hello (via the transport), Complete, Hint, and Request
+ * frames so the connection's handshake, seq correlation, streaming receive, and close paths are
+ * exercised without a socket.
  */
 @SuppressWarnings("initialization.field.uninitialized")
 class InMemoryTransportTest {
@@ -26,38 +29,30 @@ class InMemoryTransportTest {
     private @NonNull InMemoryTransport transport;
     private @NonNull ProtocolClient conn;
     private @NonNull Thread responder;
-    private volatile boolean responderRunning;
 
     @BeforeEach
-    void setUp() {
+    void setUp() throws Exception {
         transport = new InMemoryTransport();
         conn = new ProtocolClient(() -> transport);
-        responderRunning = true;
         responder =
-                new Thread(
-                        () -> {
-                            while (responderRunning) {
-                                Frame frame;
-                                try {
-                                    frame = transport.sent.poll(50, TimeUnit.MILLISECONDS);
-                                } catch (InterruptedException e) {
-                                    Thread.currentThread().interrupt();
-                                    return;
-                                }
-                                if (frame == null) continue;
-                                respond(frame);
-                            }
-                        },
-                        "inmem-responder");
-        responder.setDaemon(true);
-        responder.start();
+                Thread.ofVirtual()
+                        .name("inmem-responder")
+                        .start(
+                                () -> {
+                                    try {
+                                        while (true) respond(transport.sent.take());
+                                    } catch (InterruptedException stopped) {
+                                        // Teardown interrupts the blocking fixture queue to end
+                                        // this worker.
+                                    }
+                                });
     }
 
     @AfterEach
     void tearDown() {
-        responderRunning = false;
         responder.interrupt();
         conn.close();
+        Threads.awaitTermination(responder, 1_000);
     }
 
     private void respond(@NonNull Frame frame) {
@@ -134,19 +129,13 @@ class InMemoryTransportTest {
     }
 
     @Test
-    void closeFlushesBye() throws InterruptedException {
-        // Stop the responder first so it does not consume the Bye before we inspect `sent`.
-        responderRunning = false;
+    void closeClosesTheTransportAndWakesItsReader() throws InterruptedException {
         responder.interrupt();
         responder.join(1_000);
         conn.close();
         assertTrue(conn.isClosed());
-        // Drain what was sent; the Bye must have been flushed by the IO loop's final drain.
-        List<@NonNull Frame> sent = new ArrayList<>();
-        transport.sent.drainTo(sent);
-        assertTrue(
-                sent.stream().anyMatch(f -> f instanceof Frame.Bye),
-                "close() must flush a Bye frame, got: " + sent);
+        assertTrue(transport.closed.await(1, TimeUnit.SECONDS));
+        assertNull(conn.receive(0, TimeUnit.SECONDS));
     }
 
     private static <T extends Object> @NonNull T requireValue(T value, String message) {
@@ -156,35 +145,42 @@ class InMemoryTransportTest {
         throw new AssertionError(message);
     }
 
-    /** Minimal in-memory {@link ClientTransport} that auto-replies to Hello with Welcome. */
-    static final class InMemoryTransport implements ClientTransport {
-        final @NonNull BlockingQueue<Frame.@NonNull ClientFrame> sent = new LinkedBlockingQueue<>();
+    /** Minimal in-memory transport that auto-replies to Hello with Welcome. */
+    static final class InMemoryTransport implements FrameTransport {
+        private static final Frame.@NonNull ServerFrame END = new Frame.HeartbeatAck(Instant.EPOCH);
+        final @NonNull BlockingQueue<@NonNull Frame> sent = new LinkedBlockingQueue<>();
         final @NonNull BlockingQueue<Frame.@NonNull ServerFrame> inbox =
                 new LinkedBlockingQueue<>();
+        final @NonNull CountDownLatch closed = new CountDownLatch(1);
 
         @Override
-        public void send(Frame.@NonNull ClientFrame frame) {
-            sent.offer(frame);
+        public void send(@NonNull Frame frame) {
+            if (!sent.offer(frame)) throw new AssertionError("Cannot record send");
             if (frame instanceof Frame.Hello h) {
-                inbox.offer(new Frame.Welcome(Frame.PROTOCOL_VERSION, h.seq(), Version.UNKNOWN));
+                deliver(new Frame.Welcome(Frame.PROTOCOL_VERSION, h.seq(), Version.UNKNOWN));
             }
         }
 
         @Override
-        public Frame.ServerFrame recv(long timeoutMillis) {
+        public Frame.@NonNull ServerFrame receive() throws IOException {
             try {
-                return inbox.poll(timeoutMillis, TimeUnit.MILLISECONDS);
+                var frame = inbox.take();
+                if (frame == END) throw new IOException("Transport closed");
+                return frame;
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
-                return null;
+                throw new IOException(e);
             }
         }
 
         @Override
-        public void close() {}
+        public void close() {
+            closed.countDown();
+            deliver(END);
+        }
 
         void deliver(Frame.@NonNull ServerFrame frame) {
-            inbox.offer(frame);
+            if (!inbox.offer(frame)) throw new AssertionError("Cannot deliver frame");
         }
     }
 }

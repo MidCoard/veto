@@ -70,7 +70,7 @@ class GroupPublicationTest {
     }
 
     @Test
-    void postCommitInvalidationFailureRetainsPendingPublication() {
+    void postCommitActionFailureRetainsPendingPublication() {
         var registry = new FailingRegistry();
         var board = new Blackboard();
         var group = pendingGroup(board);
@@ -126,7 +126,7 @@ class GroupPublicationTest {
             if (group.dag().nodes().stream().anyMatch(node -> node.state() == fail)) {
                 fail = null;
                 if (afterCommit) super.put(group);
-                throw new IllegalStateException("state save or invalidation failed");
+                throw new IllegalStateException("state save or action publication failed");
             }
             super.put(group);
         }

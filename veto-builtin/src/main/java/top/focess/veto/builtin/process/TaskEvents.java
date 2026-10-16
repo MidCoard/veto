@@ -1,5 +1,6 @@
 package top.focess.veto.builtin.process;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -16,11 +17,12 @@ import org.slf4j.LoggerFactory;
 import top.focess.veto.api.plugin.PluginHost;
 import top.focess.veto.api.plugin.Scope;
 import top.focess.veto.api.plugin.contract.JsonValue;
+import top.focess.veto.api.plugin.contract.JsonValues;
 import top.focess.veto.builtin.process.BackgroundTasks.Change;
 import top.focess.veto.builtin.process.BackgroundTasks.ExitCause;
 
 /**
- * Builtin owns process-to-monitor interpretation, retries and frontend invalidation.
+ * Builtin owns process-to-monitor interpretation, retries and frontend task publications.
  *
  * <p>Process workers, lifecycle events and the retry scheduler share this object's monitor. It
  * serializes revocation markers, instance tracking and pending observation delivery, including
@@ -32,15 +34,17 @@ public final class TaskEvents implements BackgroundTasks.TaskObserver, AutoClose
     private record Pending(
             Scope.@NonNull AgentScope scope, @NonNull TaskInfo task, @NonNull ExitCause cause) {}
 
+    private record Instance(Scope.@NonNull AgentScope scope, @NonNull Change change) {}
+
     private final @NonNull PluginHost host;
     private final @NonNull ProcessObserver observer;
+    private final @NonNull ObjectMapper mapper = new ObjectMapper();
     private final @NonNull Map<UUID, Pending> pending = new HashMap<>();
     private ScheduledExecutorService scheduler;
     private boolean closed;
     private final @NonNull Set<Scope.UserScope> loggedOutUsers = new HashSet<>();
     private final @NonNull Set<Scope.SessionScope> deletedSessions = new HashSet<>();
-    private final @NonNull Map<UUID, Scope.AgentScope> instances = new LinkedHashMap<>();
-    private final @NonNull Set<UUID> closedInstances = new HashSet<>();
+    private final @NonNull Map<UUID, Instance> instances = new LinkedHashMap<>();
 
     /** Allows new task notifications after a successful signup or login. */
     public synchronized void userAuthenticated(Scope.@NonNull UserScope scope) {
@@ -61,10 +65,11 @@ public final class TaskEvents implements BackgroundTasks.TaskObserver, AutoClose
 
     /** Marks the agent's instances closed and drops their pending notifications. */
     public synchronized void agentTerminated(Scope.@NonNull AgentScope scope) {
-        instances.forEach(
-                (id, owned) -> {
-                    if (owned.equals(scope)) closedInstances.add(id);
-                });
+        instances.replaceAll(
+                (id, instance) ->
+                        instance.scope().equals(scope)
+                                ? new Instance(scope, Change.REMOVED)
+                                : instance);
         pending.values().removeIf(value -> value.scope().equals(scope));
     }
 
@@ -95,9 +100,16 @@ public final class TaskEvents implements BackgroundTasks.TaskObserver, AutoClose
             @NonNull TaskInfo info,
             @NonNull ExitCause cause,
             @NonNull Change change) {
-        if (closed || revoked(scope) || closedInstances.contains(info.taskInstanceId())) return;
-        instances.put(info.taskInstanceId(), scope);
-        if (change != Change.REMOVED) {
+        if (closed || revoked(scope)) return;
+        var previous = instances.get(info.taskInstanceId());
+        if (previous != null
+                && (previous.change() == change
+                        || previous.change() == Change.REMOVED
+                        || previous.change() == Change.EXITED && change == Change.STARTED)) return;
+        instances.put(info.taskInstanceId(), new Instance(scope, change));
+        // Removal can overtake the exit callback after the process marks itself stopped.
+        // Preserve that final observation before suppressing later callbacks for this instance.
+        if (change != Change.REMOVED || previous == null || previous.change() == Change.STARTED) {
             pending.compute(
                     info.taskInstanceId(),
                     (key, prior) ->
@@ -114,6 +126,7 @@ public final class TaskEvents implements BackgroundTasks.TaskObserver, AutoClose
                     "taskInstanceId", new JsonValue.StringValue(info.taskInstanceId().toString()));
             facts.put("alive", new JsonValue.BooleanValue(info.alive()));
             facts.put("cause", new JsonValue.StringValue(cause.name()));
+            facts.put("task", JsonValues.from(mapper.valueToTree(TasksFrontend.row(info))));
             host.publish(
                     scope.sessionScope(),
                     "task_" + change.name().toLowerCase(Locale.ROOT),
@@ -122,14 +135,6 @@ public final class TaskEvents implements BackgroundTasks.TaskObserver, AutoClose
             LoggerFactory.getLogger(TaskEvents.class)
                     .debug(
                             "Process event transport unavailable: {}",
-                            error.getClass().getSimpleName());
-        }
-        try {
-            host.invalidate(scope.sessionScope(), "tasks");
-        } catch (RuntimeException error) {
-            LoggerFactory.getLogger(TaskEvents.class)
-                    .debug(
-                            "Process invalidation unavailable: {}",
                             error.getClass().getSimpleName());
         }
     }

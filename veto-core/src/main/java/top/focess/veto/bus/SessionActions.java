@@ -18,7 +18,8 @@ import top.focess.veto.model.SessionRepository;
 import top.focess.veto.session.AgentSessions;
 
 /**
- * Best-effort invalidations after readable state changes; never sends sockets under registry locks.
+ * Best-effort resource changes and scoped data publications; never sends sockets under registry
+ * locks.
  */
 @Component
 public class SessionActions {

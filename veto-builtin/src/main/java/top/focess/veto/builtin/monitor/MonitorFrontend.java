@@ -12,6 +12,7 @@ import top.focess.veto.api.plugin.contract.FrontendContribution;
 import top.focess.veto.api.plugin.contract.JsonValue;
 import top.focess.veto.api.plugin.contract.JsonValues;
 import top.focess.veto.api.plugin.contract.PluginFailure;
+import top.focess.veto.builtin.monitor.MonitorRecord.ActivationState;
 
 /** Monitor presentation and actions ship with the same plugin as their domain lifecycle. */
 public final class MonitorFrontend implements FrontendContribution {
@@ -43,58 +44,24 @@ public final class MonitorFrontend implements FrontendContribution {
             JsonValue.@NonNull ObjectValue args)
             throws PluginFailure {
         try {
-            var records = service.list(scope.userId(), scope.session());
+            var snapshot = service.snapshot(scope.userId(), scope.session());
+            var records = snapshot.records();
             int offset = offset(args);
             if (action.equals("list")) {
                 var items =
                         records.stream()
                                 .skip(offset)
                                 .limit(20)
-                                .map(
-                                        record ->
-                                                Map.of(
-                                                        "id",
-                                                        record.id(),
-                                                        "agentId",
-                                                        record.agentId(),
-                                                        "kind",
-                                                        record.kind(),
-                                                        "purpose",
-                                                        record.purpose()
-                                                                .substring(
-                                                                        0,
-                                                                        Math.min(
-                                                                                2000,
-                                                                                record.purpose()
-                                                                                        .length())),
-                                                        "purposeTruncated",
-                                                        record.purpose().length() > 2000,
-                                                        "state",
-                                                        record.state(),
-                                                        "dueAt",
-                                                        dueAt(record),
-                                                        "pending",
-                                                        record.readyEvents().size(),
-                                                        "controllable",
-                                                        !record.pending().isEmpty()
-                                                                || record
-                                                                        .activationStates()
-                                                                        .values()
-                                                                        .stream()
-                                                                        .anyMatch(
-                                                                                value ->
-                                                                                        value
-                                                                                                                .state()
-                                                                                                        == MonitorRecord
-                                                                                                                .ActivationState
-                                                                                                                .APPENDED
-                                                                                                || value
-                                                                                                                .state()
-                                                                                                        == MonitorRecord
-                                                                                                                .ActivationState
-                                                                                                                .RUNNING)))
+                                .map(MonitorFrontend::summary)
                                 .toList();
-                return json(Map.of("items", items, "total", records.size()));
+                return json(
+                        Map.of(
+                                "revision",
+                                snapshot.revision(),
+                                "items",
+                                items,
+                                "total",
+                                records.size()));
             }
             if (!(args.values().get("id") instanceof JsonValue.StringValue id))
                 throw new IllegalArgumentException();
@@ -170,9 +137,27 @@ public final class MonitorFrontend implements FrontendContribution {
         }
     }
 
-    private @NonNull String dueAt(@NonNull MonitorRecord record) {
+    /** The bounded projection shared by controller reads and live publications. */
+    static @NonNull Map<String, Object> summary(@NonNull MonitorRecord record) {
         var due = record.dueAt();
-        return due == null ? "" : due.toString();
+        return Map.of(
+                "id", record.id(),
+                "agentId", record.agentId(),
+                "kind", record.kind(),
+                "purpose", record.purpose().substring(0, Math.min(2000, record.purpose().length())),
+                "purposeTruncated", record.purpose().length() > 2000,
+                "state", record.state(),
+                "dueAt", due == null ? "" : due.toString(),
+                "pending", record.readyEvents().size(),
+                "controllable",
+                        !record.pending().isEmpty()
+                                || record.activationStates().values().stream()
+                                        .anyMatch(
+                                                value ->
+                                                        value.state() == ActivationState.APPENDED
+                                                                || value.state()
+                                                                        == ActivationState
+                                                                                .RUNNING));
     }
 
     private @NonNull String activation(

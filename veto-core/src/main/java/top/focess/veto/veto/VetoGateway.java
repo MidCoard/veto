@@ -2,6 +2,7 @@ package top.focess.veto.veto;
 
 import jakarta.annotation.PostConstruct;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicLong;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
@@ -103,13 +104,22 @@ public class VetoGateway {
             // SLM structural-compliance analysis; only the block decision signal is consumed.
             String slmAnalysis = "";
             if (llamaCppBridge.isAvailable()) {
+                CompletableFuture<String> pending = null;
                 try {
                     String analysisPrompt =
                             PromptCompiler.compileText(
                                     "outbound-analysis", Map.of("payload", masked));
-                    slmAnalysis = llamaCppBridge.infer(analysisPrompt, "veto-output").join();
+                    pending = llamaCppBridge.infer(analysisPrompt, "veto-output");
+                    slmAnalysis = pending.get();
+                } catch (InterruptedException interrupted) {
+                    Thread.currentThread().interrupt();
+                    return VetoResult.block("Veto gateway processing interrupted");
                 } catch (Exception e) {
                     log.error("Local SLM failed (OOM/error); skipping the block analysis.", e);
+                } finally {
+                    if (pending != null && !pending.isDone())
+                        log.debug(
+                                "Outbound analysis inference cancelled: {}", pending.cancel(true));
                 }
             }
 

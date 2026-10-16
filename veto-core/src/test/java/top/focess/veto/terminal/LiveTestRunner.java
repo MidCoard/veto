@@ -1,8 +1,7 @@
 package top.focess.veto.terminal;
 
-import java.nio.charset.StandardCharsets;
+import java.io.IOException;
 import java.nio.file.Path;
-import java.util.UUID;
 import java.util.concurrent.atomic.AtomicLong;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
@@ -10,17 +9,13 @@ import org.junit.jupiter.api.io.TempDir;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
-import org.zeromq.SocketType;
-import org.zeromq.ZContext;
-import org.zeromq.ZMQ;
-import org.zeromq.ZMsg;
 import top.focess.veto.contract.Frame;
-import top.focess.veto.contract.FrameCodec;
 import top.focess.veto.contract.Version;
+import top.focess.veto.transport.tcp.TcpConnection;
 
 /**
  * Live production-path test: boots the full backend with IpcServer on a real TCP port, connects a
- * raw ZMQ DEALER, and exercises every command just like the real terminal does.
+ * standard TCP connection, and exercises every command just like the real terminal does.
  */
 @SpringBootTest(
         properties = {
@@ -51,20 +46,10 @@ class LiveTestRunner {
     private static final @NonNull String ADDR = "tcp://127.0.0.1:15570";
 
     private final @NonNull AtomicLong sequences = new AtomicLong();
-    private ZContext ctx;
-    private ZMQ.Socket dealer;
+    private TcpConnection connection;
 
     private void connect() throws Exception {
-        ZContext newContext = new ZContext();
-        ZMQ.@NonNull Socket newDealer =
-                requireValue(
-                        newContext.createSocket(SocketType.DEALER),
-                        "DEALER socket creation must succeed");
-        ctx = newContext;
-        dealer = newDealer;
-        newDealer.setIdentity(UUID.randomUUID().toString().getBytes(StandardCharsets.UTF_8));
-        newDealer.connect(ADDR);
-        Thread.sleep(500);
+        connection = TcpConnection.connect(ADDR);
         sequences.set(0);
         long helloSeq = sequences.incrementAndGet();
         send(
@@ -78,36 +63,22 @@ class LiveTestRunner {
     }
 
     private void disconnect() {
-        ZMQ.Socket currentDealer = dealer;
-        ZContext currentContext = ctx;
-        if (currentDealer != null) currentDealer.close();
-        if (currentContext != null) currentContext.close();
-        dealer = null;
-        ctx = null;
+        var current = connection;
+        if (current != null) current.close();
+        connection = null;
     }
 
-    private void send(@NonNull Frame f) throws Exception {
-        requireDealer().send(FrameCodec.encode(f));
+    private void send(@NonNull Frame frame) throws IOException {
+        requireConnection().send(frame);
     }
 
-    private Frame recv() {
-        ZMsg msg = ZMsg.recvMsg(requireDealer());
-        if (msg == null || msg.isEmpty()) return null;
-        byte @NonNull [] data =
-                requireValue(
-                        requireValue(msg.getFirst(), "non-empty message must have a first frame")
-                                .getData(),
-                        "message frame data is required");
-        String json = new String(data, StandardCharsets.UTF_8);
-        msg.destroy();
-        return FrameCodec.decode(json);
+    private @NonNull Frame recv() throws IOException {
+        return requireConnection().receive();
     }
 
-    private ZMQ.@NonNull Socket requireDealer() {
-        ZMQ.Socket current = dealer;
-        if (current == null) {
-            throw new IllegalStateException("Live test is not connected");
-        }
+    private @NonNull TcpConnection requireConnection() {
+        var current = connection;
+        if (current == null) throw new IllegalStateException("Live test is not connected");
         return current;
     }
 
@@ -117,7 +88,6 @@ class LiveTestRunner {
         int prompts = 0;
         while (true) {
             Frame f = recv();
-            if (f == null) continue;
             if (f instanceof Frame.Terminate) return f;
             if (f instanceof Frame.TurnOutcome
                     && f instanceof Frame.SeqResponse response

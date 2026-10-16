@@ -1,6 +1,6 @@
 // Delivered with builtin. The host knows only inspector and action contracts.
 export function activate(host) {
-  const { createElement: h, useState, useEffect, useCallback } = host.React;
+  const { createElement: h, useState, useEffect, useCallback, useRef } = host.React;
   const translations = {
     en: { title: 'Group tasks', loading: 'Loading…', error: 'Could not refresh group records.', retry: 'Retry', offline: 'Waiting for connection; showing saved records.', empty: 'No group tasks in this session.', previous: 'Previous', next: 'Next', more: 'Read more', brief: 'Task objective', tasks: 'Tasks', history: 'State history', description: 'Description', report: 'Report', mate: 'View Mate', dependencies: 'Dependencies', independent: 'None; independent', legacy: 'Recovered from legacy records; some transitions were not saved.', inactive: 'Execution is offline; showing the last saved state.', unknown: 'Not recorded', navigationError: 'This Agent could not be opened. Refresh and try again.', request: 'Request', dispatch: 'Dispatch', retries: 'Retries', completedHint: 'A received report is not independent verification.', states: { COMPLETED: 'Completed', VERIFIED: 'Report received', REPORTED: 'Report received', RUNNING: 'Running', PENDING: 'Waiting', FAILED: 'Failed', CANCEL_REQUESTED: 'Cancellation requested · awaiting stop confirmation', CANCELLED: 'Cancelled', STALE: 'Removed', DISBANDED: 'Disbanded', ACTIVE: 'Active', INTERRUPTED: 'Interrupted · not automatically replayed' } },
     zh: { title: '协作任务', loading: '正在加载…', error: '无法刷新协作记录。', retry: '重试', offline: '等待连接；当前显示已保存记录。', empty: '此会话暂无协作任务。', previous: '上一页', next: '下一页', more: '继续阅读', brief: '任务目标', tasks: '任务', history: '状态历史', description: '任务说明', report: '报告', mate: '查看 Mate', dependencies: '依赖', independent: '无，可独立执行', legacy: '从旧会话记录恢复；部分状态变化未保存。', inactive: '执行进程已结束；以下为最后保存的状态。', unknown: '状态未记录', navigationError: '无法打开此 Agent，请刷新后重试。', request: '请求', dispatch: '派发', retries: '重试次数', completedHint: '收到报告不代表结论已独立核验。', states: { COMPLETED: '已完成', VERIFIED: '已提交报告', REPORTED: '已提交报告', RUNNING: '执行中', PENDING: '等待依赖', FAILED: '失败', CANCEL_REQUESTED: '已请求取消 · 等待停止确认', CANCELLED: '已取消', STALE: '已移除', DISBANDED: '已解散', ACTIVE: '进行中', INTERRUPTED: '已中断 · 未自动重派' } },
@@ -17,15 +17,41 @@ export function activate(host) {
     const [failed, setFailed] = useState(false);
     const [loading, setLoading] = useState(true);
     const [retry, setRetry] = useState(0);
+    const current = useRef(null);
+    const latest = useRef(-1);
     const key = JSON.stringify(args);
+    useEffect(() => {
+      latest.current = -1;
+      if (!context.connected) return;
+      return context.subscribeAction('group_changed', update => {
+        const changed = update.group;
+        if (!changed || !Number.isSafeInteger(update.revision) || update.revision <= latest.current) return;
+        if (action !== 'list' && changed.id !== JSON.parse(key).groupId) return;
+        if (action === 'changeNodes') return;
+        latest.current = update.revision;
+        const previous = current.current;
+        const row = action === 'list' && previous?.items.find(item => item.id === changed.id);
+        if (row) {
+          const value = { ...previous, revision: update.revision,
+            totalNodeCount: previous.totalNodeCount + changed.nodeCount - row.nodeCount,
+            items: previous.items.map(item => item.id === changed.id ? { ...item, ...changed, changeCount: null } : item) };
+          current.current = value; setData(value); setFailed(false); setLoading(false);
+        } else {
+          // Membership and open detail pages remain bounded reads owned by this plugin.
+          setRetry(value => value + 1);
+        }
+      });
+    }, [context.subscribeAction, context.connected, action, key]);
     useEffect(() => {
       if (!context.connected) return;
       const controller = new AbortController();
       setLoading(true); setFailed(false);
       context.invoke(action, { ...JSON.parse(key), offset: page * 20, limit: 20 }, controller.signal).then(value => {
         if (controller.signal.aborted) return;
-        if (page > 0 && value.items.length === 0) { setPage(0); setData(null); return; }
-        setData(value); setLoading(false);
+        if (value.revision < latest.current) { setRetry(value => value + 1); return; }
+        latest.current = value.revision;
+        if (page > 0 && value.items.length === 0) { setPage(0); current.current = null; setData(null); return; }
+        current.current = value; setData(value); setLoading(false);
       }).catch(() => { if (!controller.signal.aborted) { setFailed(true); setLoading(false); } });
       return () => controller.abort();
     }, [context.invoke, context.connected, action, key, page, revision, retry]);
@@ -36,9 +62,9 @@ export function activate(host) {
       data?.total === 0 && !loading && !failed && h('p', null, empty),
       ...(data?.items ?? []).map((item, index) => renderItem(item, page * 20 + index)),
       data && data.total > 20 && h('nav', { 'aria-label': `${t.title} · ${action}` },
-        h('button', { type: 'button', disabled: page === 0 || loading || !context.connected, onClick: () => { setData(null); setPage(value => value - 1); } }, t.previous),
+        h('button', { type: 'button', disabled: page === 0 || loading || !context.connected, onClick: () => { current.current = null; setData(null); setPage(value => value - 1); } }, t.previous),
         h('span', null, `${page + 1} / ${Math.ceil(data.total / 20)}`),
-        h('button', { type: 'button', disabled: (page + 1) * 20 >= data.total || loading || !context.connected, onClick: () => { setData(null); setPage(value => value + 1); } }, t.next)));
+        h('button', { type: 'button', disabled: (page + 1) * 20 >= data.total || loading || !context.connected, onClick: () => { current.current = null; setData(null); setPage(value => value + 1); } }, t.next)));
   }
   function Text({ context, args, t, revision }) {
     const [content, setContent] = useState('');
@@ -47,13 +73,25 @@ export function activate(host) {
     const [failed, setFailed] = useState(false);
     const [loading, setLoading] = useState(true);
     const [retry, setRetry] = useState(0);
+    const latest = useRef(-1);
     const key = JSON.stringify(args);
+    useEffect(() => {
+      latest.current = -1;
+      if (!context.connected || args.changeIndex !== undefined || args.field === 'brief') return;
+      return context.subscribeAction('group_changed', update => {
+        if (update.group?.id !== args.groupId || !Number.isSafeInteger(update.revision) || update.revision <= latest.current) return;
+        latest.current = update.revision;
+        setOffset(0); setContent(''); setData(null); setRetry(value => value + 1);
+      });
+    }, [context.subscribeAction, context.connected, key]);
     useEffect(() => { setOffset(0); setContent(''); setData(null); }, [key, revision]);
     useEffect(() => {
       if (!context.connected) return;
       const controller = new AbortController(); setLoading(true); setFailed(false);
       context.invoke('text', { ...JSON.parse(key), offset, limit: 8192 }, controller.signal).then(value => {
         if (controller.signal.aborted) return;
+        if (value.revision < latest.current) { setRetry(value => value + 1); return; }
+        latest.current = value.revision;
         setContent(previous => offset === 0 ? value.text : previous.slice(0, offset) + value.text);
         setData(value); setLoading(false);
       }).catch(() => { if (!controller.signal.aborted) { setFailed(true); setLoading(false); } });
@@ -88,7 +126,7 @@ export function activate(host) {
       !group.live && h('p', { className: 'bg-muted' }, t.inactive),
       h(Disclosure, { label: t.brief }, h(Text, { context, t, revision, args: { ...args, field: 'brief' } })),
       h(Page, { context, t, revision, action: 'nodes', args, empty: t.unknown, renderItem: node => h(Node, { key: node.id, node, context, args, t, revision }) }),
-      group.changeCount > 0 && h(Disclosure, { label: `${t.history} (${group.changeCount})` },
+      (group.changeCount == null || group.changeCount > 0) && h(Disclosure, { label: group.changeCount == null ? t.history : `${t.history} (${group.changeCount})` },
         h(Page, { context, t, revision, action: 'changes', args, renderItem: change => h(Disclosure, { key: change.index, label: `${new Date(change.at).toLocaleString(context.locale)} · ${status(t, change.state)} · ${change.nodeCount}` },
           h(Page, { context, t, revision, action: 'changeNodes', args: { ...args, changeIndex: change.index }, renderItem: node => h(Node, { key: node.id, node, context, t, revision, args: { ...args, changeIndex: change.index } }) })) })));
   }
@@ -96,7 +134,7 @@ export function activate(host) {
     const t = translations[context.locale.startsWith('zh') ? 'zh' : 'en'];
     const [revision, setRevision] = useState(0);
     const refresh = useCallback(() => setRevision(value => value + 1), []);
-    useEffect(() => context.subscribe('groups', refresh), [context.subscribe, refresh]);
+    useEffect(() => context.subscribeRecovery(refresh), [context.subscribeRecovery, refresh]);
     return h('div', { className: 'builtin-groups' }, h('style', null, css),
       !context.connected && h('p', { role: 'status' }, t.offline),
       h(Page, { key: `${context.session}:${context.agent}`, context, t, revision, action: 'list', args: {}, onCount, renderItem: group => h(Group, { key: group.id, group, context, t, revision }) }));
