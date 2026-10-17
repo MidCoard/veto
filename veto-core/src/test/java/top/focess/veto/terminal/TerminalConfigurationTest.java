@@ -94,10 +94,12 @@ class TerminalConfigurationTest {
                                         new Frame.Hello(
                                                 Frame.PROTOCOL_VERSION, 1, Version.UNKNOWN, "."));
                                 assertInstanceOf(Frame.Welcome.class, client.receive());
-                                var clientsField = IpcServer.class.getDeclaredField("clients");
-                                clientsField.setAccessible(true);
-                                if (!(clientsField.get(server) instanceof Map<?, ?> clients))
-                                    throw new AssertionError("Missing clients");
+                                var connectionsField =
+                                        IpcServer.class.getDeclaredField("connections");
+                                connectionsField.setAccessible(true);
+                                if (!(connectionsField.get(server)
+                                        instanceof Map<?, ?> connections))
+                                    throw new AssertionError("Missing connections");
                                 var workersField = IpcServer.class.getDeclaredField("workers");
                                 workersField.setAccessible(true);
                                 var workers =
@@ -106,7 +108,7 @@ class TerminalConfigurationTest {
                                 server.stop();
                                 assertThrows(IOException.class, client::receive);
                                 assertTrue(workers.isTerminated());
-                                assertTrue(clients.isEmpty());
+                                assertTrue(connections.isEmpty());
                             }
                         });
         var worker = acceptor.get();

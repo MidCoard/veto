@@ -18,14 +18,15 @@ import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import top.focess.veto.api.util.Resources;
-import top.focess.veto.api.util.Threads;
 import top.focess.veto.contract.Frame;
 import top.focess.veto.contract.FrameCodec;
 import top.focess.veto.contract.FrameTransport;
 
 /**
- * Owns a standard TCP socket and its length-prefixed UTF-8 JSON frames. The four-byte big-endian
- * length excludes the header. An invalid or incomplete frame ends the connection.
+ * Socket transport used by the terminal's ProtocolClient and the backend's IpcServer. Owns the
+ * socket and its length-prefixed UTF-8 JSON frames; it does not interpret requests or manage agent
+ * sessions. The four-byte big-endian length excludes the header. An invalid or incomplete frame
+ * ends the connection.
  *
  * <p><b>Thread safety:</b> follows {@link FrameTransport}: one reader, one writer and concurrent
  * close. Read and write have separate stream state. Callers own their output queues; this class
@@ -37,7 +38,13 @@ public final class TcpConnection implements FrameTransport {
     private static final @NonNull Logger log =
             LoggerFactory.getLogger("top.focess.veto.transport.tcp.TcpConnection");
     private static final @NonNull ScheduledThreadPoolExecutor WRITE_DEADLINES =
-            Threads.newDeadlineScheduler("tcp-write-deadline");
+            new ScheduledThreadPoolExecutor(
+                    1, Thread.ofPlatform().daemon().name("tcp-write-deadline").factory());
+
+    static {
+        WRITE_DEADLINES.setRemoveOnCancelPolicy(true);
+    }
+
     private final @NonNull Socket socket;
     private final @NonNull InputStream input;
     private final @NonNull DataOutputStream output;

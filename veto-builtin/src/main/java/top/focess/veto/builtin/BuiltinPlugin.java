@@ -13,11 +13,26 @@ import top.focess.veto.api.plugin.contract.JsonValue;
 import top.focess.veto.api.plugin.contract.StandardContributionPoints;
 import top.focess.veto.api.util.Resources;
 import top.focess.veto.builtin.group.*;
+import top.focess.veto.builtin.group.CancelGroupTaskTool;
+import top.focess.veto.builtin.group.CreateGroupTaskTool;
+import top.focess.veto.builtin.group.CreateGroupTool;
+import top.focess.veto.builtin.group.CreateMateTool;
+import top.focess.veto.builtin.group.DisbandGroupTool;
+import top.focess.veto.builtin.group.InspectGroupTool;
+import top.focess.veto.builtin.group.PostGroupMessageTool;
+import top.focess.veto.builtin.group.RemoveGroupNodeTool;
+import top.focess.veto.builtin.group.RemoveMateTool;
+import top.focess.veto.builtin.memory.ForgetMemoryTool;
 import top.focess.veto.builtin.memory.MemoryRuntime;
-import top.focess.veto.builtin.memory.MemoryTools;
+import top.focess.veto.builtin.memory.RecallMemoryTool;
+import top.focess.veto.builtin.memory.WriteMemoryTool;
+import top.focess.veto.builtin.monitor.CancelMonitorTool;
+import top.focess.veto.builtin.monitor.CreateMonitorTool;
+import top.focess.veto.builtin.monitor.InspectMonitorTool;
 import top.focess.veto.builtin.monitor.MonitorFrontend;
 import top.focess.veto.builtin.monitor.MonitorRuntime;
-import top.focess.veto.builtin.monitor.MonitorTools;
+import top.focess.veto.builtin.monitor.PauseMonitorTool;
+import top.focess.veto.builtin.monitor.ResumeMonitorTool;
 import top.focess.veto.builtin.planning.PlanConfig;
 import top.focess.veto.builtin.planning.SubmitPlanTool;
 import top.focess.veto.builtin.process.ProcessRuntime;
@@ -76,7 +91,7 @@ public final class BuiltinPlugin extends VetoPlugin {
         var operations = monitors.operations();
         List<Tool> tools =
                 List.of(
-                        new GroupTools.CreateGroup(groups.delegation()),
+                        new CreateGroupTool(groups.delegation()),
                         new RunCommandTool(processes.execution("run_command")),
                         new RunTaskTool(processes.execution("run_task")),
                         new ViewTaskTool(processes.control("view_task")),
@@ -95,22 +110,22 @@ public final class BuiltinPlugin extends VetoPlugin {
                                                                         new IllegalStateException(
                                                                                 "Isolated execution unavailable")),
                                         new ReaderConfig(configuration.values()))),
-                        new GroupTools.DisbandGroup(groupOperations),
-                        new GroupTools.InspectGroup(groupOperations),
-                        new GroupTools.PostMessage(groupOperations),
-                        new DagTools.RemoveNode(groupOperations),
-                        new CollaborationTools.CreateMate(groupOperations),
-                        new CollaborationTools.CreateTask(groupOperations, monitors::awaitGroup),
-                        new CollaborationTools.CancelTask(groupOperations),
-                        new CollaborationTools.RemoveMate(groupOperations),
-                        new MemoryTools.RecallMemory(memory.reader()),
-                        new MemoryTools.WriteMemory(memory.writer("write_memory")),
-                        new MemoryTools.ForgetMemory(memory.writer("forget_memory")),
-                        new MonitorTools.CreateMonitor(operations),
-                        new MonitorTools.InspectMonitor(operations),
-                        new MonitorTools.PauseMonitor(operations),
-                        new MonitorTools.ResumeMonitor(operations),
-                        new MonitorTools.CancelMonitor(operations),
+                        new DisbandGroupTool(groupOperations),
+                        new InspectGroupTool(groupOperations),
+                        new PostGroupMessageTool(groupOperations),
+                        new RemoveGroupNodeTool(groupOperations),
+                        new CreateMateTool(groupOperations),
+                        new CreateGroupTaskTool(groupOperations, monitors::awaitGroup),
+                        new CancelGroupTaskTool(groupOperations),
+                        new RemoveMateTool(groupOperations),
+                        new RecallMemoryTool(memory.reader()),
+                        new WriteMemoryTool(memory.writer("write_memory")),
+                        new ForgetMemoryTool(memory.writer("forget_memory")),
+                        new CreateMonitorTool(operations),
+                        new InspectMonitorTool(operations),
+                        new PauseMonitorTool(operations),
+                        new ResumeMonitorTool(operations),
+                        new CancelMonitorTool(operations),
                         new SubmitPlanTool(PlanConfig.from(configuration)),
                         new AnswerWithCitationsTool(),
                         new ViewFileTool(),
@@ -143,8 +158,7 @@ public final class BuiltinPlugin extends VetoPlugin {
                 new MonitorFrontend(monitors.service()));
         context.register(
                 StandardContributionPoints.AGENT_CONFIGURATION, "group-configuration", groups);
-        context.register(
-                StandardContributionPoints.LISTENERS, "group-lifecycle", groups.listener());
+        context.register(StandardContributionPoints.LISTENERS, "group-lifecycle", groups);
         context.register(StandardContributionPoints.FRONTEND, "groups", new GroupFrontend(groups));
         context.register(StandardContributionPoints.LISTENERS, "questions-lifecycle", questions);
         context.register(

@@ -165,7 +165,7 @@ class WebSocketOutputTest {
                         .send(new Frame.Error("x".repeat(1024 * 1024 + 1), 0)));
         fixture.server().stop();
         verify(socket, never()).sendMessage(any(TextMessage.class));
-        assertTrue(clients(fixture.server()).isEmpty());
+        assertTrue(connections(fixture.server()).isEmpty());
     }
 
     @Test
@@ -206,7 +206,7 @@ class WebSocketOutputTest {
         fixture.server().afterConnectionClosed(idle, CloseStatus.NORMAL);
         verify(idle, timeout(2_000)).close(CloseStatus.NORMAL);
         fixture.server().stop();
-        assertTrue(clients(fixture.server()).isEmpty());
+        assertTrue(connections(fixture.server()).isEmpty());
     }
 
     @ParameterizedTest
@@ -235,7 +235,7 @@ class WebSocketOutputTest {
             fixture.server().afterConnectionClosed(socket, CloseStatus.GOING_AWAY);
         }
         assertEquals(0, fixture.server().getActiveSessionCount());
-        assertEquals(1, clients(fixture.server()).size());
+        assertEquals(1, connections(fixture.server()).size());
         try (var workers = Executors.newVirtualThreadPerTaskExecutor()) {
             var shutdown = workers.submit(() -> fixture.server().stop());
             assertThrows(TimeoutException.class, () -> shutdown.get(100, TimeUnit.MILLISECONDS));
@@ -243,7 +243,7 @@ class WebSocketOutputTest {
             shutdown.get(2, TimeUnit.SECONDS);
         }
         verify(socket).close(CloseStatus.GOING_AWAY);
-        assertTrue(clients(fixture.server()).isEmpty());
+        assertTrue(connections(fixture.server()).isEmpty());
     }
 
     @Test
@@ -255,7 +255,7 @@ class WebSocketOutputTest {
         assertTrue(connection.send(new Frame.Error("fails", 0)));
         verify(socket, timeout(2_000)).close(CloseStatus.SERVER_ERROR);
         fixture.server().stop();
-        assertTrue(clients(fixture.server()).isEmpty());
+        assertTrue(connections(fixture.server()).isEmpty());
         assertFalse(connection.send(new Frame.Error("after failure", 0)));
         assertEquals(0, fixture.server().getActiveSessionCount());
     }
@@ -270,7 +270,7 @@ class WebSocketOutputTest {
         fixture.server().stop();
         verify(socket).close(CloseStatus.NORMAL);
         assertFalse(connection.send(new Frame.Error("after close", 0)));
-        assertTrue(clients(fixture.server()).isEmpty());
+        assertTrue(connections(fixture.server()).isEmpty());
         assertEquals(0, fixture.server().getActiveSessionCount());
     }
 
@@ -369,21 +369,19 @@ class WebSocketOutputTest {
         return socket;
     }
 
-    private static @NonNull Map<?, ?> clients(@NonNull WebSocketServer server) {
+    private static @NonNull Map<?, ?> connections(@NonNull WebSocketServer server) {
         var value = ReflectionTestUtils.getField(server, "connections");
-        if (!(value instanceof Map<?, ?> clients))
-            throw new AssertionError("Missing server clients");
-        return clients;
+        if (!(value instanceof Map<?, ?> connections))
+            throw new AssertionError("Missing server connections");
+        return connections;
     }
 
     private static @NonNull ProtocolConnection connection(
             @NonNull WebSocketServer server, @NonNull WebSocketSession socket) {
-        var client = clients(server).get(socket.getId());
-        if (client == null) throw new AssertionError("Client is not registered");
-        var value = ReflectionTestUtils.getField(client, "connection");
-        if (!(value instanceof ProtocolConnection connection))
-            throw new AssertionError("Missing protocol connection");
-        return connection;
+        var value = connections(server).get(socket.getId());
+        if (!(value instanceof WebSocketConnection connection))
+            throw new AssertionError("WebSocket connection is not registered");
+        return connection.protocol;
     }
 
     private static @NonNull WebSocketSession socket(@NonNull String id, @NonNull String token) {

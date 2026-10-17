@@ -6,6 +6,7 @@ import org.springframework.stereotype.Service;
 import top.focess.veto.api.llm.ProviderType;
 import top.focess.veto.api.llm.exceptions.CredentialException;
 import top.focess.veto.vault.KeysteadVault;
+import top.focess.veto.vault.VaultLockedException;
 
 /**
  * Resolves the API key for a request from the {@link KeysteadVault}, keyed by {@code
@@ -47,7 +48,7 @@ public class CredentialResolver {
                                             new CredentialException(
                                                     "No credential registered in Vault under key: "
                                                             + credentialKey)));
-        } catch (KeysteadVault.VaultLockedException e) {
+        } catch (VaultLockedException e) {
             throw new CredentialException(
                     "Vault is locked - authenticate before making LLM calls", e);
         }

@@ -58,20 +58,6 @@ public class QuoteCheckService {
         }
     }
 
-    /** The requested turn has no saved assistant answer to check. */
-    public static final class AnswerNotFoundException extends IllegalArgumentException {
-        public AnswerNotFoundException() {
-            super("Saved answer is not available");
-        }
-    }
-
-    /** The caller's answer version no longer matches the saved response. */
-    public static final class AnswerChangedException extends IllegalArgumentException {
-        public AnswerChangedException() {
-            super("Saved answer changed");
-        }
-    }
-
     /** One citation check with its verification status, located matches, and message references. */
     public record Check(
             @NonNull String id,

@@ -19,28 +19,23 @@ import top.focess.veto.plugin.runtime.ManagedPlugin;
  * Queries do not invoke plugin bodies or retain registration builders.
  */
 final class PluginContributionDirectory {
-    private record Entry(
-            PluginContributionsDirectory.@NonNull Entry value, @NonNull ManagedPlugin owner) {}
 
-    private record Group(
-            int major, @NonNull ManagedPlugin owner, @NonNull List<@NonNull Entry> entries) {}
-
-    private final @NonNull Map<ContributionId, Group> groups;
+    private final @NonNull Map<ContributionId, ContributionProtocolGroup> groups;
 
     PluginContributionDirectory(
             @NonNull ContributionCatalog catalog,
             @NonNull Map<@NonNull String, @NonNull ManagedPlugin> owners) {
-        Map<ContributionId, Group> prepared = new HashMap<>();
+        Map<ContributionId, ContributionProtocolGroup> prepared = new HashMap<>();
         for (var definition : catalog.entries(StandardContributionPoints.CONTRIBUTIONS)) {
             var owner = owners.get(definition.source().namespace());
             if (owner == null) throw new IllegalArgumentException("Contribution owner unavailable");
-            List<@NonNull Entry> entries = new ArrayList<>();
+            List<@NonNull PublishedContribution> entries = new ArrayList<>();
             for (var contribution : catalog.entries(definition.implementation().point())) {
                 var provider = owners.get(contribution.source().namespace());
                 if (provider == null)
                     throw new IllegalArgumentException("Contribution provider unavailable");
                 entries.add(
-                        new Entry(
+                        new PublishedContribution(
                                 new PluginContributionsDirectory.Entry(
                                         contribution.id(),
                                         contribution.source().namespace(),
@@ -49,7 +44,8 @@ final class PluginContributionDirectory {
             }
             prepared.put(
                     definition.implementation().id(),
-                    new Group(definition.implementation().major(), owner, List.copyOf(entries)));
+                    new ContributionProtocolGroup(
+                            definition.implementation().major(), owner, List.copyOf(entries)));
         }
         groups = Map.copyOf(prepared);
     }
@@ -74,4 +70,14 @@ final class PluginContributionDirectory {
                 result.add(entry.value());
         return List.copyOf(result);
     }
+
+    /** A contributed implementation bound to its published plugin activation. */
+    private record PublishedContribution(
+            PluginContributionsDirectory.@NonNull Entry value, @NonNull ManagedPlugin owner) {}
+
+    /** One published protocol version and its activation-bound implementations. */
+    private record ContributionProtocolGroup(
+            int major,
+            @NonNull ManagedPlugin owner,
+            @NonNull List<@NonNull PublishedContribution> entries) {}
 }

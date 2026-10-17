@@ -67,23 +67,6 @@ public final class FrameCodec {
 
     private FrameCodec() {}
 
-    /** JavaTimeModule otherwise also accepts numeric epochs, outside the shared wire schema. */
-    private static final class StringInstantDeserializer extends JsonDeserializer<Instant> {
-        @Override
-        public @NonNull Instant deserialize(
-                @NonNull JsonParser parser, @NonNull DeserializationContext context)
-                throws IOException {
-            if (!parser.hasToken(JsonToken.VALUE_STRING))
-                throw MismatchedInputException.from(
-                        parser, Instant.class, "Expected a timestamp string");
-            var instant = InstantDeserializer.INSTANT.deserialize(parser, context);
-            if (instant == null)
-                throw MismatchedInputException.from(
-                        parser, Instant.class, "Expected a nonempty timestamp string");
-            return instant;
-        }
-    }
-
     /** Encodes UTF-8 JSON; serialization failures surface as UncheckedIOException. */
     public static byte @NonNull [] encode(@NonNull Frame frame) {
         try {
@@ -125,6 +108,23 @@ public final class FrameCodec {
                     payload.length(),
                     failure.getClass().getSimpleName());
             return null;
+        }
+    }
+
+    /** JavaTimeModule otherwise also accepts numeric epochs, outside the shared wire schema. */
+    private static final class StringInstantDeserializer extends JsonDeserializer<Instant> {
+        @Override
+        public @NonNull Instant deserialize(
+                @NonNull JsonParser parser, @NonNull DeserializationContext context)
+                throws IOException {
+            if (!parser.hasToken(JsonToken.VALUE_STRING))
+                throw MismatchedInputException.from(
+                        parser, Instant.class, "Expected a timestamp string");
+            var instant = InstantDeserializer.INSTANT.deserialize(parser, context);
+            if (instant == null)
+                throw MismatchedInputException.from(
+                        parser, Instant.class, "Expected a nonempty timestamp string");
+            return instant;
         }
     }
 }

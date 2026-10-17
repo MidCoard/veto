@@ -35,11 +35,11 @@ final class AgentEvents {
     private final Scope.@NonNull AgentScope scope;
     private final @NonNull ObjectMapper objectMapper;
     private final @NonNull AgentEventSink eventSink;
-    final @NonNull Listeners<String> messages = new Listeners<>("message");
-    final @NonNull Listeners<String> thoughts = new Listeners<>("thought");
-    final @NonNull Listeners<VetoPrompt> vetoes = new Listeners<>("veto");
-    final @NonNull Listeners<ToolCallEvent> calls = new Listeners<>("tool-call");
-    final @NonNull Listeners<ToolResultEvent> results = new Listeners<>("tool-result");
+    final @NonNull AgentEventListeners<String> messages;
+    final @NonNull AgentEventListeners<String> thoughts;
+    final @NonNull AgentEventListeners<VetoPrompt> vetoes;
+    final @NonNull AgentEventListeners<ToolCallEvent> calls;
+    final @NonNull AgentEventListeners<ToolResultEvent> results;
 
     AgentEvents(
             @NonNull String agentId,
@@ -50,33 +50,11 @@ final class AgentEvents {
         this.scope = new Scope.AgentScope(userId, sessionId.toString(), agentId);
         this.objectMapper = mapper;
         this.eventSink = eventSink;
-    }
-
-    final class Listeners<T> {
-        private final @NonNull List<Consumer<T>> listeners = new CopyOnWriteArrayList<>();
-        private final @NonNull String kind;
-
-        Listeners(@NonNull String kind) {
-            this.kind = kind;
-        }
-
-        void add(@NonNull Consumer<T> listener) {
-            listeners.add(listener);
-        }
-
-        void remove(@NonNull Consumer<T> listener) {
-            listeners.remove(listener);
-        }
-
-        void emit(T event) {
-            for (var listener : listeners) {
-                try {
-                    listener.accept(event);
-                } catch (RuntimeException error) {
-                    log.warn("Agent {} {} listener threw", scope.agent(), kind, error);
-                }
-            }
-        }
+        messages = new AgentEventListeners<>(agentId, "message");
+        thoughts = new AgentEventListeners<>(agentId, "thought");
+        vetoes = new AgentEventListeners<>(agentId, "veto");
+        calls = new AgentEventListeners<>(agentId, "tool-call");
+        results = new AgentEventListeners<>(agentId, "tool-result");
     }
 
     void executionChanged() {
@@ -213,6 +191,40 @@ final class AgentEvents {
             eventSink.publish(scope, prompt);
         } catch (RuntimeException failure) {
             log.warn("Agent {} approval publication failed", scope.agent(), failure);
+        }
+    }
+
+    /**
+     * Thread-safe listener registry; callbacks run in registration order on the emitting thread.
+     */
+    static final class AgentEventListeners<T> {
+        private static final @NonNull Logger log =
+                LoggerFactory.getLogger("top.focess.veto.agent.AgentEventListeners");
+        private final @NonNull List<Consumer<T>> listeners = new CopyOnWriteArrayList<>();
+        private final @NonNull String agentId;
+        private final @NonNull String kind;
+
+        private AgentEventListeners(@NonNull String agentId, @NonNull String kind) {
+            this.agentId = agentId;
+            this.kind = kind;
+        }
+
+        void add(@NonNull Consumer<T> listener) {
+            listeners.add(listener);
+        }
+
+        void remove(@NonNull Consumer<T> listener) {
+            listeners.remove(listener);
+        }
+
+        private void emit(T event) {
+            for (var listener : listeners) {
+                try {
+                    listener.accept(event);
+                } catch (RuntimeException error) {
+                    log.warn("Agent {} {} listener threw", agentId, kind, error);
+                }
+            }
         }
     }
 }

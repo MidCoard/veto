@@ -107,6 +107,13 @@ Important `veto-core` packages:
 | `bus` | WebSocket/gRPC event and routing infrastructure |
 | `observability` | Audit chain and runtime events |
 
+Type names describe responsibilities. Independent components such as `ProtocolConnection`,
+`ModelFlowExecution`, `EventHandlerCompiler` and `TerminalView` have their own files and explicit
+dependencies. Built-in tools such as `CreateGroupTool` and `RecallMemoryTool` are individual classes.
+Implementation details stay nested under their owner, with descriptive names such as
+`ProtocolOperation` and `IpcOutboundFrame`. Each owner retains its synchronization and resource
+lifecycle. Contract families such as `Frame` variants and tool `Args`/`Result` schemas stay grouped.
+
 ## Requirements
 
 - JDK 25
@@ -444,18 +451,21 @@ is generated output and must not be committed.
   and `type` discriminator, including `Delta` for streaming events. TCP transport and
   connection code live in `veto-protocol`; terminal interaction, rendering and logging live in
   `veto-terminal`. `ProtocolClient` runs the terminal handshake, IO, heartbeat and correlation
-  over `TcpConnection`. Each connection uses separate virtual readers and writers,
+  over `TcpConnection`. This client uses separate virtual readers and writers,
   with bounded queues and private request futures. TCP frames contain a four-byte big-endian
   payload length followed by UTF-8 JSON; payloads are limited to 1 MiB. Terminal and backend
   must be updated together; the previous terminal transport is removed, with no fallback.
   Closing wakes readers and pending exchanges immediately and discards unsent application frames.
+  `ProtocolClient.receive()` blocks until a frame arrives or the closed stream drains; its timed
+  overload is available for callers that need a deadline. Terminal consumption does not poll.
 On the backend, `TerminalConfiguration` initializes the IPC resource beans before starting `IpcServer`.
 When terminal IPC is enabled, initialization failures abort Spring startup and Spring closes the resources already created.
 IPC beans require `veto.terminal.enabled=true`; the shipped configuration sets it explicitly. A missing or false
 property disables registration. On shutdown, Spring stops the server before closing its resources.
   Spring owns the bound `ServerSocket`. The conditional `IpcServer` component receives this listener
-  through constructor injection and owns its virtual acceptor and connection task executor. Each
-  connection has one receive task; output tasks run only while its bounded queue has work. Clients
+  through constructor injection and owns its virtual acceptor and connection task executor.
+  The acceptor closes registered clients on exit; server shutdown joins it before closing the executor.
+  Each connection has one receive task; output tasks run only while its bounded queue has work. Connections
   hold no thread handles. Each queue admits at most 256 frames and 8 MiB of payload.
   Closing the socket unblocks both directions; slow clients cannot block other connections.
   Both terminal IPC and browser WebSocket frames enter the same concrete `ProtocolConnection`,
@@ -464,6 +474,15 @@ property disables registration. On shutdown, Spring stops the server before clos
   browser connection, including sessions created later. `VetoCommandSender` adapts only terminal
   commands. Browser primary and child prompts use WebSocket; HTTP remains for management and
   authoritative snapshots, with no prompt or approval-mutation HTTP fallback.
+  The three connection types have distinct owners: `ProtocolClient` is the terminal-side endpoint;
+  `ProtocolConnection` is the backend application endpoint shared by IPC and WebSocket;
+  `TcpConnection` is only the socket/framing transport used on both ends of terminal TCP.
+  `IpcConnection` and `WebSocketConnection` own the corresponding connection's transport and output
+  state, with their dependencies supplied explicitly. Their servers own admission, registration and
+  shutdown. Both delegate application work to `ProtocolConnection`; `ProtocolOutput` admits its
+  replies to the transport queue. Browser traffic uses Spring WebSocket callbacks and neither Java
+  `ProtocolClient` nor `TcpConnection`. Operation state, authentication snapshots, client lifecycle
+  state and queue entries are private nested types of the connection that manages them.
   `Request` carries a positive connection-local sequence and optional session/agent target;
   browser requests require the exact session UUID. `RequestAccepted` confirms admission before a
   draft is cleared. Final `Done`/`Error` echo that sequence only after result and execution settlement.
@@ -472,7 +491,7 @@ property disables registration. On shutdown, Spring stops the server before clos
   REJECTED or NO_ACTIVE_REQUEST immediately; the final reply follows settlement. Exact `VetoResult`
   refuses or approves one offered call. `DeclineVetoes` refuses all pending approvals in an owned
   session and returns a correlated scoped Done; it does not cancel arbitrary running execution.
-  Agent output follows `AgentSession -> ProtocolConnection -> IpcServer / WebSocketServer`.
+  Agent output follows `AgentSession -> ProtocolConnection -> IpcConnection / WebSocketConnection`.
   AgentSession numbers deltas and supplies scope-checked agent sinks. Existing domain values such
   as VetoPrompt become frames at the connection; the transport encodes and writes them. Queue
   delivery rechecks authority and attachment identity after switches, logout and deletion.
@@ -497,8 +516,11 @@ property disables registration. On shutdown, Spring stops the server before clos
   after the previous acknowledgement. The server uses Tomcat's 90-second WebSocket read-idle timeout
   to remove silent clients; outgoing events do not reset that timeout. TCP reads allow 90 seconds
   of idle time and at most 10 seconds to finish a started frame. TCP writes have an independent
-  10-second deadline that closes a stalled socket. The terminal uses the same 30-second heartbeat
-  interval and 10-second acknowledgement deadline, independently of application IO. There are no topic subscriptions.
+  10-second deadline that closes a stalled socket. The terminal waits up to 10 seconds for connection
+  setup and Welcome. Its existing writer manages the 30-second heartbeat interval and 10-second
+  acknowledgement wait, checking expiry between sends; an in-progress send can delay that check
+  until its bounded write finishes. The reader rejects late acknowledgements. No protocol scheduler
+  is needed. There are no topic subscriptions.
   Thread safety: `ProtocolClient` supports concurrent callers, and `FrameCodec` supports concurrent
   calls with stable inputs. `Version` and immutable frame values may be shared freely. `Frame.Veto`
   arguments, `Frame.PluginAction` data and `Delta.ToolCall` arguments retain mutable payloads;

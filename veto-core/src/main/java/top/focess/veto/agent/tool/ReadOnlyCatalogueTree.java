@@ -19,8 +19,8 @@ import top.focess.veto.api.resources.CatalogueTree;
 /** Generic bounded catalogue snapshots; never traverses links or returns host paths. */
 public final class ReadOnlyCatalogueTree implements CatalogueTree {
     private static final int MAX_FILES = 256;
-    private static final int MAX_VISITED = 4096;
     private static final long MAX_BYTES = 262144;
+    private static final int MAX_VISITED = 4096;
     private final @NonNull List<@NonNull Path> roots;
     private final @NonNull Runnable authorize;
 
@@ -71,11 +71,23 @@ public final class ReadOnlyCatalogueTree implements CatalogueTree {
                         throw new IOException("Catalogue file exceeds size limit");
                     if (result.size() == MAX_FILES)
                         throw new IOException("Catalogue exceeds file limit");
-                    result.add(new Entry(root, path, attributes));
+                    result.add(new ReadOnlyCatalogueFile(root, path, attributes, authorize));
                 }
             }
         }
         return List.copyOf(result);
+    }
+
+    /** SHA-256 hex digest of the given text. */
+    public static @NonNull String hash(@NonNull String text) {
+        try {
+            return HexFormat.of()
+                    .formatHex(
+                            MessageDigest.getInstance("SHA-256")
+                                    .digest(text.getBytes(StandardCharsets.UTF_8)));
+        } catch (NoSuchAlgorithmException impossible) {
+            throw new IllegalStateException(impossible);
+        }
     }
 
     private static void verify(@NonNull Path root, @NonNull Path path) throws IOException {
@@ -92,17 +104,27 @@ public final class ReadOnlyCatalogueTree implements CatalogueTree {
         return Files.readAttributes(path, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
     }
 
-    private final class Entry implements CatalogueTree.File {
+    /**
+     * Immutable file selection; each read rechecks the grant, root boundary and selected identity.
+     */
+    private static final class ReadOnlyCatalogueFile implements CatalogueTree.File {
+        private final @NonNull Runnable authorize;
         private final @NonNull Path root;
         private final @NonNull Path path;
         private final @NonNull BasicFileAttributes selected;
 
-        Entry(@NonNull Path root, @NonNull Path path, @NonNull BasicFileAttributes selected) {
+        private ReadOnlyCatalogueFile(
+                @NonNull Path root,
+                @NonNull Path path,
+                @NonNull BasicFileAttributes selected,
+                @NonNull Runnable authorize) {
+            this.authorize = authorize;
             this.root = root;
             this.path = path;
             this.selected = selected;
         }
 
+        @Override
         public @NonNull String identity() {
             return hash(
                     System.getProperty("os.name", "").startsWith("Windows")
@@ -110,10 +132,12 @@ public final class ReadOnlyCatalogueTree implements CatalogueTree {
                             : path.toString());
         }
 
+        @Override
         public @NonNull String relativePath() {
             return root.relativize(path).toString().replace('\\', '/');
         }
 
+        @Override
         public @NonNull String read() throws IOException {
             authorize.run();
             verify(root, path);
@@ -129,24 +153,13 @@ public final class ReadOnlyCatalogueTree implements CatalogueTree {
                 throw new SecurityException("Catalogue file changed");
             return new String(bytes, StandardCharsets.UTF_8);
         }
-    }
 
-    private static boolean same(@NonNull BasicFileAttributes a, @NonNull BasicFileAttributes b) {
-        return Objects.equals(a.fileKey(), b.fileKey())
-                && a.creationTime().equals(b.creationTime())
-                && a.lastModifiedTime().equals(b.lastModifiedTime())
-                && a.size() == b.size();
-    }
-
-    /** SHA-256 hex digest of the given text. */
-    public static @NonNull String hash(@NonNull String text) {
-        try {
-            return HexFormat.of()
-                    .formatHex(
-                            MessageDigest.getInstance("SHA-256")
-                                    .digest(text.getBytes(StandardCharsets.UTF_8)));
-        } catch (NoSuchAlgorithmException impossible) {
-            throw new IllegalStateException(impossible);
+        private static boolean same(
+                @NonNull BasicFileAttributes a, @NonNull BasicFileAttributes b) {
+            return Objects.equals(a.fileKey(), b.fileKey())
+                    && a.creationTime().equals(b.creationTime())
+                    && a.lastModifiedTime().equals(b.lastModifiedTime())
+                    && a.size() == b.size();
         }
     }
 }

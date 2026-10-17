@@ -21,7 +21,6 @@ import top.focess.veto.api.plugin.PluginIdentity;
 import top.focess.veto.api.plugin.VetoPlugin;
 import top.focess.veto.api.plugin.contract.AgentInbox;
 import top.focess.veto.api.plugin.contract.JsonValue;
-import top.focess.veto.plugin.runtime.CompositeAgentInbox.Entry;
 
 class CompositeAgentInboxTest {
     private static final class Owner implements AutoCloseable {
@@ -118,9 +117,13 @@ class CompositeAgentInboxTest {
         var secondSource = new Source(raw, null, null);
         try (var first = new Owner();
                 var second = new Owner()) {
-            var firstEntry = new Entry("example.reminders:work", first.plugin, firstSource);
-            var secondEntry = new Entry("example.reminders:work", second.plugin, secondSource);
-            var selected = new AtomicReference<@NonNull List<@NonNull Entry>>(List.of(firstEntry));
+            var firstEntry =
+                    new PluginInboxSource("example.reminders:work", first.plugin, firstSource);
+            var secondEntry =
+                    new PluginInboxSource("example.reminders:work", second.plugin, secondSource);
+            var selected =
+                    new AtomicReference<@NonNull List<@NonNull PluginInboxSource>>(
+                            List.of(firstEntry));
             var composite = new CompositeAgentInbox(selected::get);
             var scope = new AgentInbox.InboxContext("session", "agent", null);
             var original = composite.pending(scope).getFirst();
@@ -173,7 +176,7 @@ class CompositeAgentInboxTest {
                     new CompositeAgentInbox(
                             () ->
                                     List.of(
-                                            new Entry(
+                                            new PluginInboxSource(
                                                     "example.reminders:work",
                                                     userId.plugin,
                                                     source)));
@@ -260,7 +263,7 @@ class CompositeAgentInboxTest {
                         new CompositeAgentInbox(
                                 () ->
                                         List.of(
-                                                new CompositeAgentInbox.Entry(
+                                                new PluginInboxSource(
                                                         "example.reminders:work",
                                                         managed,
                                                         source)));
@@ -275,7 +278,7 @@ class CompositeAgentInboxTest {
                         new CompositeAgentInbox(
                                 () ->
                                         List.of(
-                                                new CompositeAgentInbox.Entry(
+                                                new PluginInboxSource(
                                                         "other.plugin:work", managed, source)));
                 assertNotEquals(
                         value.continuationId(), other.pending(scope).getFirst().continuationId());

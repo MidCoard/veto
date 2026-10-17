@@ -1,11 +1,8 @@
 package top.focess.veto.agent;
 
 import java.util.ArrayList;
-import java.util.Collections;
-import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Objects;
-import java.util.Set;
 import java.util.function.BooleanSupplier;
 import java.util.stream.IntStream;
 import org.jspecify.annotations.NonNull;
@@ -18,45 +15,6 @@ import top.focess.veto.api.llm.VetoResponse;
 
 /** Host-issued source receipts for one exact model input and execution boundary. */
 final class RequestEvidence implements SourceEvidence {
-    /** Receipts may be forwarded once by the work which generated them. */
-    static final class WorkSources {
-        private final @NonNull Set<ModelFlow.Source> issued =
-                Collections.newSetFromMap(new IdentityHashMap<>());
-        private boolean closed;
-
-        synchronized void check() {
-            if (closed) throw new SecurityException("Generated-source work has completed");
-        }
-
-        synchronized boolean active() {
-            return !closed;
-        }
-
-        synchronized void close() {
-            closed = true;
-            issued.clear();
-        }
-
-        synchronized void register(SourceEvidence.Receipt receipt) {
-            check();
-            if (receipt != null) issued.add(receipt);
-        }
-
-        synchronized MessageCitations.Bound consume(
-                ModelFlow.Source receipt,
-                @NonNull Object requestIdentity,
-                String callId,
-                @NonNull String message) {
-            check();
-            if (receipt == null) return null;
-            if (!issued.contains(receipt))
-                throw new SecurityException("Source receipt is not pending in this work");
-            var bound = forRequest(receipt, requestIdentity, callId, message);
-            issued.remove(receipt);
-            return bound;
-        }
-    }
-
     private final @NonNull Object boundary;
     private final @NonNull Object requestIdentity;
     private final String modelCallId;

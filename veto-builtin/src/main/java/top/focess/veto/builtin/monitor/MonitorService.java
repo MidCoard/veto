@@ -48,9 +48,8 @@ public class MonitorService implements ProcessObserver {
     private static final @NonNull Logger log =
             LoggerFactory.getLogger("top.focess.veto.builtin.monitor.MonitorService");
 
-    private record Completion(@NonNull String agentId, @NonNull Event event, boolean success) {}
-
-    private final @NonNull Map<String, Completion> completionWrites = new LinkedHashMap<>();
+    private final @NonNull Map<String, PendingMonitorCompletion> completionWrites =
+            new LinkedHashMap<>();
     private final PluginHost host;
 
     private static final @NonNull TypeReference<MonitorRecord> RECORD_TYPE =
@@ -298,12 +297,13 @@ public class MonitorService implements ProcessObserver {
     /** Retry receipt persistence without repeating the episode's model or tool calls. */
     public synchronized void activationCompleted(
             @NonNull String agentId, @NonNull Event event, boolean success) {
-        completionWrites.putIfAbsent(event.id(), new Completion(agentId, event, success));
+        completionWrites.putIfAbsent(
+                event.id(), new PendingMonitorCompletion(agentId, event, success));
         flushCompletion(event.id());
     }
 
     private void flushCompletion(@NonNull String eventId) {
-        Completion write = completionWrites.get(eventId);
+        PendingMonitorCompletion write = completionWrites.get(eventId);
         if (write == null) return;
         MonitorRecord record = records.get(write.event().monitorId());
         if (record == null || !record.agentId().equals(write.agentId())) {
@@ -697,4 +697,8 @@ public class MonitorService implements ProcessObserver {
     public void changed(@NonNull UUID userId, @NonNull TaskInfo info, @NonNull String cause) {
         observeProcess(userId, info, cause);
     }
+
+    /** Monitor completion awaiting persistence; protected by the MonitorService monitor. */
+    private record PendingMonitorCompletion(
+            @NonNull String agentId, @NonNull Event event, boolean success) {}
 }

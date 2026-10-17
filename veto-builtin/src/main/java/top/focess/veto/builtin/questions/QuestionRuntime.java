@@ -32,7 +32,7 @@ import top.focess.veto.api.plugin.contract.JsonValues;
  */
 public final class QuestionRuntime implements Listener, AutoCloseable {
     private final @NonNull PluginHost host;
-    private final @NonNull Map<Key, Pending> pending = new HashMap<>();
+    private final @NonNull Map<QuestionInvocation, PendingQuestions> pending = new HashMap<>();
     private final @NonNull ObjectMapper mapper = new ObjectMapper();
     private long revision;
     private boolean closed;
@@ -62,7 +62,7 @@ public final class QuestionRuntime implements Listener, AutoCloseable {
             PluginHost.@NonNull Invocation invocation, @NonNull List<Question> questions) {
         if (closed) throw new IllegalStateException("Question runtime closed");
         var scope = invocation.scope();
-        var key = new Key(scope, invocation.callId());
+        var key = new QuestionInvocation(scope, invocation.callId());
         var future = new CompletableFuture<AnswerBatch>();
         var snapshot =
                 questions.stream()
@@ -74,7 +74,7 @@ public final class QuestionRuntime implements Listener, AutoCloseable {
                                                 question.question(),
                                                 List.copyOf(question.options())))
                         .toList();
-        var value = new Pending(key, snapshot, future);
+        var value = new PendingQuestions(key, snapshot, future);
         if (pending.putIfAbsent(key, value) != null)
             throw new IllegalStateException(
                     "Question batch already pending: " + invocation.callId());
@@ -128,7 +128,7 @@ public final class QuestionRuntime implements Listener, AutoCloseable {
             Scope.@NonNull AgentScope scope,
             @NonNull String callId,
             @NonNull Map<@NonNull String, @NonNull String> answers) {
-        var value = pending.get(new Key(scope, callId));
+        var value = pending.get(new QuestionInvocation(scope, callId));
         if (value == null || answers.size() != value.questions().size()) return false;
         for (var question : value.questions()) {
             var answer = answers.get(question.id());
@@ -141,7 +141,7 @@ public final class QuestionRuntime implements Listener, AutoCloseable {
 
     /** Completes a pending batch as cancelled; returns whether it settled. */
     public synchronized boolean cancel(Scope.@NonNull AgentScope scope, @NonNull String callId) {
-        var value = pending.get(new Key(scope, callId));
+        var value = pending.get(new QuestionInvocation(scope, callId));
         return value != null && value.future().complete(new AnswerBatch(Map.of(), true));
     }
 
@@ -184,10 +184,12 @@ public final class QuestionRuntime implements Listener, AutoCloseable {
         }
     }
 
-    private record Key(Scope.@NonNull AgentScope scope, @NonNull String callId) {}
+    /** Immutable identity of one question tool invocation. */
+    private record QuestionInvocation(Scope.@NonNull AgentScope scope, @NonNull String callId) {}
 
-    private record Pending(
-            @NonNull Key key,
+    /** Question data and answer completion; QuestionRuntime owns registration and settlement. */
+    private record PendingQuestions(
+            @NonNull QuestionInvocation key,
             @NonNull List<Question> questions,
             @NonNull CompletableFuture<AnswerBatch> future) {}
 }

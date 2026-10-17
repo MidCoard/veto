@@ -20,6 +20,7 @@ import top.focess.veto.api.plugin.contract.StandardContributionPoints;
 import top.focess.veto.api.plugin.contribution.ContributionCatalog;
 import top.focess.veto.api.plugin.contribution.ContributionEntry;
 import top.focess.veto.api.plugin.contribution.ContributionSource;
+import top.focess.veto.event.EventHandlerCompiler;
 import top.focess.veto.event.EventListenerRegistry;
 import top.focess.veto.model.SessionEntity;
 import top.focess.veto.model.SessionRepository;
@@ -235,7 +236,7 @@ class SessionPluginsUnavailableTest {
                                 List.of(),
                                 catalog,
                                 EventListenerRegistry.build(
-                                        catalog, owners, new EventListenerRegistry.Preparation()),
+                                        catalog, owners, new EventHandlerCompiler()),
                                 Map.of(),
                                 Map.of(),
                                 Set.of()));

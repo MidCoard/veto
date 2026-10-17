@@ -165,7 +165,8 @@ public record SandboxProfile(
             @NonNull Set<@NonNull Path> protectedPaths,
             @NonNull Set<@NonNull Path> occupiedRoots,
             boolean networkAllowed) {
-        EnvironmentRoots environmentRoots = EnvironmentRoots.discover(System.getenv());
+        SandboxEnvironmentRoots environmentRoots =
+                SandboxEnvironmentRoots.discover(System.getenv());
         return new SandboxProfile(
                 workspaceRoot,
                 512,
@@ -186,11 +187,11 @@ public record SandboxProfile(
                 .collect(Collectors.toUnmodifiableSet());
     }
 
-    /** Generic path-valued environment discovery; no runtime names or trusted-program list. */
-    record EnvironmentRoots(
+    /** Discovers existing executable and writable cache roots from the host environment. */
+    record SandboxEnvironmentRoots(
             @NonNull Set<@NonNull Path> readExecute, @NonNull Set<@NonNull Path> readWriteExecute) {
 
-        static @NonNull EnvironmentRoots discover(@NonNull Map<String, String> environment) {
+        static @NonNull SandboxEnvironmentRoots discover(@NonNull Map<String, String> environment) {
             Set<Path> readExecute = new HashSet<>();
             Set<Path> readWriteExecute = new HashSet<>();
             for (var entry : environment.entrySet()) {
@@ -214,7 +215,8 @@ public record SandboxProfile(
                             component, readExecute, cache ? readWriteExecute : null);
                 }
             }
-            return new EnvironmentRoots(Set.copyOf(readExecute), Set.copyOf(readWriteExecute));
+            return new SandboxEnvironmentRoots(
+                    Set.copyOf(readExecute), Set.copyOf(readWriteExecute));
         }
 
         private static void addExistingAbsolutePath(

@@ -20,7 +20,7 @@ import top.focess.veto.integration.plugins.IsolatedExecutions;
  */
 public final class ToolCallContextHolder {
 
-    private static final @NonNull ThreadLocal<@Nullable ThreadState> STATE = new ThreadLocal<>();
+    private static final @NonNull ThreadLocal<@Nullable ToolCallState> STATE = new ThreadLocal<>();
 
     /** Validated control flow, separate from the model's text/tool-call result. */
     public sealed interface ResponseDirective {
@@ -162,7 +162,7 @@ public final class ToolCallContextHolder {
      *     execute scope)
      */
     public static ToolCallContext get() {
-        ThreadState state = STATE.get();
+        ToolCallState state = STATE.get();
         return state == null ? null : state.context;
     }
 
@@ -172,14 +172,14 @@ public final class ToolCallContextHolder {
 
     /** The call id currently executing on this thread, or {@code null} if none is set. */
     public static String currentCallId() {
-        ThreadState state = STATE.get();
+        ToolCallState state = STATE.get();
         return state == null ? null : state.currentCallId;
     }
 
-    private static @NonNull ThreadState state() {
-        ThreadState state = STATE.get();
+    private static @NonNull ToolCallState state() {
+        ToolCallState state = STATE.get();
         if (state == null) {
-            state = new ThreadState();
+            state = new ToolCallState();
             STATE.set(state);
         }
         return state;
@@ -199,7 +199,8 @@ public final class ToolCallContextHolder {
         }
     }
 
-    private static final class ThreadState {
+    /** Mutable invocation state confined to the thread managed by ToolCallContextHolder. */
+    private static final class ToolCallState {
         private ControlHost control;
         private ResponseDirective response;
         private ToolCallContext context;

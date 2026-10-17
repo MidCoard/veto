@@ -60,14 +60,11 @@ class MemoryRuntimeTest {
         for (String profile : List.of("memory", "vector")) {
             UUID identity = UUID.randomUUID();
             var runtime = runtime(identity, profile, null);
-            var write = new MemoryTools.WriteMemory(runtime.writer("write_memory"));
+            var write = new WriteMemoryTool(runtime.writer("write_memory"));
             String result =
                     write.execute(
-                            new MemoryTools.WriteMemory.Args(
-                                    MemoryTools.WriteMemory.Mode.WRITE,
-                                    "important decision",
-                                    null,
-                                    null));
+                            new WriteMemoryTool.Args(
+                                    WriteMemoryTool.Mode.WRITE, "important decision", null, null));
             assertTrue(result.startsWith("memory written: "));
             var matches =
                     runtime.reader().search("important decision", MemoryTier.CROSS_SESSION, 5, .5f);

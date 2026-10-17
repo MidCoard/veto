@@ -48,9 +48,7 @@ public final class LenientStringListModule extends SimpleModule {
         context.addDeserializers(new StringCollectionDeserializers());
     }
 
-    /**
-     * Returns the lenient deserializer only for collections whose element type is {@code String}.
-     */
+    /** Selects lenient Jackson decoding only for collections whose element type is String. */
     private static final class StringCollectionDeserializers extends Deserializers.Base {
         @Override
         @SuppressWarnings("override.return")
@@ -84,14 +82,11 @@ public final class LenientStringListModule extends SimpleModule {
         }
     }
 
-    /**
-     * Deserializes a string-element collection from a JSON array (default), a JSON-array literal
-     * string, a bracketed list string, or - as a last resort - a bare scalar wrapped as a
-     * single-element list. Never throws on a string input.
-     */
+    /** Decodes string collections from arrays, quoted arrays, bracketed lists or scalar text. */
     private static final class LenientStringListDeserializer
             extends JsonDeserializer<List<String>> {
-        static final LenientStringListDeserializer INSTANCE = new LenientStringListDeserializer();
+        private static final LenientStringListDeserializer INSTANCE =
+                new LenientStringListDeserializer();
 
         @Override
         public @NonNull List<String> deserialize(

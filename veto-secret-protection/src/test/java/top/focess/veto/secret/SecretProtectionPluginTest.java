@@ -76,7 +76,7 @@ class SecretProtectionPluginTest {
     @Test
     void lifecycleEventsDriveCaptureAvailability() throws Exception {
         var entries = initialize(Map.of());
-        var lifecycle = contribution(entries, SecretProtectionPlugin.SecretLifecycle.class);
+        var lifecycle = contribution(entries, SecretProtectionListener.class);
         String captured = commit(lifecycle, SCOPE, "password=alpha");
         assertTrue(captured.contains("[SECRET_REF:s_"), captured);
         lifecycle.onUserLogout(
@@ -120,7 +120,7 @@ class SecretProtectionPluginTest {
     @Test
     void importToolRequiresTheHostGrantedService() throws Exception {
         var entries = initialize(Map.of());
-        var lifecycle = contribution(entries, SecretProtectionPlugin.SecretLifecycle.class);
+        var lifecycle = contribution(entries, SecretProtectionListener.class);
         String reference = reference(commit(lifecycle, SCOPE, "password=synthetic-token"));
         var tool = contribution(entries, CapabilityTool.class);
         var failure =
@@ -156,7 +156,7 @@ class SecretProtectionPluginTest {
                 };
         VaultAccess access = arguments -> writer;
         var entries = initialize(Map.of(VaultAccess.class, access));
-        var lifecycle = contribution(entries, SecretProtectionPlugin.SecretLifecycle.class);
+        var lifecycle = contribution(entries, SecretProtectionListener.class);
         String reference = reference(commit(lifecycle, SCOPE, "password=synthetic-token"));
         String receipt =
                 invoke(contribution(entries, CapabilityTool.class), reference, "Repository");
@@ -172,7 +172,7 @@ class SecretProtectionPluginTest {
     }
 
     private static @NonNull String commit(
-            SecretProtectionPlugin.@NonNull SecretLifecycle lifecycle,
+            @NonNull SecretProtectionListener lifecycle,
             Scope.@NonNull AgentScope scope,
             @NonNull String text) {
         var event =
@@ -186,9 +186,7 @@ class SecretProtectionPluginTest {
             @NonNull CapabilityTool<?> tool, @NonNull String reference, @NonNull String label)
             throws Exception {
         return ((CapabilityTool) tool)
-                .execute(
-                        new SecretProtectionPlugin.ImportCredentialArgs(
-                                reference, "github", label));
+                .execute(new ImportCredentialTool.Args(reference, "github", label));
     }
 
     private static @NonNull String reference(@NonNull String captured) {

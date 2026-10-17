@@ -13,6 +13,7 @@ import java.util.Map;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import top.focess.veto.sandbox.SandboxProfile.SandboxEnvironmentRoots;
 
 class ConstrainedSubprocessEnvironmentTest {
 
@@ -63,8 +64,8 @@ class ConstrainedSubprocessEnvironmentTest {
         Path cacheRoot = Files.createDirectory(workspace.resolve("cache-root"));
         String pathValue = toolRoot + File.pathSeparator + "not-a-path";
 
-        SandboxProfile.EnvironmentRoots roots =
-                SandboxProfile.EnvironmentRoots.discover(
+        SandboxEnvironmentRoots roots =
+                SandboxEnvironmentRoots.discover(
                         Map.of(
                                 "ANY_TOOL_PATH",
                                 pathValue,

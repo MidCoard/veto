@@ -11,6 +11,7 @@ import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
+import top.focess.veto.agent.ModelFlowExecution.GeneratedSourceReceipts;
 import top.focess.veto.agent.intercept.ToolExecutionPermit;
 import top.focess.veto.agent.screening.DeployerPolicy;
 import top.focess.veto.agent.tool.ToolCallContext;
@@ -112,14 +113,14 @@ class SourceReceiptTest {
                         evidence.inspect(declaration()).receipt(),
                         boundary,
                         "[Launch](cite:launch)");
-        var work = new RequestEvidence.WorkSources();
+        var work = new GeneratedSourceReceipts();
         work.register(receipt);
         work.register(null); // A later predicate generation has no source receipt.
-        var otherWork = new RequestEvidence.WorkSources();
+        var otherWork = new GeneratedSourceReceipts();
         assertThrows(
                 SecurityException.class,
                 () -> otherWork.consume(receipt, task, "answer-call", "[Launch](cite:launch)"));
-        var returnedWork = new RequestEvidence.WorkSources();
+        var returnedWork = new GeneratedSourceReceipts();
         returnedWork.register(receipt);
         returnedWork.close();
         assertThrows(

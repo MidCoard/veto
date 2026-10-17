@@ -25,12 +25,12 @@ import top.focess.veto.api.plugin.storage.PluginStorage.Store;
  * protects local caches; storage compare-and-set revisions remain the durable conflict boundary.
  */
 public final class StoredMonitorRepository implements MonitorRepository {
-    private record Stored(@NonNull Store store, @NonNull Entry entry) {}
 
     private final @NonNull PluginStorage storage;
     private final @NonNull ObjectMapper mapper = new ObjectMapper();
     private final @NonNull Map<@NonNull String, @NonNull Store> sessions = new HashMap<>();
-    private final @NonNull Map<@NonNull String, @NonNull Stored> known = new HashMap<>();
+    private final @NonNull Map<@NonNull String, @NonNull StoredMonitorRecord> known =
+            new HashMap<>();
 
     /** Creates the repository over the plugin storage backend. */
     public StoredMonitorRepository(@NonNull PluginStorage storage) {
@@ -62,7 +62,7 @@ public final class StoredMonitorRepository implements MonitorRepository {
                 for (Entry entry : page.entries()) {
                     String id = entry.key().substring("monitor/".length());
                     var value = read(store, entry);
-                    known.put(id, new Stored(store, value.entry()));
+                    known.put(id, new StoredMonitorRecord(store, value.entry()));
                     result.add(new MonitorEntity(id, value.payload()));
                 }
                 cursor = page.cursor();
@@ -94,9 +94,9 @@ public final class StoredMonitorRepository implements MonitorRepository {
             throw new IllegalArgumentException("Invalid monitor document", failure);
         }
         Store store = store(session);
-        Stored previous = known.get(value.getId());
+        StoredMonitorRecord previous = known.get(value.getId());
         Entry entry = write(store, value, previous == null ? null : previous.entry().revision());
-        known.put(value.getId(), new Stored(store, entry));
+        known.put(value.getId(), new StoredMonitorRecord(store, entry));
         if (previous != null) discardChunks(store, previous.entry());
         return value;
     }
@@ -144,13 +144,11 @@ public final class StoredMonitorRepository implements MonitorRepository {
         }
     }
 
-    private record Payload(@NonNull Entry entry, @NonNull String payload) {}
-
-    private @NonNull Payload read(@NonNull Store store, @NonNull Entry initial) {
+    private @NonNull StoredMonitorPayload read(@NonNull Store store, @NonNull Entry initial) {
         Entry entry = initial;
         for (int attempt = 0; attempt < 4; attempt++) {
             try {
-                return new Payload(entry, payload(store, entry));
+                return new StoredMonitorPayload(entry, payload(store, entry));
             } catch (IllegalStateException failure) {
                 Entry latest = store.get(entry.key()).orElseThrow(() -> failure);
                 if (latest.revision().equals(entry.revision())) throw failure;
@@ -199,4 +197,10 @@ public final class StoredMonitorRepository implements MonitorRepository {
         }
         return text.toString();
     }
+
+    /** An authorized monitor store and the exact persisted record revision. */
+    private record StoredMonitorRecord(@NonNull Store store, @NonNull Entry entry) {}
+
+    /** Stored monitor entry paired with its serialized value for ordered publication. */
+    private record StoredMonitorPayload(@NonNull Entry entry, @NonNull String payload) {}
 }

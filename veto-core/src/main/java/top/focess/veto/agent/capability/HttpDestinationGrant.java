@@ -10,7 +10,8 @@ import top.focess.veto.api.agent.tool.ToolCapability;
 import top.focess.veto.api.http.ApprovedHttpDestination;
 import top.focess.veto.api.http.HttpDocument;
 import top.focess.veto.api.plugin.agent.IsolatedAgent;
-import top.focess.veto.integration.plugins.IsolatedExecutions;
+import top.focess.veto.integration.plugins.IsolatedChildAgent;
+import top.focess.veto.integration.plugins.IsolatedExecutionContext;
 
 /** One exact screened destination; cached content has the same authority as its first fetch. */
 public final class HttpDestinationGrant implements ApprovedHttpDestination {
@@ -18,7 +19,7 @@ public final class HttpDestinationGrant implements ApprovedHttpDestination {
     private final @NonNull ToolCallContext parent;
     private final @NonNull Thread parentThread = Thread.currentThread();
     private volatile boolean closed;
-    private volatile IsolatedExecutions.Execution child;
+    private volatile IsolatedExecutionContext child;
     private volatile String operation;
     private volatile HttpDocument cached;
 
@@ -40,7 +41,7 @@ public final class HttpDestinationGrant implements ApprovedHttpDestination {
             IsolatedAgent.@NonNull Runtime runtime, @NonNull String operation) {
         parent();
         if (child != null
-                || !(runtime instanceof IsolatedExecutions.Execution scope)
+                || !(runtime instanceof IsolatedExecutionContext scope)
                 || !parent.equals(scope.parent()))
             throw new SecurityException(
                     "Destination cannot be rebound or transferred to this child");
@@ -93,7 +94,7 @@ public final class HttpDestinationGrant implements ApprovedHttpDestination {
     /** Publishes execution receipts for a successfully settled child of this grant. */
     public void publish(@NonNull IsolatedAgent handle) {
         parent();
-        if (!(handle instanceof IsolatedExecutions.Child execution)
+        if (!(handle instanceof IsolatedChildAgent execution)
                 || execution.scope() != child
                 || !execution.settledSuccessfully())
             throw new SecurityException(

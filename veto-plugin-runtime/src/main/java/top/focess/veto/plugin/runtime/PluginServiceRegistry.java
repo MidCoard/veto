@@ -40,17 +40,9 @@ import top.focess.veto.api.plugin.storage.PluginStorage;
  * another view cannot resurrect registration. They retain no implementation objects or loaders.
  */
 public final class PluginServiceRegistry {
-    private record Key(@NonNull String name, int version) {}
 
-    private record Entry(
-            @NonNull PluginService service, @NonNull ManagedPlugin owner, long generation) {}
-
-    private record Outcome(JsonValue value, ServiceException failure) {}
-
-    private record CallbackEntry(@NonNull ServiceHandler handler, @NonNull ManagedPlugin owner) {}
-
-    private volatile @NonNull Map<Key, Entry> entries = Map.of();
-    private final @NonNull ConcurrentHashMap<String, CallbackEntry> callbacks =
+    private volatile @NonNull Map<PluginServiceKey, PluginServiceBinding> entries = Map.of();
+    private final @NonNull ConcurrentHashMap<String, PluginCallbackBinding> callbacks =
             new ConcurrentHashMap<>();
     private final @NonNull AtomicLong generations = new AtomicLong();
     private final @NonNull Map<String, Set<String>> callbackOwners = new HashMap<>();
@@ -94,18 +86,19 @@ public final class PluginServiceRegistry {
             @NonNull ContributionCatalog catalog, @NonNull List<ManagedPlugin> plugins) {
         Map<String, ManagedPlugin> owners = new HashMap<>();
         for (var plugin : plugins) owners.put(plugin.identity().id(), plugin);
-        Map<Key, Entry> staged = new HashMap<>();
+        Map<PluginServiceKey, PluginServiceBinding> staged = new HashMap<>();
         for (var contribution : catalog.entries(StandardContributionPoints.SERVICES)) {
             var service = contribution.implementation();
             var owner = owners.get(contribution.source().namespace());
             if (owner == null) throw new IllegalArgumentException("Service owner is unavailable");
-            Key key = new Key(service.name(), service.version());
-            Entry previous = entries.get(key);
+            PluginServiceKey key = new PluginServiceKey(service.name(), service.version());
+            PluginServiceBinding previous = entries.get(key);
             long generation =
                     previous != null && previous.owner() == owner && previous.service() == service
                             ? previous.generation()
                             : generations.incrementAndGet();
-            if (staged.putIfAbsent(key, new Entry(service, owner, generation)) != null)
+            if (staged.putIfAbsent(key, new PluginServiceBinding(service, owner, generation))
+                    != null)
                 throw new IllegalArgumentException("Duplicate service name and version");
         }
         entries = Map.copyOf(staged);
@@ -117,7 +110,7 @@ public final class PluginServiceRegistry {
     public synchronized void revoke(@NonNull String providerId) {
         var activation = callbackOwners.remove(providerId);
         if (activation != null) revokedCallbackActivations.addAll(activation);
-        var remaining = new HashMap<Key, Entry>();
+        var remaining = new HashMap<PluginServiceKey, PluginServiceBinding>();
         entries.forEach(
                 (key, entry) -> {
                     if (!entry.owner().identity().id().equals(providerId))
@@ -148,7 +141,7 @@ public final class PluginServiceRegistry {
         return new PluginServices() {
             // Owner handles are registered by bind() and closed by the host plugin lifecycle.
             @SuppressWarnings("resource")
-            private boolean visible(@NonNull Entry entry) {
+            private boolean visible(@NonNull PluginServiceBinding entry) {
                 return entry.owner().state() == PluginState.ACTIVE
                         && allowed.test(
                                 caller == null ? "" : caller.identity().id(),
@@ -176,7 +169,7 @@ public final class PluginServiceRegistry {
             // Retained calls borrow the activation; only its host lifecycle may close it.
             @SuppressWarnings("resource")
             public @NonNull Optional<Handle> find(@NonNull String name, int version) {
-                Key key = new Key(name, version);
+                PluginServiceKey key = new PluginServiceKey(name, version);
                 var entry = entries.get(key);
                 if (entry == null || !visible(entry)) return Optional.empty();
                 // Retained handles carry only a key and generation, never a provider object.
@@ -195,7 +188,7 @@ public final class PluginServiceRegistry {
 
                             public @NonNull JsonValue invoke(@NonNull JsonValue request)
                                     throws ServiceException {
-                                Entry current = entries.get(key);
+                                PluginServiceBinding current = entries.get(key);
                                 if (current == null
                                         || current.generation() != generation
                                         || !visible(current))
@@ -218,7 +211,7 @@ public final class PluginServiceRegistry {
                                     PluginStorage.@NonNull Grant<?> grant,
                                     @NonNull JsonValue request)
                                     throws ServiceException {
-                                Entry current = entries.get(key);
+                                PluginServiceBinding current = entries.get(key);
                                 if (current == null
                                         || current.generation() != generation
                                         || !visible(current)
@@ -239,7 +232,7 @@ public final class PluginServiceRegistry {
             public @NonNull CallbackRegistration registerCallback(@NonNull ServiceHandler handler) {
                 if (caller == null) throw new IllegalStateException("Plugin caller is required");
                 String id = UUID.randomUUID().toString();
-                CallbackEntry registration = new CallbackEntry(handler, caller);
+                PluginCallbackBinding registration = new PluginCallbackBinding(handler, caller);
                 synchronized (PluginServiceRegistry.this) {
                     var state = caller.state();
                     if ((state != PluginState.INITIALIZING
@@ -264,7 +257,7 @@ public final class PluginServiceRegistry {
             // Retained calls borrow the activation; only its host lifecycle may close it.
             @SuppressWarnings("resource")
             public @NonNull Optional<CallbackHandle> findCallback(@NonNull String id) {
-                CallbackEntry registration = callbacks.get(id);
+                PluginCallbackBinding registration = callbacks.get(id);
                 if (registration == null
                         || registration.owner().state() != PluginState.ACTIVE
                         || !allowed.test(
@@ -279,7 +272,7 @@ public final class PluginServiceRegistry {
 
                             public @NonNull JsonValue invoke(@NonNull JsonValue request)
                                     throws ServiceException {
-                                CallbackEntry current = callbacks.get(id);
+                                PluginCallbackBinding current = callbacks.get(id);
                                 if (current == null
                                         || current.owner().state() != PluginState.ACTIVE
                                         || !allowed.test(
@@ -296,14 +289,15 @@ public final class PluginServiceRegistry {
         };
     }
 
-    private static @NonNull Outcome invokeCallbackHandler(
+    private static @NonNull PluginServiceOutcome invokeCallbackHandler(
             @NonNull ServiceHandler handler, @NonNull JsonValue request) {
         try {
-            return new Outcome(handler.invoke(request), null);
+            return new PluginServiceOutcome(handler.invoke(request), null);
         } catch (ServiceException failure) {
-            return new Outcome(null, failure);
+            return new PluginServiceOutcome(null, failure);
         } catch (Exception failure) {
-            return new Outcome(null, new ServiceException(ServiceException.Code.FAILED));
+            return new PluginServiceOutcome(
+                    null, new ServiceException(ServiceException.Code.FAILED));
         }
     }
 
@@ -311,7 +305,7 @@ public final class PluginServiceRegistry {
     @SuppressWarnings("resource")
     private static @NonNull JsonValue invokeService(
             ManagedPlugin caller,
-            @NonNull Entry entry,
+            @NonNull PluginServiceBinding entry,
             @NonNull ServiceCallContext context,
             @NonNull JsonValue request)
             throws ServiceException {
@@ -322,11 +316,11 @@ public final class PluginServiceRegistry {
     private static @NonNull JsonValue invokeAdmitted(
             ManagedPlugin caller,
             @NonNull ManagedPlugin owner,
-            ManagedPlugin.@NonNull Operation<Outcome> body)
+            ManagedPlugin.@NonNull Operation<PluginServiceOutcome> body)
             throws ServiceException {
-        Outcome outcome;
+        PluginServiceOutcome outcome;
         try {
-            ManagedPlugin.Operation<Outcome> operation = () -> owner.execute(body);
+            ManagedPlugin.Operation<PluginServiceOutcome> operation = () -> owner.execute(body);
             outcome = caller == null ? operation.run() : caller.execute(operation);
         } catch (PluginFailure failure) {
             throw new ServiceException(ServiceException.Code.UNAVAILABLE);
@@ -337,16 +331,31 @@ public final class PluginServiceRegistry {
         return value;
     }
 
-    private static @NonNull Outcome invokeHandler(
+    private static @NonNull PluginServiceOutcome invokeHandler(
             @NonNull PluginService service,
             @NonNull ServiceCallContext context,
             @NonNull JsonValue request) {
         try {
-            return new Outcome(service.invoke(context, request), null);
+            return new PluginServiceOutcome(service.invoke(context, request), null);
         } catch (ServiceException failure) {
-            return new Outcome(null, failure);
+            return new PluginServiceOutcome(null, failure);
         } catch (Exception failure) {
-            return new Outcome(null, new ServiceException(ServiceException.Code.FAILED));
+            return new PluginServiceOutcome(
+                    null, new ServiceException(ServiceException.Code.FAILED));
         }
     }
+
+    /** Service identity: its name and contract version. */
+    private record PluginServiceKey(@NonNull String name, int version) {}
+
+    /** Immutable service binding; the plugin lifecycle owns the provider. */
+    private record PluginServiceBinding(
+            @NonNull PluginService service, @NonNull ManagedPlugin owner, long generation) {}
+
+    /** Service completion captured across plugin lifecycle admission. */
+    private record PluginServiceOutcome(JsonValue value, ServiceException failure) {}
+
+    /** Callback registration paired with the lifecycle that owns it. */
+    private record PluginCallbackBinding(
+            @NonNull ServiceHandler handler, @NonNull ManagedPlugin owner) {}
 }

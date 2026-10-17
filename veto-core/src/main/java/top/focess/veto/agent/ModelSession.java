@@ -13,7 +13,6 @@ import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import top.focess.veto.agent.AgentRunner.BreakerTripException;
 import top.focess.veto.agent.ExecutionControl.Wait;
 import top.focess.veto.agent.identity.AgentPersona;
 import top.focess.veto.agent.loop.CompiledPrompt;
@@ -447,7 +446,7 @@ final class ModelSession {
     private void checkBudget() {
         if (runner.currentRequest().episode.breaker().shouldTrip()) {
             runner.tripBreaker();
-            throw new BreakerTripException();
+            throw new LoopBreakerTrippedException();
         }
     }
 

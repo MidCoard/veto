@@ -6,23 +6,24 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.concurrent.ExecutionException;
-import java.util.concurrent.TimeUnit;
-import org.jline.reader.*;
+import java.util.concurrent.TimeoutException;
+import org.jline.reader.Completer;
+import org.jline.reader.EndOfFileException;
+import org.jline.reader.LineReader;
+import org.jline.reader.LineReaderBuilder;
+import org.jline.reader.UserInterruptException;
 import org.jline.terminal.TerminalBuilder;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import top.focess.veto.api.util.Threads;
-import top.focess.veto.contract.Delta;
 import top.focess.veto.contract.Frame;
 import top.focess.veto.contract.ProtocolClient;
 import top.focess.veto.contract.Version;
 import top.focess.veto.terminal.client.ClientOptions;
 import top.focess.veto.terminal.client.ClientSession;
-import top.focess.veto.terminal.client.ClientView;
 import top.focess.veto.terminal.client.Logging;
 import top.focess.veto.terminal.client.StyleToken;
-import top.focess.veto.terminal.client.StyledText;
 import top.focess.veto.transport.tcp.TcpConnection;
 
 /**
@@ -110,15 +111,6 @@ public class VetoTerminal {
     private volatile boolean running;
 
     /**
-     * Verbose tool-trace flag (driven by the {@code VETO_DEBUG} env var). When {@code true}, the
-     * tool-result hook renders the full observation body; when {@code false} (default), it
-     * truncates to a short preview so the user's terminal is not flooded with raw tool output.
-     * Always true is also safe - the user can flip it on whenever they need to verify what the
-     * model is being fed.
-     */
-    private final boolean verboseToolTrace = "true".equalsIgnoreCase(System.getenv("VETO_DEBUG"));
-
-    /**
      * The sole swap-wake signal: set by the consumer thread (via {@link TerminalView#onPrompt}) to
      * request that the main thread's next {@code readLine} wake be treated as a Prompt-swap
      * re-render rather than a genuine Ctrl+C. The consumer sets this <b>before</b> calling {@link
@@ -158,7 +150,17 @@ public class VetoTerminal {
         this.mainThread = Thread.currentThread();
         this.theme = new MordantTheme(t);
         this.renderer = new MordantRenderer(reader);
-        this.session = new ClientSession(new TerminalView(), client::nextSequence);
+        // Construction stores the callbacks; status is ready before either REPL thread uses them.
+        this.session =
+                new ClientSession(
+                        new TerminalView(
+                                reader,
+                                renderer,
+                                theme,
+                                this::refreshPrompt,
+                                this::terminate,
+                                () -> status.refresh()),
+                        client::nextSequence);
         this.status = new TerminalStatus(reader.getTerminal(), session, theme);
         status.refresh();
 
@@ -195,11 +197,11 @@ public class VetoTerminal {
             while (running) {
                 var frame = client.receive();
                 if (!running) return;
-                if (frame != null) acceptFrame(frame);
-                else if (client.isClosed()) {
+                if (frame == null) {
                     acceptFrame(new Frame.Terminate("Backend connection closed."));
                     return;
                 }
+                acceptFrame(frame);
             }
         } catch (Throwable failure) {
             if (running) {
@@ -369,23 +371,6 @@ public class VetoTerminal {
     }
 
     /**
-     * Echoes the user's input wrapped in a clean, framed box for visual clarity.
-     *
-     * @param line the input text
-     */
-    private void echoInput(@NonNull String line) {
-        int termWidth = reader.getTerminal().getWidth();
-        int maxWidth = termWidth > 0 ? termWidth - 4 : 76;
-        int borderLen = Math.max(0, Math.min(maxWidth, line.length() + 4));
-        renderer.println("");
-        renderer.println(theme.style(StyleToken.BORDER, "  ╭─ you " + "─".repeat(borderLen)));
-        renderer.println("  │ " + line);
-        renderer.println(
-                theme.style(
-                        StyleToken.BORDER, "  ╰" + "─".repeat(Math.min(maxWidth, borderLen + 4))));
-    }
-
-    /**
      * Renders a HITL veto as a numbered option picker above the prompt. Each option is shown as
      * {@code [n] NAME}; the user replies with the index or the option name (resolved by {@link
      * #resolveVetoChoice}).
@@ -448,259 +433,17 @@ public class VetoTerminal {
         renderer.println("");
     }
 
-    // ── ClientView ────────────────────────────────────────────────────────
-
-    /**
-     * Renders a labeled, bordered block - the explicit visual distinction between the dimmed
-     * "thinking" stream (interim reasoning) and the normal "veto" message stream (user-facing
-     * answer). Each block carries a label and a border so the two streams never blur into one
-     * undifferentiated run of text, even when only one is present on a given turn.
-     *
-     * @param label the header label (e.g. "thinking" or "veto")
-     * @param border the style for the box border (top, left rule, bottom)
-     * @param body the style for the content lines
-     * @param content the text to render (may contain newlines)
-     */
-    private void renderBoxed(
-            @NonNull String label,
-            @NonNull StyleToken border,
-            @NonNull StyleToken body,
-            @NonNull String content) {
-        renderer.println("");
-        renderer.println(theme.style(border, "  ╭─ " + label + " " + "─".repeat(20)));
-        for (String line : content.split("\n", -1)) {
-            renderer.println(theme.style(border, "  │ ") + theme.style(body, line));
-        }
-        renderer.println(theme.style(border, "  ╰" + "─".repeat(24)));
+    /** An inbound interaction update wakes the REPL after recording its reason. */
+    private void refreshPrompt() {
+        if (Thread.currentThread() == mainThread) return;
+        promptSwapPending = true;
+        mainThread.interrupt();
     }
 
-    /**
-     * Renders a one-line summary of a tool call for the {@code onToolCall} indicator. Prefers a
-     * small set of common "primary" arg keys (path/command/url/...) so the user sees what the agent
-     * is about to operate on, falling back to a generic {@code tool(k=v, k2=v2)} for unknown tools.
-     * Empty args reduce to just the tool name.
-     */
-    private static @NonNull String summarizeToolCall(Delta.@NonNull ToolCall call) {
-        String tool = call.tool();
-        var args = call.args();
-        if (args.isEmpty()) {
-            return tool;
-        }
-        String[] preferred = {
-            "absolutePath",
-            "path",
-            "directoryPath",
-            "file",
-            "filePath",
-            "command",
-            "url",
-            "query",
-            "input"
-        };
-        for (String key : preferred) {
-            var v = args.get(key);
-            if (v != null) {
-                return tool
-                        + "("
-                        + key
-                        + "="
-                        + abbreviate(v.isTextual() ? v.asText() : v.toString(), 80)
-                        + ")";
-            }
-        }
-        StringBuilder sb = new StringBuilder(tool).append("(");
-        boolean first = true;
-        for (var e : args.properties()) {
-            if (!first) {
-                sb.append(", ");
-            }
-            sb.append(e.getKey()).append('=').append(abbreviate(String.valueOf(e.getValue()), 40));
-            first = false;
-        }
-        sb.append(')');
-        return sb.toString();
-    }
-
-    /**
-     * Truncates a string with a trailing ellipsis if it exceeds the cap, otherwise returns as-is.
-     */
-    private static @NonNull String abbreviate(@NonNull String s, int max) {
-        if (s.length() <= max) {
-            return s;
-        }
-        return s.substring(0, Math.max(0, max - 1)) + "…";
-    }
-
-    /**
-     * Truncates a multi-line body to the first {@code maxLines} lines and appends a "…(N more
-     * lines)" hint so the user knows the preview was cut. Returns the input unchanged if it already
-     * fits.
-     */
-    private static @NonNull String truncateForPreview(@NonNull String body, int maxLines) {
-        String[] lines = body.split("\n", -1);
-        if (lines.length <= maxLines) {
-            return body;
-        }
-        StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < maxLines; i++) {
-            if (i > 0) {
-                sb.append('\n');
-            }
-            sb.append(lines[i]);
-        }
-        sb.append("\n…(").append(lines.length - maxLines).append(" more lines)");
-        return sb.toString();
-    }
-
-    /**
-     * {@link ClientView} adapter rendering session events to the REPL. Runs on the consumer thread;
-     * all output goes through {@link LineReader#printAbove} (thread-safe) and {@link
-     * TerminalStatus#refresh} (reads session snapshots under the session's own lock).
-     */
-    private final class TerminalView implements ClientView {
-
-        @Override
-        public void onDelta(@NonNull String content) {
-            // User-facing answer: a labeled "veto" box with a cyan (ACCENT) border and normal body
-            // text. Explicitly distinct from the "thinking" box (onThought), which is fully dimmed
-            // - different label, different border color, different body color. The two streams
-            // never blur together, even when only one is present on a turn.
-            renderBoxed("veto", StyleToken.ACCENT, StyleToken.PLAIN, content);
-        }
-
-        @Override
-        public void onThought(@NonNull String content) {
-            // Interim reasoning: a labeled "thinking" box, fully dimmed (MUTED border and body) so
-            // it recedes behind the cyan "veto" answer box. Same shape as onDelta but different
-            // label and different color - the user can tell the two streams apart at a glance.
-            renderBoxed("thinking", StyleToken.MUTED, StyleToken.MUTED, content);
-        }
-
-        @Override
-        public void onToolCall(Delta.@NonNull ToolCall call) {
-            // Claude-Code-style indicator: a single muted line announcing the tool + its key arg
-            // (the "what is the agent about to do"). Compact so a long sequence of tool calls does
-            // not bury the reasoning. The matching result lands in onToolResult right after.
-            String summary = summarizeToolCall(call);
-            renderer.println(theme.style(StyleToken.MUTED, "  ◆ " + summary));
-        }
-
-        @Override
-        public void onToolResult(Delta.@NonNull ToolResult result) {
-            // Framed observation the model saw. Default: truncate to the first 20 lines + show
-            // success/failure marker so a long tool output does not flood the REPL. The user
-            // can set VETO_DEBUG=1 to render the full body for debugging.
-            String body = result.text();
-            String marker = result.success() ? "✓" : "✗";
-            String header = "  ◇ result " + marker;
-            if (!verboseToolTrace) {
-                body = truncateForPreview(body, 20);
-            }
-            renderer.println("");
-            renderer.println(theme.style(StyleToken.MUTED, header));
-            for (String line : body.split("\n", -1)) {
-                renderer.println(
-                        theme.style(StyleToken.MUTED, "    ")
-                                + theme.style(StyleToken.PLAIN, line));
-            }
-        }
-
-        @Override
-        public void onProgress(@NonNull StyledText content) {
-            renderer.println(theme.style(content.token(), content.text()));
-        }
-
-        @Override
-        public void onPrompt(Frame.@NonNull ServerFrame prompt) {
-            refreshPrompt();
-        }
-
-        @Override
-        public void onPromptCleared() {
-            refreshPrompt();
-        }
-
-        private void refreshPrompt() {
-            // A user reply already returns to the REPL. Only an inbound update must wake readLine.
-            if (Thread.currentThread() == mainThread) return;
-            promptSwapPending = true;
-            mainThread.interrupt();
-        }
-
-        @Override
-        public void onError(@NonNull StyledText content) {
-            renderer.println(theme.style(content.token(), content.text()));
-        }
-
-        @Override
-        public void onTerminate(@NonNull StyledText content) {
-            renderer.println(theme.style(content.token(), content.text()));
-            running = false;
-            // Wake readLine; the REPL checks running before interpreting the interrupt as Ctrl+C.
-            mainThread.interrupt();
-        }
-
-        @Override
-        public void onIdle() {
-            status.refresh();
-        }
-
-        @Override
-        public void onRunning() {
-            status.refresh();
-        }
-
-        @Override
-        public void onCommandDispatched(@NonNull String line) {
-            // Fires on whichever thread performed the dispatch: the main thread (a line typed at
-            // IDLE) or the consumer thread (a queued command auto-dispatched from onFrame).
-            // printAbove is thread-safe, so both paths render uniformly.
-            if (!line.startsWith("/")) {
-                echoInput(line);
-                renderer.println(theme.style(StyleToken.MUTED, "  thinking…"));
-            }
-        }
-
-        @Override
-        public void onMetaChanged(ClientSession.@NonNull SessionMeta meta) {
-            status.refresh();
-        }
-    }
-
-    // ── tab completion ───────────────────────────────────────────────────
-
-    /**
-     * JLine {@link Completer} that fetches tab-completion candidates from the backend.
-     *
-     * <p>Completion is triggered only when the buffer starts with {@code /} (slash-commands).
-     * Candidates are retrieved synchronously via {@link ProtocolClient#complete} with a 3-second
-     * timeout; if the backend does not respond in time, no candidates are offered.
-     */
-    private class VetoCompleter implements Completer {
-
-        @Override
-        @SuppressWarnings(
-                "argument") // JLine Candidate defines optional metadata with null sentinels.
-        public void complete(
-                @NonNull LineReader r, @NonNull ParsedLine line, @NonNull List<Candidate> out) {
-            String fullLine = line.line();
-            // Completion is only requested for slash commands.
-            if (!fullLine.startsWith("/")) return;
-            Frame.CompleteResult compResult = client.complete(fullLine, 2, TimeUnit.SECONDS);
-            if (compResult != null) {
-                for (Frame.Completion comp : compResult.candidates()) {
-                    String name = comp.value();
-                    String rawDescription = comp.description();
-                    String desc =
-                            rawDescription != null && !rawDescription.isEmpty()
-                                    ? rawDescription
-                                    : null;
-                    String rawGroup = comp.group();
-                    String group = rawGroup != null && !rawGroup.isEmpty() ? rawGroup : null;
-                    out.add(new Candidate(name, name, group, desc, null, null, true));
-                }
-            }
-        }
+    /** Wake readLine after stopping, so shutdown cannot be mistaken for Ctrl+C. */
+    private void terminate() {
+        running = false;
+        mainThread.interrupt();
     }
 
     // ── main ──────────────────────────────────────────────────────────────
@@ -762,7 +505,7 @@ public class VetoTerminal {
                                 + VetoVersion.VERSION
                                 + ").");
                 VetoTerminal vt = new VetoTerminal(mt, transport);
-                Completer completer = vt.new VetoCompleter();
+                Completer completer = new CommandCompleter(transport);
                 LineReader r =
                         LineReaderBuilder.builder().terminal(jt).completer(completer).build();
                 r.setVariable(LineReader.HISTORY_FILE, Path.of(".veto_history"));
@@ -771,6 +514,8 @@ public class VetoTerminal {
         } catch (InterruptedException interrupted) {
             Thread.currentThread().interrupt();
             System.err.println("Backend connection interrupted.");
+        } catch (TimeoutException timeout) {
+            System.err.println("Backend connection timed out.");
         } catch (ExecutionException failure) {
             var cause = failure.getCause();
             System.err.println(

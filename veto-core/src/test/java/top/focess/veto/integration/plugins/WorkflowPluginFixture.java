@@ -14,6 +14,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 import top.focess.veto.api.plugin.*;
 import top.focess.veto.api.plugin.contract.*;
 import top.focess.veto.api.plugin.contribution.*;
+import top.focess.veto.event.EventHandlerCompiler;
 import top.focess.veto.event.EventListenerRegistry;
 import top.focess.veto.event.EventManager;
 import top.focess.veto.model.SessionEntity;
@@ -74,7 +75,7 @@ public final class WorkflowPluginFixture implements AutoCloseable {
                 EventListenerRegistry.build(
                         catalog,
                         Map.of(runtime.identity().id(), runtime),
-                        new EventListenerRegistry.Preparation());
+                        new EventHandlerCompiler());
         var publication =
                 spy(
                         new PluginRegistry(

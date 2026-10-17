@@ -26,25 +26,21 @@ import top.focess.veto.builtin.process.BackgroundTasks.ExitCause;
  *
  * <p>Process workers, lifecycle events and the retry scheduler share this object's monitor. It
  * serializes revocation markers, instance tracking and pending observation delivery, including
- * observer and host callbacks. Pending observations use an ordinary map guarded by that monitor.
- * Callbacks must not wait for task workers whose notifications need this monitor; retry shutdown
- * does not join a worker while holding it.
+ * observer and host callbacks. PendingTaskObservation observations use an ordinary map guarded by
+ * that monitor. Callbacks must not wait for task workers whose notifications need this monitor;
+ * retry shutdown does not join a worker while holding it.
  */
 public final class TaskEvents implements BackgroundTasks.TaskObserver, AutoCloseable {
-    private record Pending(
-            Scope.@NonNull AgentScope scope, @NonNull TaskInfo task, @NonNull ExitCause cause) {}
-
-    private record Instance(Scope.@NonNull AgentScope scope, @NonNull Change change) {}
 
     private final @NonNull PluginHost host;
     private final @NonNull ProcessObserver observer;
     private final @NonNull ObjectMapper mapper = new ObjectMapper();
-    private final @NonNull Map<UUID, Pending> pending = new HashMap<>();
+    private final @NonNull Map<UUID, PendingTaskObservation> pending = new HashMap<>();
     private ScheduledExecutorService scheduler;
     private boolean closed;
     private final @NonNull Set<Scope.UserScope> loggedOutUsers = new HashSet<>();
     private final @NonNull Set<Scope.SessionScope> deletedSessions = new HashSet<>();
-    private final @NonNull Map<UUID, Instance> instances = new LinkedHashMap<>();
+    private final @NonNull Map<UUID, TaskInstanceState> instances = new LinkedHashMap<>();
 
     /** Allows new task notifications after a successful signup or login. */
     public synchronized void userAuthenticated(Scope.@NonNull UserScope scope) {
@@ -68,7 +64,7 @@ public final class TaskEvents implements BackgroundTasks.TaskObserver, AutoClose
         instances.replaceAll(
                 (id, instance) ->
                         instance.scope().equals(scope)
-                                ? new Instance(scope, Change.REMOVED)
+                                ? new TaskInstanceState(scope, Change.REMOVED)
                                 : instance);
         pending.values().removeIf(value -> value.scope().equals(scope));
     }
@@ -106,7 +102,7 @@ public final class TaskEvents implements BackgroundTasks.TaskObserver, AutoClose
                 && (previous.change() == change
                         || previous.change() == Change.REMOVED
                         || previous.change() == Change.EXITED && change == Change.STARTED)) return;
-        instances.put(info.taskInstanceId(), new Instance(scope, change));
+        instances.put(info.taskInstanceId(), new TaskInstanceState(scope, change));
         // Removal can overtake the exit callback after the process marks itself stopped.
         // Preserve that final observation before suppressing later callbacks for this instance.
         if (change != Change.REMOVED || previous == null || previous.change() == Change.STARTED) {
@@ -115,7 +111,7 @@ public final class TaskEvents implements BackgroundTasks.TaskObserver, AutoClose
                     (key, prior) ->
                             prior != null && !prior.task().alive() && info.alive()
                                     ? prior
-                                    : new Pending(scope, info, cause));
+                                    : new PendingTaskObservation(scope, info, cause));
             flush(info.taskInstanceId());
         }
         try {
@@ -145,7 +141,7 @@ public final class TaskEvents implements BackgroundTasks.TaskObserver, AutoClose
     }
 
     private void flush(@NonNull UUID id) {
-        Pending value = pending.get(id);
+        PendingTaskObservation value = pending.get(id);
         if (value == null) return;
         try {
             observer.changed(value.scope().userId(), value.task(), value.cause().name());
@@ -165,4 +161,11 @@ public final class TaskEvents implements BackgroundTasks.TaskObserver, AutoClose
         if (timer != null) timer.shutdownNow();
         pending.clear();
     }
+
+    /** Completed process observation awaiting delivery under the TaskEvents monitor. */
+    private record PendingTaskObservation(
+            Scope.@NonNull AgentScope scope, @NonNull TaskInfo task, @NonNull ExitCause cause) {}
+
+    /** Last observed change for one exact process instance; owned by TaskEvents. */
+    private record TaskInstanceState(Scope.@NonNull AgentScope scope, @NonNull Change change) {}
 }

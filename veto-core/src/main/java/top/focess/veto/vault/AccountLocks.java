@@ -22,22 +22,22 @@ final class AccountLocks {
             IntStream.range(0, STRIPE_COUNT).mapToObj(ignored -> new ReentrantLock()).toList();
     private final @NonNull ThreadLocal<@Nullable Integer> held = new ThreadLocal<>();
 
-    @NonNull Access shared() {
+    @NonNull AccountLockLease shared() {
         var lock = gate.readLock();
         lock.lock();
-        return new Access(List.of(lock), 0);
+        return new AccountLockLease(held, List.of(lock), 0);
     }
 
-    @NonNull Access exclusive() {
+    @NonNull AccountLockLease exclusive() {
         if (gate.getReadHoldCount() > 0 && !gate.isWriteLockedByCurrentThread())
             throw new IllegalStateException(
                     "Cannot start account deletion/setup inside an account callback");
         var lock = gate.writeLock();
         lock.lock();
-        return new Access(List.of(lock), 0);
+        return new AccountLockLease(held, List.of(lock), 0);
     }
 
-    @NonNull Access account(@NonNull UUID @NonNull ... identities) {
+    @NonNull AccountLockLease account(@NonNull UUID @NonNull ... identities) {
         var acquired = new ArrayList<@NonNull Lock>();
         int accountCount = 0;
         var read = gate.readLock();
@@ -64,8 +64,8 @@ final class AccountLocks {
                 accountCount++;
             }
             held.set(heldCount() + accountCount);
-            return new Access(acquired, accountCount);
-        } catch (RuntimeException | Error failure) {
+            return new AccountLockLease(held, acquired, accountCount);
+        } catch (Throwable failure) {
             for (int i = acquired.size() - 1; i >= 0; i--) acquired.get(i).unlock();
             throw failure;
         }
@@ -89,18 +89,25 @@ final class AccountLocks {
         return gate.isWriteLockedByCurrentThread();
     }
 
-    final class Access implements AutoCloseable {
+    /** Same-thread lease that releases acquired account locks in reverse acquisition order. */
+    static final class AccountLockLease implements AutoCloseable {
+        private final @NonNull ThreadLocal<@Nullable Integer> held;
         private final @NonNull List<@NonNull Lock> acquired;
         private final int accountCount;
 
-        private Access(@NonNull List<@NonNull Lock> acquired, int accountCount) {
+        private AccountLockLease(
+                @NonNull ThreadLocal<@Nullable Integer> held,
+                @NonNull List<@NonNull Lock> acquired,
+                int accountCount) {
+            this.held = held;
             this.acquired = acquired;
             this.accountCount = accountCount;
         }
 
         @Override
         public void close() {
-            int remaining = heldCount() - accountCount;
+            var count = held.get();
+            int remaining = (count == null ? 0 : count) - accountCount;
             if (remaining == 0) held.remove();
             else held.set(remaining);
             for (int i = acquired.size() - 1; i >= 0; i--) acquired.get(i).unlock();

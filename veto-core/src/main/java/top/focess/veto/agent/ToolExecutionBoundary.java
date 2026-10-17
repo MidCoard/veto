@@ -29,47 +29,6 @@ import top.focess.veto.api.plugin.PluginHost;
 
 /** Owns the host authority sequence around every tool invocation. */
 public final class ToolExecutionBoundary {
-    static final class ScreenedInvocation {
-        private final @NonNull ToolCall call;
-        private final @NonNull ToolDefinition definition;
-        private final @NonNull ApprovalDecision decision;
-        private final @NonNull ToolExecutionPermit permit;
-
-        private ScreenedInvocation(
-                @NonNull ToolCall call,
-                @NonNull ToolDefinition definition,
-                @NonNull ApprovalDecision decision,
-                @NonNull ToolExecutionPermit permit) {
-            this.call = call;
-            this.definition = definition;
-            this.decision = decision;
-            this.permit = permit;
-        }
-
-        @NonNull ToolCall call() {
-            return call;
-        }
-
-        @NonNull ToolDefinition definition() {
-            return definition;
-        }
-
-        @NonNull ApprovalDecision decision() {
-            return decision;
-        }
-    }
-
-    static final class AuthorizedInvocation {
-        private final @NonNull ScreenedInvocation screened;
-        private final boolean maskObservation;
-
-        private AuthorizedInvocation(
-                @NonNull ScreenedInvocation screened, boolean maskObservation) {
-            this.screened = screened;
-            this.maskObservation = maskObservation;
-        }
-    }
-
     private final @NonNull String agentId;
     private final @NonNull UUID sessionId;
     private final @NonNull UUID userId;
@@ -77,8 +36,9 @@ public final class ToolExecutionBoundary {
     private final @NonNull Gateway gateway;
     private final @NonNull HitlRegistry hitl;
     private final @NonNull IngressDefense ingress;
-    private final @NonNull Map<String, ScreenedInvocation> pending = new ConcurrentHashMap<>();
-    private final @NonNull Map<ScreenedInvocation, Boolean> approved = new ConcurrentHashMap<>();
+    private final @NonNull Map<String, ScreenedToolInvocation> pending = new ConcurrentHashMap<>();
+    private final @NonNull Map<ScreenedToolInvocation, Boolean> approved =
+            new ConcurrentHashMap<>();
 
     /** Wires the screening, HITL and ingress-defense authorities for one agent's tool calls. */
     public ToolExecutionBoundary(
@@ -99,7 +59,7 @@ public final class ToolExecutionBoundary {
         hitl.setSession(agentId, sessionId);
     }
 
-    @NonNull ScreenedInvocation assess(
+    @NonNull ScreenedToolInvocation assess(
             @NonNull ToolCall call,
             @NonNull ToolDefinition definition,
             @NonNull String task,
@@ -114,11 +74,11 @@ public final class ToolExecutionBoundary {
         GatewayResult screened =
                 gateway.screen(call, definition, task, thought, null, step, prepared);
         ApprovalDecision decision = hitl.decide(agentId, call, definition, screened, hookDecision);
-        return new ScreenedInvocation(call, definition, decision, screened.executionPermit());
+        return new ScreenedToolInvocation(call, definition, decision, screened.executionPermit());
     }
 
     void register(
-            @NonNull ScreenedInvocation screened,
+            @NonNull ScreenedToolInvocation screened,
             @NonNull List<VetoOption> offered,
             Danger danger,
             Relevance relevance) {
@@ -154,27 +114,28 @@ public final class ToolExecutionBoundary {
         }
     }
 
-    @NonNull AuthorizedInvocation authorize(@NonNull ScreenedInvocation screened) {
-        if (screened.decision() instanceof ApprovalDecision.AutoApprove) {
-            return new AuthorizedInvocation(screened, true);
+    @NonNull AuthorizedToolInvocation authorize(@NonNull ScreenedToolInvocation screened) {
+        if (screened.decision instanceof ApprovalDecision.AutoApprove) {
+            return new AuthorizedToolInvocation(screened, true);
         }
-        if (screened.decision() instanceof ApprovalDecision.Prompt) {
+        if (screened.decision instanceof ApprovalDecision.Prompt) {
             var maskObservation = approved.remove(screened);
-            if (maskObservation != null) return new AuthorizedInvocation(screened, maskObservation);
+            if (maskObservation != null)
+                return new AuthorizedToolInvocation(screened, maskObservation);
         }
         throw new SecurityException("Tool invocation has not completed host authorization");
     }
 
-    @NonNull ToolExecutionPermit revalidate(@NonNull AuthorizedInvocation authorized) {
-        ScreenedInvocation screened = authorized.screened;
+    @NonNull ToolExecutionPermit revalidate(@NonNull AuthorizedToolInvocation authorized) {
+        ScreenedToolInvocation screened = authorized.screened;
         return gateway.revalidateExecution(screened.call, screened.definition, screened.permit);
     }
 
     @NonNull String defend(
-            @NonNull AuthorizedInvocation authorized,
+            @NonNull AuthorizedToolInvocation authorized,
             @NonNull ToolResult result,
             String replacement) {
-        ScreenedInvocation screened = authorized.screened;
+        ScreenedToolInvocation screened = authorized.screened;
         if (replacement != null
                 && result.success()
                 && screened.definition.capability() == ToolCapability.WORKSPACE_READ)
@@ -210,5 +171,38 @@ public final class ToolExecutionBoundary {
         pending.clear();
         approved.clear();
         hitl.clear(agentId);
+    }
+
+    /** Immutable host screening result; identity binds approval to this exact tool invocation. */
+    static final class ScreenedToolInvocation {
+        final @NonNull ToolCall call;
+        final @NonNull ToolDefinition definition;
+        final @NonNull ApprovalDecision decision;
+        private final @NonNull ToolExecutionPermit permit;
+
+        private ScreenedToolInvocation(
+                @NonNull ToolCall call,
+                @NonNull ToolDefinition definition,
+                @NonNull ApprovalDecision decision,
+                @NonNull ToolExecutionPermit permit) {
+            this.call = call;
+            this.definition = definition;
+            this.decision = decision;
+            this.permit = permit;
+        }
+    }
+
+    /**
+     * Immutable authorization result produced only after host screening and any required approval.
+     */
+    static final class AuthorizedToolInvocation {
+        private final @NonNull ScreenedToolInvocation screened;
+        private final boolean maskObservation;
+
+        private AuthorizedToolInvocation(
+                @NonNull ScreenedToolInvocation screened, boolean maskObservation) {
+            this.screened = screened;
+            this.maskObservation = maskObservation;
+        }
     }
 }

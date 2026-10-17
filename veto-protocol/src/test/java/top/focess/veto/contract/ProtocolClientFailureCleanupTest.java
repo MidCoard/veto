@@ -9,7 +9,9 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
@@ -95,7 +97,7 @@ class ProtocolClientFailureCleanupTest {
 
     @Test
     @Timeout(15)
-    void handshakeDeadlineClosesBlockedReaderAndWriter() throws Exception {
+    void handshakeWaitTimeoutClosesBlockedReaderAndWriter() throws Exception {
         var closed = new CountDownLatch(1);
         var reader = new AtomicReference<Thread>();
         var writer = new AtomicReference<Thread>();
@@ -117,13 +119,26 @@ class ProtocolClientFailureCleanupTest {
                         closed.countDown();
                     }
                 };
-        var failure =
-                assertThrows(ExecutionException.class, () -> new ProtocolClient(() -> transport));
-        var cause = assertInstanceOf(IllegalStateException.class, failure.getCause());
-        assertEquals("Protocol handshake timed out", cause.getMessage());
+        assertThrows(TimeoutException.class, () -> new ProtocolClient(() -> transport));
         assertEquals(0, closed.getCount());
         assertWorkerStopped(reader);
         assertWorkerStopped(writer);
+    }
+
+    @Test
+    @Timeout(15)
+    void startupWaitTimeoutInterruptsTransportSetup() throws Exception {
+        var setupWorker = new AtomicReference<Thread>();
+        assertThrows(
+                TimeoutException.class,
+                () ->
+                        new ProtocolClient(
+                                () -> {
+                                    setupWorker.set(Thread.currentThread());
+                                    new CountDownLatch(1).await();
+                                    throw new AssertionError("Setup should be interrupted");
+                                }));
+        assertWorkerStopped(setupWorker);
     }
 
     @Test
@@ -162,6 +177,69 @@ class ProtocolClientFailureCleanupTest {
         assertFalse(interrupted.get());
         caller.join(1_000);
         assertFalse(caller.isAlive());
+    }
+
+    @Test
+    @Timeout(5)
+    void transportReturnedAfterStartupCancellationClosesOnceWithoutIo() throws Exception {
+        var entering = new CountDownLatch(1);
+        var setupWorker = new AtomicReference<Thread>();
+        var closes = new AtomicInteger();
+        var attemptedIo = new AtomicBoolean();
+        var result = new CompletableFuture<@NonNull Throwable>();
+        var transport =
+                new FrameTransport() {
+                    public void send(@NonNull Frame frame) {
+                        attemptedIo.set(true);
+                        throw new AssertionError("Cancelled setup must not send");
+                    }
+
+                    public @NonNull Frame receive() {
+                        attemptedIo.set(true);
+                        throw new AssertionError("Cancelled setup must not receive");
+                    }
+
+                    public void close() {
+                        assertEquals(1, closes.incrementAndGet());
+                    }
+                };
+        var caller =
+                Thread.ofVirtual()
+                        .start(
+                                () -> {
+                                    try (var opened =
+                                            new ProtocolClient(
+                                                    () -> {
+                                                        setupWorker.set(Thread.currentThread());
+                                                        entering.countDown();
+                                                        try {
+                                                            new CountDownLatch(1).await();
+                                                        } catch (InterruptedException cancelled) {
+                                                            // Setup completes as cancellation
+                                                            // arrives.
+                                                            return transport;
+                                                        }
+                                                        throw new AssertionError(
+                                                                "Setup should be interrupted");
+                                                    })) {
+                                        assertFalse(opened.isClosed());
+                                        result.complete(
+                                                new AssertionError("Connection should not open"));
+                                    } catch (Throwable failure) {
+                                        result.complete(failure);
+                                    }
+                                });
+        try {
+            assertTrue(entering.await(1, TimeUnit.SECONDS));
+        } finally {
+            caller.interrupt();
+        }
+        assertInstanceOf(InterruptedException.class, result.get(2, TimeUnit.SECONDS));
+        assertWorkerStopped(setupWorker);
+        caller.join(1_000);
+        assertFalse(caller.isAlive());
+        assertEquals(1, closes.get());
+        assertFalse(attemptedIo.get());
     }
 
     @Test

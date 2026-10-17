@@ -22,10 +22,9 @@ import top.focess.veto.secret.detection.SecretMasker;
 
 /** Bounded transient captures. No raw-value lookup is exposed to tools or model callers. */
 public final class SecretCandidateStore {
-    private record SessionKey(@NonNull UUID userId, @NonNull String session) {}
 
     private final @NonNull Set<UUID> closedUsers = new HashSet<>();
-    private final @NonNull Set<SessionKey> retiredSessions = new HashSet<>();
+    private final @NonNull Set<SecretSessionIdentity> retiredSessions = new HashSet<>();
     private static final @NonNull Pattern REFERENCE = Pattern.compile("\\[SECRET_REF:([^]]+)]");
 
     /** Lifecycle state of a captured candidate. */
@@ -53,40 +52,7 @@ public final class SecretCandidateStore {
     public record ImportReceipt(
             @NonNull String credentialRef, @NonNull String service, @NonNull String label) {}
 
-    private static final class Entry {
-        private final Scope.@NonNull AgentScope scope;
-        private @NonNull Descriptor descriptor;
-        private String value;
-        private ImportReceipt imported;
-        private final int bytes;
-
-        private Entry(
-                Scope.@NonNull AgentScope scope,
-                @NonNull Descriptor descriptor,
-                @NonNull String value,
-                int bytes) {
-            this.scope = scope;
-            this.descriptor = descriptor;
-            this.value = value;
-            this.bytes = bytes;
-        }
-
-        private void discard(@NonNull State state) {
-            value = null;
-            var d = descriptor;
-            descriptor =
-                    new Descriptor(
-                            d.reference(),
-                            d.sourceId(),
-                            d.start(),
-                            d.end(),
-                            d.category(),
-                            d.expiresAt(),
-                            state);
-        }
-    }
-
-    private final @NonNull Map<String, Entry> entries = new LinkedHashMap<>();
+    private final @NonNull Map<String, SecretCandidate> entries = new LinkedHashMap<>();
     private final @NonNull Clock clock;
     private final @NonNull Duration ttl;
     private final int maxCount;
@@ -173,7 +139,8 @@ public final class SecretCandidateStore {
             @NonNull String input,
             boolean preserveLines) {
         if (closedUsers.contains(scope.userId())
-                || retiredSessions.contains(new SessionKey(scope.userId(), scope.session())))
+                || retiredSessions.contains(
+                        new SecretSessionIdentity(scope.userId(), scope.session())))
             throw new IllegalStateException("Secret capture is unavailable");
         expire();
         List<int[]> references = new ArrayList<>();
@@ -182,7 +149,7 @@ public final class SecretCandidateStore {
             String reference = referenceMatcher.group(1);
             if (reference == null)
                 throw new IllegalStateException("Secret reference is unavailable");
-            Entry referenced = entries.get(reference);
+            SecretCandidate referenced = entries.get(reference);
             if (referenced == null || !referenced.scope.equals(scope) || referenced.value == null)
                 throw new IllegalStateException("Secret reference is unavailable");
             references.add(new int[] {referenceMatcher.start(), referenceMatcher.end()});
@@ -192,8 +159,8 @@ public final class SecretCandidateStore {
         List<SecretMasker.SecretMatch> matches = new ArrayList<>();
         for (var match : detector.detect(input))
             if (SecretMasker.captureWorthy(match.category())) matches.add(match);
-        Map<String, Entry> known = new LinkedHashMap<>();
-        for (Entry entry : entries.values()) {
+        Map<String, SecretCandidate> known = new LinkedHashMap<>();
+        for (SecretCandidate entry : entries.values()) {
             String value = entry.value;
             if (!entry.scope.equals(scope) || value == null) continue;
             known.put(value, entry);
@@ -208,7 +175,7 @@ public final class SecretCandidateStore {
                 Comparator.comparingInt(SecretMasker.SecretMatch::start)
                         .thenComparing(
                                 Comparator.comparingInt(SecretMasker.SecretMatch::end).reversed()));
-        Map<String, Entry> added = new LinkedHashMap<>();
+        Map<String, SecretCandidate> added = new LinkedHashMap<>();
         List<Descriptor> captured = new ArrayList<>();
         StringBuilder text = new StringBuilder();
         int end = 0;
@@ -229,14 +196,14 @@ public final class SecretCandidateStore {
             }
             if (insideReference) continue;
             String value = input.substring(match.start(), match.end());
-            Entry entry = known.get(value);
+            SecretCandidate entry = known.get(value);
             if (entry == null) {
                 int size = value.getBytes(StandardCharsets.UTF_8).length;
                 if (size > maxValueBytes || ++count > maxCount || (bytes += size) > maxBytes)
                     throw new IllegalStateException("Secret candidate capacity exceeded");
                 String reference = "s_" + UUID.randomUUID().toString().replace("-", "");
                 entry =
-                        new Entry(
+                        new SecretCandidate(
                                 scope,
                                 new Descriptor(
                                         reference,
@@ -282,7 +249,7 @@ public final class SecretCandidateStore {
         int previous = 0;
         while (matcher.find()) {
             String reference = matcher.group(1);
-            Entry entry = reference == null ? null : entries.get(reference);
+            SecretCandidate entry = reference == null ? null : entries.get(reference);
             if (entry == null || !entry.scope.equals(scope) || entry.value == null)
                 throw new IllegalStateException("Secret reference is unavailable");
             segments.add(new ReferenceSegment(input.substring(previous, matcher.start()), false));
@@ -298,7 +265,7 @@ public final class SecretCandidateStore {
     public synchronized @NonNull Optional<Descriptor> describe(
             Scope.@NonNull AgentScope scope, @NonNull String reference) {
         expire();
-        Entry entry = entries.get(reference);
+        SecretCandidate entry = entries.get(reference);
         return entry == null || !entry.scope.equals(scope)
                 ? Optional.empty()
                 : Optional.of(entry.descriptor);
@@ -308,9 +275,10 @@ public final class SecretCandidateStore {
     public synchronized @NonNull Optional<String> reveal(
             Scope.@NonNull AgentScope scope, @NonNull String reference) {
         expire();
-        Entry entry = entries.get(reference);
+        SecretCandidate entry = entries.get(reference);
         if (closedUsers.contains(scope.userId())
-                || retiredSessions.contains(new SessionKey(scope.userId(), scope.session()))
+                || retiredSessions.contains(
+                        new SecretSessionIdentity(scope.userId(), scope.session()))
                 || entry == null
                 || !entry.scope.equals(scope)) return Optional.empty();
         return Optional.ofNullable(entry.value);
@@ -324,9 +292,10 @@ public final class SecretCandidateStore {
             @NonNull String label,
             VaultAccess.@NonNull Handle vault) {
         expire();
-        Entry entry = entries.get(reference);
+        SecretCandidate entry = entries.get(reference);
         if (closedUsers.contains(scope.userId())
-                || retiredSessions.contains(new SessionKey(scope.userId(), scope.session()))
+                || retiredSessions.contains(
+                        new SecretSessionIdentity(scope.userId(), scope.session()))
                 || entry == null
                 || !entry.scope.equals(scope)
                 || entry.value == null)
@@ -425,7 +394,7 @@ public final class SecretCandidateStore {
 
     /** Discards a session's captures and blocks further capture, reveal, and import for it. */
     public synchronized void retireSession(@NonNull UUID userId, @NonNull String session) {
-        retiredSessions.add(new SessionKey(userId, session));
+        retiredSessions.add(new SecretSessionIdentity(userId, session));
         discardSession(userId, session);
     }
 
@@ -452,4 +421,43 @@ public final class SecretCandidateStore {
             if (iterator.next().value == null) iterator.remove();
         }
     }
+
+    /**
+     * Captured secret state. Access and discard require the owning SecretCandidateStore monitor.
+     */
+    private static final class SecretCandidate {
+        final Scope.@NonNull AgentScope scope;
+        @NonNull Descriptor descriptor;
+        String value;
+        ImportReceipt imported;
+        final int bytes;
+
+        SecretCandidate(
+                Scope.@NonNull AgentScope scope,
+                @NonNull Descriptor descriptor,
+                @NonNull String value,
+                int bytes) {
+            this.scope = scope;
+            this.descriptor = descriptor;
+            this.value = value;
+            this.bytes = bytes;
+        }
+
+        void discard(@NonNull State state) {
+            value = null;
+            var d = descriptor;
+            descriptor =
+                    new Descriptor(
+                            d.reference(),
+                            d.sourceId(),
+                            d.start(),
+                            d.end(),
+                            d.category(),
+                            d.expiresAt(),
+                            state);
+        }
+    }
+
+    /** User and session identity used to prevent capture after session retirement. */
+    private record SecretSessionIdentity(@NonNull UUID userId, @NonNull String session) {}
 }

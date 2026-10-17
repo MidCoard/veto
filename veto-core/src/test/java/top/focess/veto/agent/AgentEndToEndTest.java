@@ -729,9 +729,9 @@ class AgentEndToEndTest {
 
     /**
      * A stub {@link ToolEngine} that drives the delegation transform the way the real {@code
-     * GroupTools} do: {@code create_group} requests a forward transform (STANDALONE -> Leader) and
-     * {@code disband_group} requests the reverse. {@link #resolveDefinition} returns an {@link
-     * AgentToolDefinition} so the loop's screening short-circuits to AUTO_APPROVE (no HITL),
+     * CreateGroupTool} does: {@code create_group} requests a forward transform (STANDALONE ->
+     * Leader) and {@code disband_group} requests the reverse. {@link #resolveDefinition} returns an
+     * {@link AgentToolDefinition} so the loop's screening short-circuits to AUTO_APPROVE (no HITL),
      * letting the call flow straight into the drain pass that applies the transform.
      */
     private static final class TransformToolEngine implements ToolEngine {

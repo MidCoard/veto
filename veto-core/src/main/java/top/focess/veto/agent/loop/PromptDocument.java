@@ -8,7 +8,6 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -16,6 +15,7 @@ import java.util.Set;
 import java.util.TreeMap;
 import java.util.regex.Pattern;
 import org.jspecify.annotations.NonNull;
+import top.focess.veto.agent.loop.PromptDocumentParser.PromptDocumentNode;
 import top.focess.veto.api.llm.ChatMessage;
 import top.focess.veto.api.llm.PromptSpan;
 
@@ -31,90 +31,6 @@ public final class PromptDocument {
             @NonNull List<PromptSpan> sources,
             @NonNull List<ChatMessage> messages,
             @NonNull Map<String, String> blocks) {}
-
-    private record Node(
-            @NonNull String source,
-            int line,
-            @NonNull String kind,
-            @NonNull String argument,
-            @NonNull List<Node> body,
-            @NonNull List<Node> alternative) {}
-
-    private static final class Parser {
-        private final @NonNull String name;
-        private final @NonNull String @NonNull [] lines;
-        private int cursor;
-        private int depth;
-
-        Parser(@NonNull String name, @NonNull String source) {
-            this.name = name;
-            lines = source.replace("\r\n", "\n").replace('\r', '\n').split("\n");
-            if (lines.length < 5
-                    || !lines[0].equals("---")
-                    || !lines[1].equals("version: 2")
-                    || !lines[2].matches("id: [A-Za-z][A-Za-z0-9_-]*")
-                    || !lines[3].matches("requires: \\[.*]")
-                    || !lines[4].equals("---")) throw error(name, 1, "E_HEADER");
-            cursor = 5;
-        }
-
-        @NonNull List<Node> parse(@NonNull String end) {
-            if (++depth > 64) throw error(name, cursor + 1, "E_SCOPE_DEPTH");
-            List<Node> nodes = new ArrayList<>();
-            while (cursor < lines.length) {
-                int number = cursor + 1;
-                String line = lines[cursor++];
-                if (!end.isEmpty() && (line.equals(end) || line.equals("@else"))) {
-                    cursor--;
-                    depth--;
-                    return nodes;
-                }
-                String kind = "text";
-                String argument = line;
-                List<Node> body = List.of();
-                List<Node> alternative = List.of();
-                if (line.startsWith("@")) {
-                    int space = line.indexOf(' ');
-                    kind = space < 0 ? line.substring(1) : line.substring(1, space);
-                    argument = space < 0 ? "" : line.substring(space + 1);
-                    switch (kind) {
-                        case "verbatim" -> {
-                            int begin = cursor;
-                            while (cursor < lines.length && !lines[cursor].equals("@endverbatim"))
-                                cursor++;
-                            if (cursor == lines.length)
-                                throw error(name, number, "E_UNCLOSED_VERBATIM");
-                            String literal =
-                                    String.join("\n", Arrays.asList(lines).subList(begin, cursor));
-                            cursor++;
-                            argument = literal;
-                        }
-                        case "if", "for", "message", "block" -> {
-                            String close = kind.equals("block") ? "@end" : "@end" + kind;
-                            body = parse(close);
-                            if (kind.equals("if")
-                                    && cursor < lines.length
-                                    && lines[cursor].equals("@else")) {
-                                cursor++;
-                                alternative = parse(close);
-                            }
-                            if (cursor >= lines.length || !lines[cursor++].equals(close))
-                                throw error(name, number, "E_UNCLOSED_" + kind);
-                        }
-                        case "include" -> {
-                            if (!argument.matches("[A-Za-z0-9_-]+"))
-                                throw error(name, number, "E_INCLUDE");
-                        }
-                        default -> throw error(name, number, "E_DIRECTIVE");
-                    }
-                }
-                nodes.add(new Node(name, number, kind, argument, body, alternative));
-            }
-            if (!end.isEmpty()) throw error(name, lines.length, "E_UNCLOSED_SCOPE");
-            depth--;
-            return nodes;
-        }
-    }
 
     private final @NonNull Map<String, String> sources;
     private final @NonNull StringBuilder output = new StringBuilder();
@@ -154,11 +70,9 @@ public final class PromptDocument {
         if (includes.size() >= 16 || !includes.add(name))
             throw error(name, 1, "E_INCLUDE_CYCLE_OR_DEPTH");
         try {
-            Parser parser = new Parser(name, source);
-            String declarations =
-                    parser.lines[3].substring(11, parser.lines[3].length() - 1).strip();
+            var parser = new PromptDocumentParser(name, source);
             ObjectNode scope = JSON.createObjectNode();
-            for (String item : declarations.split(",")) {
+            for (String item : parser.declarations.split(",")) {
                 String declaration = item.strip();
                 if (declaration.isEmpty()) continue;
                 if (!declaration.matches("[A-Za-z_][A-Za-z0-9_]*") || scope.has(declaration))
@@ -175,8 +89,8 @@ public final class PromptDocument {
         }
     }
 
-    private void validate(@NonNull List<Node> nodes, @NonNull Set<String> names) {
-        for (Node node : nodes) {
+    private void validate(@NonNull List<PromptDocumentNode> nodes, @NonNull Set<String> names) {
+        for (PromptDocumentNode node : nodes) {
             String argument = node.argument();
             switch (node.kind()) {
                 case "text" -> {
@@ -240,15 +154,15 @@ public final class PromptDocument {
     }
 
     private static void variable(
-            @NonNull String path, @NonNull Set<String> names, @NonNull Node node) {
+            @NonNull String path, @NonNull Set<String> names, @NonNull PromptDocumentNode node) {
         if (!path.matches("[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*"))
             throw error(node.source(), node.line(), "E_EXPRESSION");
         String root = path.split("\\.")[0];
         if (!names.contains(root)) throw error(node.source(), node.line(), "E_UNDECLARED " + root);
     }
 
-    private void render(@NonNull List<Node> nodes, @NonNull JsonNode data) {
-        for (Node node : nodes) {
+    private void render(@NonNull List<PromptDocumentNode> nodes, @NonNull JsonNode data) {
+        for (PromptDocumentNode node : nodes) {
             if (++steps > 100_000) throw error(node.source(), node.line(), "E_EXPANSION_LIMIT");
             int start = output.length();
             switch (node.kind()) {
@@ -361,7 +275,7 @@ public final class PromptDocument {
     }
 
     private static boolean condition(
-            @NonNull String expression, @NonNull JsonNode data, @NonNull Node node) {
+            @NonNull String expression, @NonNull JsonNode data, @NonNull PromptDocumentNode node) {
         if (expression.startsWith("isjson(") && expression.endsWith(")")) {
             JsonNode value =
                     lookup(
@@ -442,7 +356,7 @@ public final class PromptDocument {
     }
 
     private static @NonNull String interpolate(
-            @NonNull String expression, @NonNull JsonNode data, @NonNull Node node) {
+            @NonNull String expression, @NonNull JsonNode data, @NonNull PromptDocumentNode node) {
         if (expression.startsWith("json(") && expression.endsWith(")")) {
             JsonNode value =
                     lookup(
@@ -488,7 +402,7 @@ public final class PromptDocument {
         return value;
     }
 
-    private static @NonNull IllegalArgumentException error(
+    static @NonNull IllegalArgumentException error(
             @NonNull String source, int line, @NonNull String code) {
         return new IllegalArgumentException(source + ".mdc:" + line + ":1 " + code);
     }

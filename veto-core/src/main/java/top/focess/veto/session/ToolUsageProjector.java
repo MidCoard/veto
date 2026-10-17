@@ -18,8 +18,8 @@ final class ToolUsageProjector {
     private ToolUsageProjector() {}
 
     static @NonNull ToolUsageSummary project(@NonNull List<@NonNull SessionRecord> records) {
-        List<Invocation> invocations = new ArrayList<>();
-        Map<InvocationKey, Deque<Invocation>> awaiting = new LinkedHashMap<>();
+        List<RecordedToolInvocation> invocations = new ArrayList<>();
+        Map<ToolCallIdentity, Deque<RecordedToolInvocation>> awaiting = new LinkedHashMap<>();
         int syntheticResponses = 0;
         int orphanResponses = 0;
         int malformedCalls = 0;
@@ -43,10 +43,10 @@ final class ToolUsageProjector {
                     malformedCalls++;
                     continue;
                 }
-                Invocation invocation = new Invocation(toolName, record);
+                RecordedToolInvocation invocation = new RecordedToolInvocation(toolName, record);
                 invocations.add(invocation);
                 awaiting.computeIfAbsent(
-                                new InvocationKey(record.agentId(), callId),
+                                new ToolCallIdentity(record.agentId(), callId),
                                 ignored -> new ArrayDeque<>())
                         .addLast(invocation);
             } else if ("TOOL_RESPONSE".equals(record.type())) {
@@ -55,31 +55,32 @@ final class ToolUsageProjector {
                     syntheticResponses++;
                     continue;
                 }
-                Deque<Invocation> matches =
-                        awaiting.get(new InvocationKey(record.agentId(), callId));
-                Invocation invocation = matches == null ? null : matches.pollFirst();
+                Deque<RecordedToolInvocation> matches =
+                        awaiting.get(new ToolCallIdentity(record.agentId(), callId));
+                RecordedToolInvocation invocation = matches == null ? null : matches.pollFirst();
                 if (invocation == null) {
                     orphanResponses++;
                 } else {
-                    invocation.complete(record);
+                    invocation.response = record;
                 }
             }
         }
 
-        Map<String, MutableUsage> byTool = new LinkedHashMap<>();
+        Map<String, ToolUsageAccumulator> byTool = new LinkedHashMap<>();
         int activeCalls = 0;
         int successfulCalls = 0;
         int failedCalls = 0;
         int pendingCalls = 0;
-        for (Invocation invocation : invocations) {
-            MutableUsage usage = byTool.computeIfAbsent(invocation.toolName, MutableUsage::new);
+        for (RecordedToolInvocation invocation : invocations) {
+            ToolUsageAccumulator usage =
+                    byTool.computeIfAbsent(invocation.toolName, ToolUsageAccumulator::new);
             usage.accept(invocation);
             if (invocation.call.active()) {
                 activeCalls++;
             }
             if (invocation.response == null) {
                 pendingCalls++;
-            } else if (isSuccess(invocation.response)) {
+            } else if (invocation.successful()) {
                 successfulCalls++;
             } else {
                 failedCalls++;
@@ -88,7 +89,7 @@ final class ToolUsageProjector {
 
         List<ToolUsage> tools =
                 byTool.values().stream()
-                        .map(MutableUsage::snapshot)
+                        .map(ToolUsageAccumulator::snapshot)
                         .sorted(
                                 Comparator.comparingInt(ToolUsage::totalCalls)
                                         .reversed()
@@ -109,38 +110,23 @@ final class ToolUsageProjector {
                 tools);
     }
 
-    private static boolean isSuccess(@NonNull SessionRecord response) {
-        Object success = response.payload().get("success");
-        if (success instanceof Boolean value) {
-            return value;
-        }
-        return "success".equalsIgnoreCase(String.valueOf(response.payload().get("status")));
-    }
-
     private static String nonBlankString(Object value) {
         return value instanceof String text && !text.isBlank() ? text : null;
     }
 
-    private static @NonNull String errorCode(@NonNull SessionRecord response) {
-        String code = nonBlankString(response.payload().get("errorCode"));
-        return code == null ? "UNSPECIFIED" : code;
-    }
+    /** Correlates a persisted tool response to the calling agent and tool call. */
+    private record ToolCallIdentity(@NonNull String agentId, @NonNull String callId) {}
 
-    private record InvocationKey(@NonNull String agentId, @NonNull String callId) {}
-
-    private static final class Invocation {
+    /** One call and its optional response, confined to a single usage projection. */
+    private static final class RecordedToolInvocation {
 
         private final @NonNull String toolName;
         private final @NonNull SessionRecord call;
         private SessionRecord response;
 
-        private Invocation(@NonNull String toolName, @NonNull SessionRecord call) {
+        private RecordedToolInvocation(@NonNull String toolName, @NonNull SessionRecord call) {
             this.toolName = toolName;
             this.call = call;
-        }
-
-        private void complete(@NonNull SessionRecord response) {
-            this.response = response;
         }
 
         private long durationMillis() {
@@ -151,9 +137,20 @@ final class ToolUsageProjector {
             return Math.max(
                     0, Duration.between(call.timestamp(), completed.timestamp()).toMillis());
         }
+
+        private boolean successful() {
+            SessionRecord completed = response;
+            if (completed == null) return false;
+            Object success = completed.payload().get("success");
+            if (success instanceof Boolean value) {
+                return value;
+            }
+            return "success".equalsIgnoreCase(String.valueOf(completed.payload().get("status")));
+        }
     }
 
-    private static final class MutableUsage {
+    /** Mutable per-tool counters confined to a single usage projection. */
+    private static final class ToolUsageAccumulator {
 
         private final @NonNull String toolName;
         private final @NonNull Map<@NonNull String, @NonNull Integer> failuresByCode =
@@ -167,11 +164,11 @@ final class ToolUsageProjector {
         private long maxDurationMillis;
         private Instant lastCalledAt;
 
-        private MutableUsage(@NonNull String toolName) {
+        private ToolUsageAccumulator(@NonNull String toolName) {
             this.toolName = toolName;
         }
 
-        private void accept(@NonNull Invocation invocation) {
+        private void accept(@NonNull RecordedToolInvocation invocation) {
             totalCalls++;
             if (invocation.call.active()) {
                 activeCalls++;
@@ -188,11 +185,14 @@ final class ToolUsageProjector {
             long duration = invocation.durationMillis();
             totalDurationMillis += duration;
             maxDurationMillis = Math.max(maxDurationMillis, duration);
-            if (isSuccess(response)) {
+            if (invocation.successful()) {
                 successfulCalls++;
             } else {
                 failedCalls++;
-                failuresByCode.merge(errorCode(response), 1, Integer::sum);
+                Object value = response.payload().get("errorCode");
+                String code =
+                        value instanceof String text && !text.isBlank() ? text : "UNSPECIFIED";
+                failuresByCode.merge(code, 1, Integer::sum);
             }
         }
 

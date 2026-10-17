@@ -25,10 +25,10 @@ import top.focess.veto.api.process.ProcessHost;
  * <p>Tool and lifecycle callers overlap virtual output/input workers. The registry monitor
  * serializes start against close; concurrent task lookup remains available during draining.
  * Per-task line and input monitors protect their bounded buffers, and the task monitor makes exit
- * notification occur once. Process state is published through volatile fields. Task observer
- * callbacks can run under the registry or exit monitor and must not wait for a drainer or acquire
- * those monitors from another thread. Lifecycle admission supplies revocation for userId/session
- * cleanup.
+ * notification occur once. Process state is published through volatile fields. BackgroundTask
+ * observer callbacks can run under the registry or exit monitor and must not wait for a drainer or
+ * acquire those monitors from another thread. Lifecycle admission supplies revocation for
+ * userId/session cleanup.
  */
 public final class BackgroundTasks implements AutoCloseable {
     private static final int MAX_LINES = 5000;
@@ -73,7 +73,8 @@ public final class BackgroundTasks implements AutoCloseable {
     public record TextPage(@NonNull String text, int total, Integer nextOffset) {}
 
     private final @NonNull Supplier<@NonNull ProcessHost> host;
-    private final @NonNull ConcurrentHashMap<String, Task> tasks = new ConcurrentHashMap<>();
+    private final @NonNull ConcurrentHashMap<String, BackgroundTask> tasks =
+            new ConcurrentHashMap<>();
     private final @NonNull AtomicLong ids = new AtomicLong();
     private volatile TaskObserver observer;
     private boolean closed;
@@ -93,7 +94,7 @@ public final class BackgroundTasks implements AutoCloseable {
         if (closed) throw new IllegalStateException("Process tasks are closed");
         var process = host.get().startApproved();
         var scope = process.invocation().scope();
-        var task = new Task("bg-" + ids.incrementAndGet(), scope, process);
+        var task = new BackgroundTask("bg-" + ids.incrementAndGet(), scope, process);
         tasks.put(task.id, task);
         changed(task, Change.STARTED);
         Thread.startVirtualThread(() -> drain(task));
@@ -104,7 +105,7 @@ public final class BackgroundTasks implements AutoCloseable {
     public @NonNull List<TaskInfo> list(Scope.@NonNull AgentScope scope) {
         return tasks.values().stream()
                 .filter(task -> task.scope.equals(scope))
-                .map(Task::info)
+                .map(BackgroundTask::info)
                 .sorted(
                         Comparator.comparing(TaskInfo::alive)
                                 .reversed()
@@ -115,7 +116,7 @@ public final class BackgroundTasks implements AutoCloseable {
 
     /** Resolves an owned task for input or control; empty when unknown. */
     public @NonNull Optional<Target> target(Scope.@NonNull AgentScope scope, @NonNull String id) {
-        Task task = owned(scope, id);
+        BackgroundTask task = owned(scope, id);
         if (task == null) return Optional.empty();
         synchronized (task.inputLock) {
             return Optional.of(
@@ -125,13 +126,13 @@ public final class BackgroundTasks implements AutoCloseable {
 
     /** Returns the current info of an owned task; empty when unknown. */
     public @NonNull Optional<TaskInfo> status(Scope.@NonNull AgentScope scope, @NonNull String id) {
-        return Optional.ofNullable(owned(scope, id)).map(Task::info);
+        return Optional.ofNullable(owned(scope, id)).map(BackgroundTask::info);
     }
 
     /** Blocks until the task output drains and the process exits. */
     public @NonNull Optional<TaskInfo> awaitExit(
             Scope.@NonNull AgentScope scope, @NonNull String id) throws InterruptedException {
-        Task task = owned(scope, id);
+        BackgroundTask task = owned(scope, id);
         if (task == null) return Optional.empty();
         task.drained.await();
         if (task.alive) throw new IllegalStateException("Task termination could not be confirmed");
@@ -141,7 +142,7 @@ public final class BackgroundTasks implements AutoCloseable {
     /** Returns the last {@code lines} lines of task output; empty when unknown. */
     public @NonNull Optional<String> output(
             Scope.@NonNull AgentScope scope, @NonNull String id, int lines) {
-        Task task = owned(scope, id);
+        BackgroundTask task = owned(scope, id);
         if (task == null) return Optional.empty();
         synchronized (task.lines) {
             return Optional.of(
@@ -160,7 +161,7 @@ public final class BackgroundTasks implements AutoCloseable {
             @NonNull UUID instance,
             int offset,
             int limit) {
-        Task task = require(scope, id, instance);
+        BackgroundTask task = require(scope, id, instance);
         synchronized (task.lines) {
             int total =
                     task.lines.stream().mapToInt(String::length).sum()
@@ -192,7 +193,7 @@ public final class BackgroundTasks implements AutoCloseable {
     /** Returns the recorded stdin write failures of an owned task. */
     public @NonNull List<@NonNull String> inputFailures(
             Scope.@NonNull AgentScope scope, @NonNull String id) {
-        Task task = owned(scope, id);
+        BackgroundTask task = owned(scope, id);
         if (task == null) return List.of();
         synchronized (task.inputLock) {
             return List.copyOf(task.failures);
@@ -202,7 +203,7 @@ public final class BackgroundTasks implements AutoCloseable {
     /** Validates and enqueues the host-prepared stdin write for an owned task. */
     public @NonNull InputResult enqueueApprovedInput(
             Scope.@NonNull AgentScope scope, @NonNull String id) {
-        Task task = owned(scope, id);
+        BackgroundTask task = owned(scope, id);
         if (task == null) return InputResult.failure(InputStatus.TASK_NOT_FOUND);
         synchronized (task.inputLock) {
             if (!task.alive) return InputResult.failure(InputStatus.TASK_NOT_RUNNING);
@@ -228,7 +229,7 @@ public final class BackgroundTasks implements AutoCloseable {
     /** Requests task termination with the given cause; empty when unknown. */
     public @NonNull Optional<TaskInfo> stop(
             Scope.@NonNull AgentScope scope, @NonNull String id, @NonNull ExitCause cause) {
-        Task task = owned(scope, id);
+        BackgroundTask task = owned(scope, id);
         if (task == null) return Optional.empty();
         stop(task, cause);
         return Optional.of(task.info());
@@ -237,7 +238,7 @@ public final class BackgroundTasks implements AutoCloseable {
     /** Stops a running task or removes an exited one; fails on a stale instance. */
     public @NonNull Action stopOrRemove(
             Scope.@NonNull AgentScope scope, @NonNull String id, @NonNull UUID instance) {
-        Task task = require(scope, id, instance);
+        BackgroundTask task = require(scope, id, instance);
         if (task.alive) {
             stop(task, ExitCause.USER_STOP);
             return new Action("stopped", task.info());
@@ -254,20 +255,20 @@ public final class BackgroundTasks implements AutoCloseable {
         return require(scope, id, instance).info();
     }
 
-    private Task owned(Scope.@NonNull AgentScope scope, @NonNull String id) {
-        Task task = tasks.get(id);
+    private BackgroundTask owned(Scope.@NonNull AgentScope scope, @NonNull String id) {
+        BackgroundTask task = tasks.get(id);
         return task != null && task.scope.equals(scope) ? task : null;
     }
 
-    private @NonNull Task require(
+    private @NonNull BackgroundTask require(
             Scope.@NonNull AgentScope scope, @NonNull String id, @NonNull UUID instance) {
-        Task task = owned(scope, id);
+        BackgroundTask task = owned(scope, id);
         if (task == null || !task.process.id().equals(instance))
             throw new IllegalArgumentException("Task is no longer available");
         return task;
     }
 
-    private void drain(@NonNull Task task) {
+    private void drain(@NonNull BackgroundTask task) {
         try (var input = new BufferedInputStream(task.process.output())) {
             var line = new ByteArrayOutputStream();
             boolean skipLf = false, truncated = false;
@@ -299,7 +300,8 @@ public final class BackgroundTasks implements AutoCloseable {
         }
     }
 
-    private void emit(@NonNull Task task, @NonNull ByteArrayOutputStream bytes, boolean truncated) {
+    private void emit(
+            @NonNull BackgroundTask task, @NonNull ByteArrayOutputStream bytes, boolean truncated) {
         String line = AnsiEscapes.strip(SubprocessOutput.decode(bytes.toByteArray()));
         if (truncated) line += " [line truncated at " + MAX_LINE_BYTES + " bytes]";
         synchronized (task.lines) {
@@ -309,7 +311,7 @@ public final class BackgroundTasks implements AutoCloseable {
         bytes.reset();
     }
 
-    private void writeInput(@NonNull Task task) {
+    private void writeInput(@NonNull BackgroundTask task) {
         while (true) {
             ProcessHost.InputWrite write;
             synchronized (task.inputLock) {
@@ -341,9 +343,10 @@ public final class BackgroundTasks implements AutoCloseable {
         }
     }
 
-    // Task instances are registry-owned; the parameter is the stable shared exit-state monitor.
+    // BackgroundTask instances are registry-owned; the parameter is the stable shared exit-state
+    // monitor.
     @SuppressWarnings("SynchronizationOnLocalVariableOrMethodParameter")
-    private void finish(@NonNull Task task) {
+    private void finish(@NonNull BackgroundTask task) {
         synchronized (task) {
             if (!task.alive || task.process.isAlive()) return;
             task.exitCode = task.process.exitValue();
@@ -354,7 +357,7 @@ public final class BackgroundTasks implements AutoCloseable {
         }
     }
 
-    private void stop(@NonNull Task task, @NonNull ExitCause cause) {
+    private void stop(@NonNull BackgroundTask task, @NonNull ExitCause cause) {
         if (!task.alive) return;
         task.cause = cause;
         task.process.close();
@@ -370,7 +373,7 @@ public final class BackgroundTasks implements AutoCloseable {
         }
     }
 
-    private void changed(@NonNull Task task, @NonNull Change change) {
+    private void changed(@NonNull BackgroundTask task, @NonNull Change change) {
         var target = observer;
         if (target != null) {
             try {
@@ -381,9 +384,9 @@ public final class BackgroundTasks implements AutoCloseable {
         }
     }
 
-    private void stopMatching(@NonNull Predicate<Task> matching) {
+    private void stopMatching(@NonNull Predicate<BackgroundTask> matching) {
         RuntimeException failure = null;
-        for (Task task : List.copyOf(tasks.values()))
+        for (BackgroundTask task : List.copyOf(tasks.values()))
             if (matching.test(task)) {
                 try {
                     stop(task, ExitCause.SHUTDOWN);
@@ -417,7 +420,11 @@ public final class BackgroundTasks implements AutoCloseable {
         stopMatching(task -> true);
     }
 
-    private static final class Task {
+    /**
+     * One running process and its buffers. BackgroundTasks owns lifecycle; lines and inputLock
+     * guard their respective queues.
+     */
+    private static final class BackgroundTask {
         final @NonNull String id;
         final Scope.@NonNull AgentScope scope;
         final ProcessHost.@NonNull Running process;
@@ -434,7 +441,7 @@ public final class BackgroundTasks implements AutoCloseable {
         int queuedBytes;
         boolean writing, closeQueued, stdinClosed;
 
-        Task(
+        BackgroundTask(
                 @NonNull String id,
                 Scope.@NonNull AgentScope scope,
                 ProcessHost.@NonNull Running process) {

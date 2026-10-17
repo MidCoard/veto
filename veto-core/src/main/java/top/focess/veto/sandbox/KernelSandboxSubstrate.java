@@ -16,7 +16,6 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.TimeUnit;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -486,7 +485,7 @@ public class KernelSandboxSubstrate {
                     "KernelSandboxSubstrate: attached Windows Job Object to pid {} "
                             + "(memory={} MiB, cpu={}%, processes={})",
                     pid, profile.maxMemoryMb(), profile.maxCpuPercent(), profile.maxProcesses());
-            JobHandle result = new JobHandle(job, pid);
+            WindowsJobLease result = new WindowsJobLease(kernel, kernel32, job, pid);
             job = null;
             return result;
         } catch (Throwable t) {
@@ -532,64 +531,6 @@ public class KernelSandboxSubstrate {
         info.UIRestrictionsClass = JobObjectUiLimit.JOB_OBJECT_UILIMIT_ALL;
         info.write();
         return info;
-    }
-
-    /** A closeable wrapper for a Windows Job Object handle. */
-    private final class JobHandle implements AutoCloseable {
-        private final WinNT.@NonNull HANDLE job;
-        private final int pid;
-
-        JobHandle(WinNT.@NonNull HANDLE job, int pid) {
-            this.job = job;
-            this.pid = pid;
-        }
-
-        @Override
-        @SuppressWarnings(
-                "BusyWait") // WHY: bounded native accounting must prove every Job descendant has
-        // stopped.
-        public void close() {
-            var kernel = requiredWindowsKernel();
-            var standard = requiredWindowsStdKernel();
-            try {
-                if (!kernel.TerminateJobObject(job, 1))
-                    throw new IllegalStateException(
-                            "TerminateJobObject failed: " + standard.GetLastError());
-                var accounting = new JobObjectBasicAccountingInformation();
-                long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
-                while (true) {
-                    if (!kernel.QueryInformationJobObject(
-                            job,
-                            JobObjectInfoClass.JobObjectBasicAccountingInformation,
-                            accounting,
-                            accounting.size(),
-                            null))
-                        throw new IllegalStateException(
-                                "QueryInformationJobObject failed: " + standard.GetLastError());
-                    accounting.read();
-                    if (accounting.ActiveProcesses == 0) break;
-                    if (System.nanoTime() >= deadline)
-                        throw new IllegalStateException("Windows process tree did not terminate");
-                    try {
-                        Thread.sleep(10);
-                    } catch (InterruptedException interrupted) {
-                        Thread.currentThread().interrupt();
-                        throw new IllegalStateException(
-                                "Windows process tree retirement interrupted", interrupted);
-                    }
-                }
-            } catch (RuntimeException | Error failure) {
-                if (!standard.CloseHandle(job))
-                    failure.addSuppressed(
-                            new IllegalStateException(
-                                    "CloseHandle(Job) failed: " + standard.GetLastError()));
-                throw failure;
-            }
-            if (!standard.CloseHandle(job))
-                throw new IllegalStateException(
-                        "CloseHandle(Job) failed: " + standard.GetLastError());
-            log.debug("KernelSandboxSubstrate: retired Job tree for pid {}", pid);
-        }
     }
 
     /**

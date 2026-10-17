@@ -2,7 +2,6 @@ package top.focess.veto.agent.capability;
 
 import java.util.Arrays;
 import java.util.Set;
-import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
 import org.jspecify.annotations.NonNull;
@@ -21,8 +20,8 @@ import top.focess.veto.vault.KeysteadVault;
 /** Host authority for cooperative, invocation-confined access to imported credentials. */
 @Component
 public final class ImportedCredentialLeases {
-    private static final @NonNull ConcurrentHashMap<ToolCallContext, Set<Lease>> ACTIVE =
-            new ConcurrentHashMap<>();
+    private static final @NonNull ConcurrentHashMap<ToolCallContext, Set<InvocationCredentialLease>>
+            ACTIVE = new ConcurrentHashMap<>();
     private final @NonNull KeysteadVault vault;
     private final @NonNull SessionRepository sessions;
     private final @NonNull ObjectProvider<PluginManager> plugins;
@@ -50,7 +49,7 @@ public final class ImportedCredentialLeases {
                 || !ref.matches("cred_[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}")
                 || !service.matches("[a-z][a-z0-9._-]{0,63}"))
             throw new SecurityException("No approved imported credential binding");
-        var lease = new Lease(context, ref, service);
+        var lease = new InvocationCredentialLease(context, ref, service);
         lease.check();
         ACTIVE.computeIfAbsent(context, ignored -> ConcurrentHashMap.newKeySet()).add(lease);
         return lease;
@@ -60,17 +59,20 @@ public final class ImportedCredentialLeases {
     public static void releaseInvocation(ToolCallContext context) {
         if (context == null) return;
         var leases = ACTIVE.remove(context);
-        if (leases != null) leases.forEach(Lease::close);
+        if (leases != null) leases.forEach(InvocationCredentialLease::close);
     }
 
-    private final class Lease implements ImportedCredentialLease {
+    /**
+     * Invocation-thread-confined credential access; concurrent closure revokes subsequent checks.
+     */
+    private final class InvocationCredentialLease implements ImportedCredentialLease {
         private final @NonNull ToolCallContext context;
         private final @NonNull String reference;
         private final @NonNull String service;
         private final @NonNull Thread thread = Thread.currentThread();
         private volatile boolean closed;
 
-        private Lease(
+        private InvocationCredentialLease(
                 @NonNull ToolCallContext context,
                 @NonNull String reference,
                 @NonNull String service) {
@@ -79,7 +81,7 @@ public final class ImportedCredentialLeases {
             this.service = service;
         }
 
-        private @NonNull UUID check() {
+        private void check() {
             if (closed
                     || Thread.currentThread() != thread
                     || thread.isInterrupted()
@@ -109,12 +111,13 @@ public final class ImportedCredentialLeases {
                                                                 plugin.identity().id())))
                     throw new SecurityException("Credential plugin is unavailable");
             }
-            return userId;
         }
 
+        @Override
         public void use(@NonNull Consumer<char @NonNull []> operation) {
+            check();
             vault.withImportedCredential(
-                    check(),
+                    context.userId(),
                     reference,
                     service,
                     value -> {
@@ -128,6 +131,7 @@ public final class ImportedCredentialLeases {
                     });
         }
 
+        @Override
         public void close() {
             closed = true;
             var leases = ACTIVE.get(context);

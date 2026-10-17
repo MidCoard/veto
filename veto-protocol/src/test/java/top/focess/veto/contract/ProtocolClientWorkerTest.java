@@ -11,6 +11,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.locks.LockSupport;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
@@ -31,6 +32,53 @@ class ProtocolClientWorkerTest {
                     2, transport.heartbeats.getCount(), "Only one heartbeat may be outstanding");
             assertTrue(System.nanoTime() - started >= TimeUnit.SECONDS.toNanos(9));
             assertNull(client.receive(1, TimeUnit.SECONDS));
+        }
+    }
+
+    @Test
+    @Timeout(15)
+    void continuousOutboundTrafficCannotPostponeMissingAcknowledgementTimeout() throws Exception {
+        var transport = new RecordingTransport();
+        transport.acknowledge = false;
+        transport.pacedWrites = true;
+        try (var client = new ProtocolClient(() -> transport, Version.UNKNOWN, "", 20)) {
+            transport.client.set(client);
+            transport.keepSending.set(true);
+            client.send(new Frame.Request(client.nextSequence(), null, null, "test"));
+            assertNull(client.hint("pending", 30, TimeUnit.SECONDS));
+            assertTrue(client.isClosed());
+            assertTrue(transport.closed.await(1, TimeUnit.SECONDS));
+            assertTrue(transport.sends.get() > 1, "Application output must keep progressing");
+            assertEquals(
+                    2, transport.heartbeats.getCount(), "Only one heartbeat may be outstanding");
+        } finally {
+            transport.keepSending.set(false);
+        }
+    }
+
+    @Test
+    @Timeout(18)
+    void lateAcknowledgementClosesConnectionWhileWriterIsBlocked() throws Exception {
+        var transport = new RecordingTransport();
+        transport.acknowledge = false;
+        transport.blockRequests = true;
+        try (var client = new ProtocolClient(() -> transport, Version.UNKNOWN, "", 20)) {
+            assertTrue(transport.firstHeartbeat.await(1, TimeUnit.SECONDS));
+            client.send(new Frame.Request(client.nextSequence(), null, null, "blocked"));
+            assertTrue(transport.blockedWrite.await(1, TimeUnit.SECONDS));
+            assertFalse(
+                    transport.closed.await(11, TimeUnit.SECONDS),
+                    "The writer cannot inspect the acknowledgement deadline during a send");
+            transport.deliver(new Frame.HeartbeatAck(Instant.now()));
+            assertTrue(
+                    transport.closed.await(1, TimeUnit.SECONDS),
+                    "A late acknowledgement must close the connection, not reset its deadline");
+            assertTrue(client.isClosed());
+            var writer = transport.writer.get();
+            if (writer == null) throw new AssertionError("Missing writer");
+            writer.join(1_000);
+            assertFalse(writer.isAlive(), "Closing must release the blocked send");
+            assertEquals(2, transport.heartbeats.getCount());
         }
     }
 
@@ -87,11 +135,15 @@ class ProtocolClientWorkerTest {
         private final @NonNull AtomicBoolean keepSending = new AtomicBoolean();
         private final @NonNull AtomicInteger sends = new AtomicInteger();
         private final @NonNull CountDownLatch heartbeats = new CountDownLatch(3);
+        private final @NonNull CountDownLatch firstHeartbeat = new CountDownLatch(1);
+        private final @NonNull CountDownLatch blockedWrite = new CountDownLatch(1);
         private final @NonNull CountDownLatch closed = new CountDownLatch(1);
         private boolean acknowledge = true;
+        private boolean pacedWrites;
+        private boolean blockRequests;
 
         @Override
-        public void send(@NonNull Frame frame) {
+        public void send(@NonNull Frame frame) throws IOException {
             recordOwner(writer);
             if (frame instanceof Frame.Hello hello) {
                 deliver(new Frame.Welcome(Frame.PROTOCOL_VERSION, hello.seq(), Version.UNKNOWN));
@@ -99,9 +151,22 @@ class ProtocolClientWorkerTest {
             }
             if (frame instanceof Frame.Heartbeat) {
                 heartbeats.countDown();
+                firstHeartbeat.countDown();
                 if (acknowledge) deliver(new Frame.HeartbeatAck(Instant.now()));
             }
+            if (frame instanceof Frame.Request && blockRequests) {
+                blockedWrite.countDown();
+                try {
+                    if (!closed.await(15, TimeUnit.SECONDS))
+                        throw new IOException("Simulated write timed out");
+                } catch (InterruptedException interrupted) {
+                    Thread.currentThread().interrupt();
+                    throw new IOException(interrupted);
+                }
+                throw new IOException("Transport closed");
+            }
             if (frame instanceof Frame.Request && keepSending.get()) {
+                if (pacedWrites) LockSupport.parkNanos(TimeUnit.MILLISECONDS.toNanos(1));
                 sends.incrementAndGet();
                 var active = client.get();
                 if (active != null && !active.isClosed())

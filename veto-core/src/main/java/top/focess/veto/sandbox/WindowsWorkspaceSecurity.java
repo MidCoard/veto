@@ -62,10 +62,10 @@ final class WindowsWorkspaceSecurity {
     private static final @NonNull String ALL_RESTRICTED_APPLICATION_PACKAGES_SID = "S-1-15-2-2";
     private final @NonNull WindowsAclApi api;
     private final @NonNull WindowsAppContainerApi appContainerApi;
-    private final @NonNull Map<@NonNull Path, @NonNull SyntheticMask> syntheticMasks =
+    private final @NonNull Map<@NonNull Path, @NonNull WorkspaceCreationMask> syntheticMasks =
             new HashMap<>();
 
-    private final @NonNull Map<@NonNull Path, @NonNull AclSuppression> suppressedAcls =
+    private final @NonNull Map<@NonNull Path, @NonNull WorkspaceAclSuppression> suppressedAcls =
             new HashMap<>();
     private final @NonNull
             Map<@NonNull SandboxProfile, @NonNull ArrayDeque<@NonNull List<@NonNull Path>>>
@@ -415,7 +415,7 @@ final class WindowsWorkspaceSecurity {
     private void acquireProjection(@NonNull Path path, @NonNull List<@NonNull ByteBuffer> targets) {
         var acl = readDacl(path);
         var existing = suppressedAcls.get(path);
-        var state = existing == null ? new AclSuppression() : existing;
+        var state = existing == null ? new WorkspaceAclSuppression() : existing;
         var nextReferences = new HashMap<>(state.references);
         for (ByteBuffer target : targets) nextReferences.merge(target, 1, Integer::sum);
         var removed = new ArrayList<>(state.removed);
@@ -497,7 +497,7 @@ final class WindowsWorkspaceSecurity {
         return ByteBuffer.wrap(Arrays.copyOfRange(bytes(ace), 8, end)).asReadOnlyBuffer();
     }
 
-    private @NonNull NativeDacl readDacl(@NonNull Path path) {
+    private @NonNull WindowsDaclSnapshot readDacl(@NonNull Path path) {
         var acl = new PointerByReference();
         var descriptor = new PointerByReference();
         try {
@@ -535,7 +535,7 @@ final class WindowsWorkspaceSecurity {
                 offset += size;
             }
             var security = Objects.requireNonNull(descriptor.getValue());
-            return new NativeDacl(Arrays.copyOf(data, 8), entries, security.getShort(2));
+            return new WindowsDaclSnapshot(Arrays.copyOf(data, 8), entries, security.getShort(2));
         } finally {
             localFree(descriptor.getValue());
         }
@@ -543,7 +543,7 @@ final class WindowsWorkspaceSecurity {
 
     private void writeDacl(
             @NonNull Path path,
-            @NonNull NativeDacl original,
+            @NonNull WindowsDaclSnapshot original,
             @NonNull List<@NonNull ByteBuffer> entries) {
         // SetFileSecurity updates only this node. Windows clears its historical AUTO_INHERITED
         // marker, but retains the ACE inheritance flags and protection. SetNamedSecurityInfo's
@@ -573,27 +573,6 @@ final class WindowsWorkspaceSecurity {
         byte[] data = new byte[buffer.remaining()];
         buffer.duplicate().get(data);
         return data;
-    }
-
-    private static final class NativeDacl {
-        private final byte @NonNull [] header;
-        private final @NonNull List<@NonNull ByteBuffer> entries;
-        private final short control;
-
-        private NativeDacl(
-                byte @NonNull [] header,
-                @NonNull List<@NonNull ByteBuffer> entries,
-                short control) {
-            this.header = header;
-            this.entries = entries;
-            this.control = control;
-        }
-    }
-
-    private static final class AclSuppression {
-        private @NonNull Map<@NonNull ByteBuffer, @NonNull Integer> references = new HashMap<>();
-        private @NonNull List<@NonNull Entry<@NonNull ByteBuffer, @NonNull Integer>> removed =
-                new ArrayList<>();
     }
 
     static @NonNull String appContainerName(@NonNull Path workspace) {
@@ -645,7 +624,7 @@ final class WindowsWorkspaceSecurity {
             if (!isWritableByProfile(denied, profile)) {
                 continue;
             }
-            SyntheticMask existing = syntheticMasks.get(denied);
+            WorkspaceCreationMask existing = syntheticMasks.get(denied);
             if (existing != null) {
                 existing.references++;
                 acquired.add(denied);
@@ -661,7 +640,7 @@ final class WindowsWorkspaceSecurity {
                 } else {
                     Files.createFile(denied);
                 }
-                syntheticMasks.put(denied, new SyntheticMask(directory, 1));
+                syntheticMasks.put(denied, new WorkspaceCreationMask(directory, 1));
                 acquired.add(denied);
             } catch (FileAlreadyExistsException raced) {
                 // A host process created the protected node first; provision() masks that real
@@ -697,7 +676,7 @@ final class WindowsWorkspaceSecurity {
 
     private void releaseCreationMasks(@NonNull List<@NonNull Path> paths) {
         for (Path path : paths) {
-            SyntheticMask mask = syntheticMasks.get(path);
+            WorkspaceCreationMask mask = syntheticMasks.get(path);
             if (mask == null || --mask.references > 0) {
                 continue;
             }
@@ -717,16 +696,6 @@ final class WindowsWorkspaceSecurity {
                 // A host-side change wins: never delete a node that no longer matches the empty
                 // mask.
             }
-        }
-    }
-
-    private static final class SyntheticMask {
-        private final boolean directory;
-        private int references;
-
-        private SyntheticMask(boolean directory, int references) {
-            this.directory = directory;
-            this.references = references;
         }
     }
 
@@ -953,5 +922,39 @@ final class WindowsWorkspaceSecurity {
 
         int DeriveAppContainerSidFromAppContainerName(
                 WString appContainerName, PointerByReference appContainerSid);
+    }
+
+    /** Native DACL bytes and control bits captured for one ACL update. */
+    private static final class WindowsDaclSnapshot {
+        private final byte @NonNull [] header;
+        private final @NonNull List<@NonNull ByteBuffer> entries;
+        private final short control;
+
+        private WindowsDaclSnapshot(
+                byte @NonNull [] header,
+                @NonNull List<@NonNull ByteBuffer> entries,
+                short control) {
+            this.header = header;
+            this.entries = entries;
+            this.control = control;
+        }
+    }
+
+    /** Reference counts and removed ACL entries guarded by WindowsWorkspaceSecurity. */
+    private static final class WorkspaceAclSuppression {
+        private @NonNull Map<@NonNull ByteBuffer, @NonNull Integer> references = new HashMap<>();
+        private @NonNull List<@NonNull Entry<@NonNull ByteBuffer, @NonNull Integer>> removed =
+                new ArrayList<>();
+    }
+
+    /** Reference count for a synthetic filesystem mask, guarded by WindowsWorkspaceSecurity. */
+    private static final class WorkspaceCreationMask {
+        private final boolean directory;
+        private int references;
+
+        private WorkspaceCreationMask(boolean directory, int references) {
+            this.directory = directory;
+            this.references = references;
+        }
     }
 }

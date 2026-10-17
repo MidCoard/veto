@@ -20,7 +20,7 @@ public final class PluginClassLoader extends URLClassLoader {
 
     /** Creates one classloader for one installed plugin's artifact and private libraries. */
     public PluginClassLoader(@NonNull String pluginId, @NonNull List<URL> jars) {
-        super(jars.toArray(URL[]::new), new ApiParent());
+        super(jars.toArray(URL[]::new), new PluginApiClassLoader());
         this.pluginId = pluginId;
     }
 
@@ -45,8 +45,9 @@ public final class PluginClassLoader extends URLClassLoader {
         if (closed.compareAndSet(false, true)) super.close();
     }
 
-    private static final class ApiParent extends ClassLoader {
-        ApiParent() {
+    /** Shares only public plugin API dependencies; all other classes use the platform loader. */
+    private static final class PluginApiClassLoader extends ClassLoader {
+        PluginApiClassLoader() {
             super(ClassLoader.getPlatformClassLoader());
         }
 

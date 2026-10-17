@@ -4,15 +4,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.List;
-import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
-import java.util.concurrent.CancellationException;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BooleanSupplier;
 import java.util.stream.Collectors;
 import org.jspecify.annotations.NonNull;
@@ -22,12 +16,9 @@ import org.springframework.stereotype.Component;
 import top.focess.veto.agent.AgentEventSink;
 import top.focess.veto.agent.AgentExecutionPolicy;
 import top.focess.veto.agent.AgentRunner;
-import top.focess.veto.agent.RequestHandle;
 import top.focess.veto.agent.SessionAgentRegistry;
 import top.focess.veto.agent.ToolExecutionBoundary;
-import top.focess.veto.agent.VetoAgent;
 import top.focess.veto.agent.capability.CapabilityAccess;
-import top.focess.veto.agent.capability.HttpDestinationGrant;
 import top.focess.veto.agent.drift.ReadHistory;
 import top.focess.veto.agent.identity.AgentPersona;
 import top.focess.veto.agent.intercept.Gateway;
@@ -42,14 +33,11 @@ import top.focess.veto.agent.tool.ToolCallContextHolder;
 import top.focess.veto.agent.tool.ToolEngineImpl;
 import top.focess.veto.agent.translation.CapabilityTranslator;
 import top.focess.veto.agent.workspace.Workspace;
-import top.focess.veto.api.agent.AgentResult;
-import top.focess.veto.api.agent.AgentState;
 import top.focess.veto.api.llm.LlmBinding;
 import top.focess.veto.api.llm.LlmOptions;
 import top.focess.veto.api.llm.LlmSystemUsage;
 import top.focess.veto.api.llm.ToolDefinition;
 import top.focess.veto.api.llm.VetoRequest;
-import top.focess.veto.api.plugin.agent.AgentHost;
 import top.focess.veto.api.plugin.agent.AgentProfile;
 import top.focess.veto.api.plugin.agent.IsolatedAgent;
 import top.focess.veto.api.plugin.contract.JsonValues;
@@ -67,13 +55,12 @@ import top.focess.veto.util.Nullness;
 /** Host assembly and lifetime of a private invocation child; no feature policy or result parser. */
 @Component
 public final class IsolatedExecutions {
-    private static final class Invocation {
-        private volatile Child child;
-    }
 
-    private static final @NonNull ConcurrentHashMap<@NonNull ToolCallContext, @NonNull Invocation>
+    private static final @NonNull
+            ConcurrentHashMap<@NonNull ToolCallContext, @NonNull IsolatedInvocationState>
             INVOCATIONS = new ConcurrentHashMap<>();
-    private static final @NonNull ConcurrentHashMap<@NonNull String, @NonNull Execution>
+    private static final @NonNull
+            ConcurrentHashMap<@NonNull String, @NonNull IsolatedExecutionContext>
             PRIVATE_CONTEXTS = new ConcurrentHashMap<>();
 
     /**
@@ -158,7 +145,7 @@ public final class IsolatedExecutions {
      * Opens an isolated child for the current authorized parent invocation, clamped to host
      * ceilings. The {@code admitted} supplier must stay true for the child's whole lifetime.
      */
-    public @NonNull Child open(
+    public @NonNull IsolatedChildAgent open(
             IsolatedAgent.@NonNull Spec spec,
             IsolatedAgent.@NonNull Factory factory,
             @NonNull BooleanSupplier admitted) {
@@ -169,7 +156,7 @@ public final class IsolatedExecutions {
         UUID session = parent.sessionId();
         if (userId == null || session == null || !admitted.getAsBoolean())
             throw new SecurityException("No authenticated parent session");
-        var invocation = new Invocation();
+        var invocation = new IsolatedInvocationState();
         if (INVOCATIONS.putIfAbsent(parent, invocation) != null)
             throw new SecurityException("This call already opened an isolated execution");
         ModelBinding model = resolve(userId, spec.tiers());
@@ -177,7 +164,7 @@ public final class IsolatedExecutions {
         if (spec.terminal().reservedCalls() >= limits.calls())
             throw new IllegalArgumentException("No nonterminal call budget");
         var scope =
-                new Execution(
+                new IsolatedExecutionContext(
                         parent,
                         Thread.currentThread(),
                         admitted,
@@ -309,7 +296,13 @@ public final class IsolatedExecutions {
                             parent.executionPermit().callId(),
                             persona,
                             runner);
-            var child = new Child(scope, tools, agent, runner);
+            var child =
+                    new IsolatedChildAgent(
+                            scope,
+                            tools,
+                            agent,
+                            runner,
+                            () -> PRIVATE_CONTEXTS.remove(scope.id(), scope));
             invocation.child = child;
             return child;
         } catch (RuntimeException error) {
@@ -364,295 +357,8 @@ public final class IsolatedExecutions {
         throw new IllegalArgumentException("No model tiers");
     }
 
-    /** Host-issued contract context; API-only plugins cannot construct it. */
-    public static final class Execution implements IsolatedAgent.Runtime {
-        private final @NonNull ToolCallContext parent;
-        private final @NonNull Thread parentThread;
-        private final @NonNull BooleanSupplier admitted;
-        private final @NonNull String id;
-        private final @NonNull String model;
-        private final long started = System.nanoTime();
-        private final long deadline;
-        private final IsolatedAgent.@NonNull Terminal terminal;
-        private final IsolatedAgent.@NonNull Limits limits;
-        private @NonNull Set<@NonNull String> privateTools = Set.of();
-        private final @NonNull AtomicInteger calls = new AtomicInteger();
-        private final @NonNull AtomicLong input = new AtomicLong(), output = new AtomicLong();
-        private volatile int observationBudget;
-        private @NonNull Runnable checkTools = () -> {};
-        private volatile boolean closed;
-        private volatile boolean completed;
-        private HttpDestinationGrant destination;
-
-        private Execution(
-                @NonNull ToolCallContext parent,
-                @NonNull Thread parentThread,
-                @NonNull BooleanSupplier admitted,
-                @NonNull String id,
-                @NonNull String model,
-                IsolatedAgent.@NonNull Limits limits,
-                IsolatedAgent.@NonNull Terminal terminal) {
-            this.parent = parent;
-            this.parentThread = parentThread;
-            this.admitted = admitted;
-            this.id = id;
-            this.model = model;
-            this.deadline = started + limits.timeout().toNanos();
-            this.terminal = terminal;
-            this.limits = limits;
-        }
-
-        public @NonNull String id() {
-            return id;
-        }
-
-        public long deadline() {
-            return deadline;
-        }
-
-        public @NonNull ToolCallContext parent() {
-            return parent;
-        }
-
-        /** Binds the one HTTP destination grant this execution may use; binding twice fails. */
-        public void bind(@NonNull HttpDestinationGrant grant) {
-            authorizeParent();
-            if (destination != null) throw new SecurityException("Destination already bound");
-            destination = grant;
-        }
-
-        /** Verifies the caller is still the original parent invocation and it is not cancelled. */
-        public void authorizeParent() {
-            var context = ToolCallContextHolder.get();
-            if (context == null
-                    || !parent.equals(
-                            CapabilityAccess.require(context.executionPermit().capability())))
-                throw new SecurityException("Parent invocation changed");
-            if (parentThread.isInterrupted() || !admitted.getAsBoolean())
-                throw new CancellationException("Parent invocation cancelled");
-        }
-
-        /** Throws {@link CancellationException} once closed, cancelled, or past the deadline. */
-        public void check() {
-            checkTools.run();
-            if (closed
-                    || Thread.currentThread().isInterrupted()
-                    || parentThread.isInterrupted()
-                    || !admitted.getAsBoolean())
-                throw new CancellationException("Isolated execution cancelled");
-            if (System.nanoTime() >= deadline)
-                throw new CancellationException("Isolated execution deadline exceeded");
-        }
-
-        /** Verifies the current tool invocation is the given private tool of this execution. */
-        public void authorize(@NonNull String operation) {
-            if (!privateTools.contains(operation))
-                throw new SecurityException("Operation is not a private tool");
-            var context = ToolCallContextHolder.get();
-            if (context == null) throw new SecurityException("No private tool invocation");
-            CapabilityAccess.require(parent.executionPermit().capability(), operation);
-            if (!id.equals(context.agentId())
-                    || !parent.userId().equals(context.userId())
-                    || !Objects.equals(parent.sessionId(), context.sessionId()))
-                throw new SecurityException("Private tool belongs to another execution");
-            check();
-        }
-
-        /** True while the parent invocation remains admitted and the deadline has not passed. */
-        public boolean provenanceLive() {
-            return !parentThread.isInterrupted()
-                    && admitted.getAsBoolean()
-                    && System.nanoTime() < deadline;
-        }
-
-        /** Input bytes still available for observations in the next model call. */
-        public int observationBudgetBytes() {
-            return observationBudget;
-        }
-
-        public IsolatedAgent.@NonNull Usage usage() {
-            return new IsolatedAgent.Usage(
-                    id,
-                    model,
-                    Duration.ofNanos(System.nanoTime() - started).toMillis(),
-                    calls.get(),
-                    input.get(),
-                    output.get());
-        }
-
-        /** Settles the declaring invocation with the result through the terminal tool. */
-        public void complete(@NonNull String result) {
-            authorize(terminal.tool());
-            completed = true;
-            ToolCallContextHolder.finish(result);
-        }
-    }
-
-    /** A live isolated child agent; owned by the opening parent invocation and closed with it. */
-    public static final class Child implements IsolatedAgent {
-        private final @NonNull Execution scope;
-        private final IsolatedAgent.@NonNull Tools tools;
-        private final @NonNull VetoAgent agent;
-        private final @NonNull AgentRunner runner;
-        private RequestHandle request;
-        private volatile boolean closed;
-        private final @NonNull AtomicBoolean closeRequested = new AtomicBoolean();
-        private final @NonNull AtomicLong terminationDeadline = new AtomicLong();
-        private @NonNull Runnable onClosed = () -> {};
-
-        /** Registers the close callback, run immediately when the child is already closed. */
-        public synchronized void onClosed(@NonNull Runnable callback) {
-            if (closed) callback.run();
-            else onClosed = callback;
-        }
-
-        private Child(
-                @NonNull Execution scope,
-                IsolatedAgent.@NonNull Tools tools,
-                @NonNull VetoAgent agent,
-                @NonNull AgentRunner runner) {
-            this.scope = scope;
-            this.tools = tools;
-            this.agent = agent;
-            this.runner = runner;
-            agent.onTermination(
-                    () ->
-                            Thread.ofVirtual()
-                                    .name("isolated-cleanup-" + scope.id())
-                                    .start(
-                                            () -> {
-                                                boolean interrupted = false;
-                                                try {
-                                                    while (true) {
-                                                        try {
-                                                            if (agent.awaitTermination(
-                                                                    Duration.ofSeconds(1))) break;
-                                                        } catch (InterruptedException stopped) {
-                                                            interrupted = true;
-                                                        }
-                                                    }
-                                                    cleanup();
-                                                } finally {
-                                                    if (interrupted)
-                                                        Thread.currentThread().interrupt();
-                                                }
-                                            }));
-        }
-
-        public @NonNull Execution scope() {
-            return scope;
-        }
-
-        public @NonNull String id() {
-            return agent.id();
-        }
-
-        public @NonNull AgentState state() {
-            return agent.state();
-        }
-
-        public IsolatedAgent.@NonNull Limits limits() {
-            return scope.limits;
-        }
-
-        public IsolatedAgent.@NonNull Usage usage() {
-            return scope.usage();
-        }
-
-        public boolean budgetExhausted() {
-            return runner.budgetExhausted();
-        }
-
-        /** Submits the single request this child accepts; a second submission fails. */
-        public synchronized AgentHost.@NonNull Request submit(@NonNull String prompt) {
-            scope.authorizeParent();
-            scope.check();
-            if (request != null)
-                throw new IllegalStateException("Isolated child accepts one request");
-            var handle = agent.submitRequest(prompt);
-            request = handle;
-            return new AgentHost.Request() {
-                public @NonNull String id() {
-                    return handle.requestId();
-                }
-
-                public @NonNull CompletableFuture<@NonNull AgentResult> result() {
-                    return handle.result().copy();
-                }
-
-                public @NonNull CompletableFuture<@NonNull Boolean> settled() {
-                    return handle.settled().copy();
-                }
-
-                public boolean cancel(@NonNull Duration timeout) throws InterruptedException {
-                    return agent.cancelTask(handle, timeout);
-                }
-            };
-        }
-
-        /** True once closed after {@code complete} and the submitted request succeeded. */
-        public boolean settledSuccessfully() {
-            var active = request;
-            return closed
-                    && scope.completed
-                    && active != null
-                    && active.settled().isDone()
-                    && active.result().isDone()
-                    && active.result().join().success();
-        }
-
-        /** Blocks until the child agent terminates or the timeout elapses; true when terminated. */
-        public boolean awaitTermination(@NonNull Duration timeout) throws InterruptedException {
-            return agent.awaitTermination(timeout);
-        }
-
-        private synchronized void cleanup() {
-            if (closed) return;
-            scope.closed = true;
-            closed = true;
-            PRIVATE_CONTEXTS.remove(scope.id(), scope);
-            try {
-                tools.close();
-            } finally {
-                onClosed.run();
-            }
-        }
-
-        /**
-         * Terminates the child and releases its private tools, waiting briefly for exit.
-         *
-         * @throws IllegalStateException when termination does not finish within the close deadline
-         */
-        public void close() {
-            if (closed) return;
-            scope.closed = true;
-            long deadline =
-                    terminationDeadline.updateAndGet(
-                            existing ->
-                                    existing == 0
-                                            ? System.nanoTime() + Duration.ofSeconds(2).toNanos()
-                                            : existing);
-            if (closeRequested.compareAndSet(false, true)) agent.terminate();
-            boolean interrupted = Thread.interrupted();
-            try {
-                while (true) {
-                    long remaining = deadline - System.nanoTime();
-                    if (remaining <= 0)
-                        throw new IllegalStateException(
-                                "Isolated execution did not terminate within the close deadline;"
-                                        + " cleanup remains pending");
-                    try {
-                        if (agent.awaitTermination(Duration.ofNanos(remaining))) {
-                            cleanup();
-                            return;
-                        }
-                    } catch (InterruptedException stopped) {
-                        interrupted = true;
-                    }
-                }
-            } finally {
-                if (interrupted) Thread.currentThread().interrupt();
-            }
-        }
+    /** Parent invocation bookkeeping; child publication is visible to cancellation and release. */
+    private static final class IsolatedInvocationState {
+        private volatile IsolatedChildAgent child;
     }
 }

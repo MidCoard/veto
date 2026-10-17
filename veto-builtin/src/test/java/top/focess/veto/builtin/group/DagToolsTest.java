@@ -21,10 +21,10 @@ class DagToolsTest {
     private final @NonNull GroupRegistry registry = fixture.runtime.registry();
     private final @NonNull GroupOrchestrator orchestrator =
             new GroupOrchestrator(registry, blackboard);
-    private final DagTools.@NonNull CreateNode createNode =
-            new DagTools.CreateNode(fixture.runtime.operations());
-    private final DagTools.@NonNull RemoveNode removeNode =
-            new DagTools.RemoveNode(fixture.runtime.operations());
+    private final @NonNull CreateGroupNodeTool createNode =
+            new CreateGroupNodeTool(fixture.runtime.operations());
+    private final @NonNull RemoveGroupNodeTool removeNode =
+            new RemoveGroupNodeTool(fixture.runtime.operations());
 
     @AfterEach
     void tearDown() {
@@ -59,9 +59,9 @@ class DagToolsTest {
         if (group == null) throw new AssertionError("Missing group");
         registry.put(group.withMate("alice", "Review calculations"));
         setContext("leader-1", id);
-        var tool = new CollaborationTools.CreateTask(createNode.groupControlCapability());
-        execute(tool, new CollaborationTools.CreateTask.Args("first", "Calculate", "alice", null));
-        execute(tool, new CollaborationTools.CreateTask.Args("second", "Recheck", "alice", null));
+        var tool = new CreateGroupTaskTool(createNode.groupControlCapability());
+        execute(tool, new CreateGroupTaskTool.Args("first", "Calculate", "alice", null));
+        execute(tool, new CreateGroupTaskTool.Args("second", "Recheck", "alice", null));
         Group updated = orchestrator.tick(id);
         if (updated == null) throw new AssertionError("Missing group");
         assertEquals(1, updated.mates().size());
@@ -75,13 +75,13 @@ class DagToolsTest {
     void explicitTaskRejectsUnknownMemberWithoutCreatingWork() throws Exception {
         UUID id = activeGroup();
         setContext("leader-1", id);
-        var tool = new CollaborationTools.CreateTask(createNode.groupControlCapability());
+        var tool = new CreateGroupTaskTool(createNode.groupControlCapability());
         assertThrows(
                 ToolExecutionException.class,
                 () ->
                         execute(
                                 tool,
-                                new CollaborationTools.CreateTask.Args(
+                                new CreateGroupTaskTool.Args(
                                         "first", "Calculate", "outsider", null)));
         Group group = registry.get(id);
         if (group == null) throw new AssertionError("Missing group");
@@ -190,7 +190,7 @@ class DagToolsTest {
         String out =
                 execute(
                         createNode,
-                        new DagTools.CreateNode.Args(
+                        new CreateGroupNodeTool.Args(
                                 "node-1", "Implement login", "coding", null, null, null));
         assertEquals("Node created: node-1 (skillset: coding). It is eligible for dispatch.", out);
     }
@@ -201,11 +201,11 @@ class DagToolsTest {
         setContext("leader-1", groupId);
         execute(
                 createNode,
-                new DagTools.CreateNode.Args("node-1", "a", "coding", null, null, null));
+                new CreateGroupNodeTool.Args("node-1", "a", "coding", null, null, null));
         String out =
                 execute(
                         createNode,
-                        new DagTools.CreateNode.Args(
+                        new CreateGroupNodeTool.Args(
                                 "node-2", "Test login", "testing", List.of("node-1"), null, null));
         assertEquals(
                 "Node created: node-2 (skillset: testing, depends on: node-1). It becomes eligible"
@@ -223,7 +223,7 @@ class DagToolsTest {
                         () ->
                                 execute(
                                         createNode,
-                                        new DagTools.CreateNode.Args(
+                                        new CreateGroupNodeTool.Args(
                                                 "node-1",
                                                 "a",
                                                 "coding",
@@ -245,7 +245,7 @@ class DagToolsTest {
                         () ->
                                 execute(
                                         createNode,
-                                        new DagTools.CreateNode.Args(
+                                        new CreateGroupNodeTool.Args(
                                                 "node-1", "a", "coding", null, null, null)));
         String message = ToolErrors.normalize(error.getMessage());
         assertTrue(message.startsWith("Node not created: no active group"), message);
@@ -257,8 +257,8 @@ class DagToolsTest {
         setContext("leader-1", groupId);
         execute(
                 createNode,
-                new DagTools.CreateNode.Args("node-2", "a", "coding", null, null, null));
-        String out = execute(removeNode, new DagTools.RemoveNode.Args("node-2"));
+                new CreateGroupNodeTool.Args("node-2", "a", "coding", null, null, null));
+        String out = execute(removeNode, new RemoveGroupNodeTool.Args("node-2"));
         assertEquals("Node removed: node-2 (marked stale).", out);
     }
 
@@ -268,15 +268,15 @@ class DagToolsTest {
         setContext("leader-1", groupId);
         execute(
                 createNode,
-                new DagTools.CreateNode.Args("node-1", "a", "coding", null, null, null));
+                new CreateGroupNodeTool.Args("node-1", "a", "coding", null, null, null));
         execute(
                 createNode,
-                new DagTools.CreateNode.Args(
+                new CreateGroupNodeTool.Args(
                         "node-3", "b", "testing", List.of("node-1"), null, null));
         ToolExecutionException error =
                 assertThrows(
                         ToolExecutionException.class,
-                        () -> execute(removeNode, new DagTools.RemoveNode.Args("node-1")));
+                        () -> execute(removeNode, new RemoveGroupNodeTool.Args("node-1")));
         assertEquals(
                 "Node not removed: node-3 depends on node-1. Remove or re-plan it first.",
                 ToolErrors.normalize(error.getMessage()));

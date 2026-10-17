@@ -150,7 +150,7 @@ class ProtocolClientLifecycleTest {
                             .start(
                                     () -> {
                                         try {
-                                            stream.complete(client.receive(30, TimeUnit.SECONDS));
+                                            stream.complete(client.receive());
                                         } catch (Throwable failure) {
                                             stream.completeExceptionally(failure);
                                         }
@@ -169,6 +169,33 @@ class ProtocolClientLifecycleTest {
             assertThrows(IllegalStateException.class, client::nextSequence);
         } finally {
             client.close();
+        }
+    }
+
+    @Test
+    void blockingReceiveDeliversTheNextFrame() throws Exception {
+        var peer = new Peer();
+        try (var client = new ProtocolClient(() -> peer)) {
+            var waiting = new CountDownLatch(1);
+            var received = new CompletableFuture<Frame.@Nullable ServerFrame>();
+            var consumer =
+                    Thread.ofVirtual()
+                            .start(
+                                    () -> {
+                                        waiting.countDown();
+                                        try {
+                                            received.complete(client.receive());
+                                        } catch (Throwable failure) {
+                                            received.completeExceptionally(failure);
+                                        }
+                                    });
+            assertTrue(waiting.await(1, TimeUnit.SECONDS));
+            assertFalse(received.isDone());
+            var frame = Delta.message("progress");
+            assertTrue(peer.incoming.offer(frame));
+            assertEquals(frame, received.get(1, TimeUnit.SECONDS));
+            consumer.join(1_000);
+            assertFalse(consumer.isAlive());
         }
     }
 
@@ -247,9 +274,8 @@ class ProtocolClientLifecycleTest {
             for (int i = 0; i < 257; i++) assertTrue(peer.incoming.offer(Delta.message("event")));
             assertTrue(peer.closed.await(2, TimeUnit.SECONDS));
             assertTrue(client.isClosed());
-            for (int i = 0; i < 256; i++)
-                assertTrue(client.receive(0, TimeUnit.MILLISECONDS) instanceof Delta);
-            assertNull(client.receive(1, TimeUnit.SECONDS));
+            for (int i = 0; i < 256; i++) assertTrue(client.receive() instanceof Delta);
+            assertNull(client.receive());
         }
     }
 

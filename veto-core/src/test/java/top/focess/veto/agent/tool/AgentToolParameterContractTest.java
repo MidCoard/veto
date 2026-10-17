@@ -11,12 +11,12 @@ import org.junit.jupiter.api.Test;
 import top.focess.veto.api.agent.tool.ToolErrorCode;
 import top.focess.veto.api.agent.tool.ToolExecutionException;
 import top.focess.veto.builtin.group.BlackboardMessage;
-import top.focess.veto.builtin.group.GroupTools;
+import top.focess.veto.builtin.group.PostGroupMessageTool;
 
 class AgentToolParameterContractTest {
     @Test
     void postMessageAdvertisesAndValidatesItsActualMessageTypes() {
-        var argsClass = GroupTools.PostMessage.Args.class;
+        var argsClass = PostGroupMessageTool.Args.class;
         JsonNode values =
                 ToolSchemaCompiler.compileFromRecord(argsClass)
                         .path("properties")

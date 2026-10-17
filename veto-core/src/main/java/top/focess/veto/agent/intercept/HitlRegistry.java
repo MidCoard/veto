@@ -101,23 +101,9 @@ public class HitlRegistry {
 
     private final @NonNull AtomicLong sequences = new AtomicLong();
 
-    /**
-     * A pending veto: the future the agent parks on, plus the original call/def/offered-options
-     * stashed at {@link #register} time so {@link #resolve} can build a grant without the resolver
-     * supplying them (the transport cannot reach a {@link ToolDefinition}).
-     */
-    record Pending(
-            long seq,
-            @NonNull CompletableFuture<@NonNull InterceptResolution> future,
-            ToolCall call,
-            ToolDefinition def,
-            List<@NonNull VetoOption> options,
-            Danger danger,
-            Relevance relevance) {}
-
     /** Pending veto futures keyed by {@code agentId + "|" + callId}. */
-    private final @NonNull ConcurrentHashMap<@NonNull String, @NonNull Pending> pending =
-            new ConcurrentHashMap<>();
+    private final @NonNull ConcurrentHashMap<@NonNull String, @NonNull PendingToolApproval>
+            pending = new ConcurrentHashMap<>();
 
     private final @NonNull ConcurrentHashMap<@NonNull String, @NonNull UUID> sessions =
             new ConcurrentHashMap<>();
@@ -484,7 +470,7 @@ public class HitlRegistry {
         record(agentId, callId, "OPENED", "", "SCREENING", null);
         pending.put(
                 key(agentId, callId),
-                new Pending(
+                new PendingToolApproval(
                         sequences.incrementAndGet(),
                         future,
                         call,
@@ -516,7 +502,7 @@ public class HitlRegistry {
 
     /** Parks the calling (virtual) thread until the user resolves the veto. */
     public @NonNull InterceptResolution await(@NonNull String agentId, @NonNull String callId) {
-        Pending p = pending.get(key(agentId, callId));
+        PendingToolApproval p = pending.get(key(agentId, callId));
         if (p == null) {
             throw new IllegalStateException("no pending veto for " + agentId + "/" + callId);
         }
@@ -547,7 +533,7 @@ public class HitlRegistry {
             @NonNull String agentId,
             @NonNull String callId,
             @NonNull InterceptResolution resolution) {
-        Pending p = pending.get(key(agentId, callId));
+        PendingToolApproval p = pending.get(key(agentId, callId));
         if (p == null) {
             return false;
         }
@@ -558,7 +544,7 @@ public class HitlRegistry {
             @NonNull String agentId,
             @NonNull String callId,
             @NonNull InterceptResolution resolution,
-            @NonNull Pending p) {
+            @NonNull PendingToolApproval p) {
         synchronized (p) {
             if (pending.get(key(agentId, callId)) != p || p.future().isDone()) return false;
             PermissionGrant approvedGrant =
@@ -596,7 +582,7 @@ public class HitlRegistry {
      */
     public boolean resolveOption(
             @NonNull String agentId, @NonNull String callId, @NonNull String optionName) {
-        Pending p = pending.get(key(agentId, callId));
+        PendingToolApproval p = pending.get(key(agentId, callId));
         if (p == null) {
             return false;
         }
@@ -607,7 +593,7 @@ public class HitlRegistry {
             @NonNull String agentId,
             @NonNull String callId,
             @NonNull String optionName,
-            @NonNull Pending p) {
+            @NonNull PendingToolApproval p) {
         VetoOption chosen =
                 VetoOption.DECLINE_AND_CONTINUE.name().equalsIgnoreCase(optionName)
                         ? VetoOption.DECLINE_AND_CONTINUE
@@ -628,7 +614,7 @@ public class HitlRegistry {
      * the agent refuses this call and continues. Returns {@code false} if no pending veto exists.
      */
     public boolean declineOption(@NonNull String agentId, @NonNull String callId) {
-        Pending p = pending.get(key(agentId, callId));
+        PendingToolApproval p = pending.get(key(agentId, callId));
         if (p == null) {
             return false;
         }
@@ -937,4 +923,14 @@ public class HitlRegistry {
     private static @NonNull String key(@NonNull String agentId, @NonNull String callId) {
         return agentId + "|" + callId;
     }
+
+    /** Host-captured tool approval and its completion future, owned by the HITL registry. */
+    private record PendingToolApproval(
+            long seq,
+            @NonNull CompletableFuture<@NonNull InterceptResolution> future,
+            ToolCall call,
+            ToolDefinition def,
+            List<@NonNull VetoOption> options,
+            Danger danger,
+            Relevance relevance) {}
 }

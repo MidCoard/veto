@@ -8,7 +8,6 @@ import java.util.Map;
 import java.util.function.Supplier;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
-import top.focess.veto.agent.AgentRunner.VetoRefusedException;
 import top.focess.veto.agent.intercept.ApprovalDecision;
 import top.focess.veto.agent.intercept.ApprovalReceipt;
 import top.focess.veto.agent.intercept.VetoOption;
@@ -35,7 +34,7 @@ import top.focess.veto.contract.Frame;
 import top.focess.veto.i18n.Msg;
 import top.focess.veto.llm.core.ToolResultPresenter;
 import top.focess.veto.util.Nullness;
-import top.focess.veto.vault.KeysteadVault;
+import top.focess.veto.vault.VaultLockedException;
 
 /** Appends durable history and emits corresponding events in order. */
 final class AgentOutput {
@@ -313,7 +312,7 @@ final class AgentOutput {
         var locale = view.get().locale();
         // Pre-pass: a locked vault wins over any wrapper (CredentialException nests it).
         for (Throwable t = e; t != null; t = t.getCause()) {
-            if (t instanceof KeysteadVault.VaultLockedException) {
+            if (t instanceof VaultLockedException) {
                 return Msg.get(locale, "error.agent.vaultLocked");
             }
         }

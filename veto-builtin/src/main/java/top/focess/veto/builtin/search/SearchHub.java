@@ -16,12 +16,11 @@ import top.focess.veto.api.plugin.service.ServiceException;
 
 /** Builtin-owned search service; external providers are revocable opaque JSON callbacks. */
 public final class SearchHub extends PluginService {
-    private record Callback(@NonNull String ownerId, @NonNull String id) {}
 
     private final @NonNull PluginServices services;
     private final @NonNull Map<@NonNull String, @NonNull SearchProvider> local;
-    private final @NonNull ConcurrentHashMap<@NonNull String, @NonNull Callback> callbacks =
-            new ConcurrentHashMap<>();
+    private final @NonNull ConcurrentHashMap<@NonNull String, @NonNull SearchProviderCallback>
+            callbacks = new ConcurrentHashMap<>();
 
     /** Creates a service with its built-in providers. */
     public SearchHub(
@@ -71,12 +70,16 @@ public final class SearchHub extends PluginService {
                         .orElseThrow(() -> new ServiceException(ServiceException.Code.UNAVAILABLE));
         if (!caller.callerId().equals(handle.providerId()))
             throw new ServiceException(ServiceException.Code.INVALID_REQUEST);
-        Callback existing =
-                callbacks.putIfAbsent(providerName, new Callback(caller.callerId(), callbackId));
+        SearchProviderCallback existing =
+                callbacks.putIfAbsent(
+                        providerName, new SearchProviderCallback(caller.callerId(), callbackId));
         if (existing != null) {
             if (!existing.ownerId().equals(caller.callerId()))
                 throw new ServiceException(ServiceException.Code.INVALID_REQUEST);
-            callbacks.replace(providerName, existing, new Callback(caller.callerId(), callbackId));
+            callbacks.replace(
+                    providerName,
+                    existing,
+                    new SearchProviderCallback(caller.callerId(), callbackId));
         }
         return new JsonValue.ObjectValue(Map.of("registered", new JsonValue.BooleanValue(true)));
     }
@@ -116,7 +119,7 @@ public final class SearchHub extends PluginService {
                 throw new ServiceException(ServiceException.Code.FAILED);
             }
         }
-        Callback callback = callbacks.get(providerName);
+        SearchProviderCallback callback = callbacks.get(providerName);
         if (callback == null) throw new ServiceException(ServiceException.Code.UNAVAILABLE);
         var handle =
                 services.findCallback(callback.id())
@@ -131,4 +134,7 @@ public final class SearchHub extends PluginService {
             throw new ServiceException(ServiceException.Code.FAILED);
         }
     }
+
+    /** Opaque callback identity and its provider plugin; owned by SearchHub. */
+    private record SearchProviderCallback(@NonNull String ownerId, @NonNull String id) {}
 }

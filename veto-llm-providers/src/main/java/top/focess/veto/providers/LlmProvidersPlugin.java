@@ -21,7 +21,7 @@ public final class LlmProvidersPlugin extends VetoPlugin {
             context.register(
                     StandardContributionPoints.LLM_PROVIDERS,
                     type.name().toLowerCase(Locale.ROOT),
-                    new Provider(type, clients));
+                    new BundledLlmProvider(type, clients));
     }
 
     @Override
@@ -44,41 +44,6 @@ public final class LlmProvidersPlugin extends VetoPlugin {
                                                         "Host prompt compiler unavailable"))
                                 .compile(source, data);
         return new LlmClientFactory(new ObjectMapper(), prompts);
-    }
-
-    private static final class Provider implements LlmProvider {
-        private final @NonNull ProviderType type;
-        private final @NonNull LlmClientFactory factory;
-
-        private Provider(@NonNull ProviderType type, @NonNull LlmClientFactory factory) {
-            this.type = type;
-            this.factory = factory;
-        }
-
-        @Override
-        public @NonNull ProviderType type() {
-            return type;
-        }
-
-        @Override
-        public String defaultBaseUrl() {
-            return type == ProviderType.DEEPSEEK ? "https://api.deepseek.com" : null;
-        }
-
-        @Override
-        public LlmClient.@NonNull RawCompletion complete(@NonNull ResolvedRequest request)
-                throws Exception {
-            LlmClient client =
-                    switch (type) {
-                        case OPENAI ->
-                                factory.openAi(request.baseUrl(), request.apiKey(), true, "OpenAI");
-                        case DEEPSEEK ->
-                                factory.deepSeek(request.baseUrl(), request.apiKey(), "DeepSeek");
-                        case ANTHROPIC -> factory.anthropic(request.baseUrl(), request.apiKey());
-                        case GEMINI -> factory.gemini(request.baseUrl(), request.apiKey());
-                    };
-            return client.complete(request);
-        }
     }
 
     @Override

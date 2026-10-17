@@ -11,14 +11,13 @@ import top.focess.veto.api.llm.exceptions.ModelCapabilityException;
 import top.focess.veto.api.plugin.PluginBinding;
 import top.focess.veto.api.plugin.contract.StandardContributionPoints;
 import top.focess.veto.llm.config.LlmJacksonConfig;
-import top.focess.veto.llm.provider.AbstractLlmProvider;
 import top.focess.veto.llm.provider.LLMProviderStrategy;
 import top.focess.veto.observability.AuditLogger;
 
 /** Adapts installed provider contributions to core audit/retry orchestration. */
 @Component
 public final class PluginLlmProviders {
-    private volatile @NonNull Map<ProviderType, RegisteredProvider> providers;
+    private volatile @NonNull Map<ProviderType, RegisteredLlmProvider> providers;
     private final @NonNull ObjectMapper mapper;
     private final @NonNull AuditLogger audit;
     private final @NonNull PluginManager manager;
@@ -44,50 +43,20 @@ public final class PluginLlmProviders {
 
     // WHY: adapters borrow the manager-owned activation; they must not close it.
     @SuppressWarnings("resource")
-    private static @NonNull Map<ProviderType, RegisteredProvider> build(
+    private static @NonNull Map<ProviderType, RegisteredLlmProvider> build(
             @NonNull PluginRegistry state,
             @NonNull ObjectMapper mapper,
             @NonNull AuditLogger audit) {
-        Map<ProviderType, RegisteredProvider> values = new HashMap<>();
+        Map<ProviderType, RegisteredLlmProvider> values = new HashMap<>();
         for (var entry : state.entries(StandardContributionPoints.LLM_PROVIDERS)) {
             var implementation = entry.implementation();
             var runtime = state.plugin(entry.source().namespace());
             var type = implementation.type();
             String defaultBaseUrl = implementation.defaultBaseUrl();
             var strategy =
-                    new AbstractLlmProvider(mapper, audit) {
-                        public boolean supports(@NonNull ProviderType candidate) {
-                            return candidate == type;
-                        }
-
-                        public String defaultBaseUrl() {
-                            return defaultBaseUrl;
-                        }
-
-                        protected @NonNull String providerName() {
-                            return type.name();
-                        }
-
-                        protected LlmClient.@NonNull RawCompletion invoke(
-                                @NonNull ResolvedRequest request) throws Exception {
-                            Outcome outcome =
-                                    runtime.execute(
-                                            () -> {
-                                                try {
-                                                    return new Outcome(
-                                                            implementation.complete(request), null);
-                                                } catch (Exception failure) {
-                                                    return new Outcome(null, failure);
-                                                }
-                                            });
-                            if (outcome.failure() != null) throw outcome.failure();
-                            if (outcome.result() == null)
-                                throw new ModelCapabilityException(
-                                        "Provider returned no completion");
-                            return outcome.result();
-                        }
-                    };
-            if (values.putIfAbsent(type, new RegisteredProvider(strategy, runtime.binding()))
+                    new PluginLlmProvider(
+                            mapper, audit, implementation, runtime, type, defaultBaseUrl);
+            if (values.putIfAbsent(type, new RegisteredLlmProvider(strategy, runtime.binding()))
                     != null) throw new IllegalArgumentException("Duplicate LLM provider: " + type);
         }
         return Map.copyOf(values);
@@ -141,8 +110,7 @@ public final class PluginLlmProviders {
                         + ". Restore the pinned plugin revision or choose an available model before retrying.");
     }
 
-    private record Outcome(LlmClient.RawCompletion result, Exception failure) {}
-
-    private record RegisteredProvider(
+    /** LLM strategy and the exact plugin binding that published it. */
+    private record RegisteredLlmProvider(
             @NonNull LLMProviderStrategy strategy, @NonNull PluginBinding plugin) {}
 }

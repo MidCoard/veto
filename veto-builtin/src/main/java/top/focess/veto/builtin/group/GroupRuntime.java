@@ -28,6 +28,8 @@ import top.focess.veto.api.plugin.Scope;
 import top.focess.veto.api.plugin.agent.AgentHost;
 import top.focess.veto.api.plugin.agent.AgentProfile;
 import top.focess.veto.api.plugin.contract.AgentConfiguration;
+import top.focess.veto.api.plugin.contract.AgentConfiguration.Context;
+import top.focess.veto.api.plugin.contract.AgentConfiguration.Transition;
 import top.focess.veto.api.plugin.contract.JsonValue;
 import top.focess.veto.api.plugin.storage.PluginStorage;
 
@@ -41,31 +43,8 @@ import top.focess.veto.api.plugin.storage.PluginStorage;
  * group's members, and may wait under the runtime monitor. Host lifecycle admission must prevent
  * new calls once shutdown begins.
  */
-public final class GroupRuntime implements AgentConfiguration, GroupObservations, AutoCloseable {
-    private final @NonNull Listener listener = new GroupListener();
-
-    /** Event aspect for this group runtime. */
-    public @NonNull Listener listener() {
-        return listener;
-    }
-
-    private final class GroupListener implements Listener {
-        @EventHandler
-        public void onSessionDeleted(@NonNull SessionDeletedEvent event) {
-            GroupRuntime.this.onSessionDeleted(event);
-        }
-
-        @EventHandler
-        public void onAgentTerminated(@NonNull AgentTerminatedEvent event) {
-            GroupRuntime.this.onAgentTerminated(event);
-        }
-
-        @EventHandler
-        public void onUserLogout(@NonNull UserLogoutEvent event) {
-            GroupRuntime.this.onUserLogout(event);
-        }
-    }
-
+public final class GroupRuntime
+        implements AgentConfiguration, GroupObservations, Listener, AutoCloseable {
     private final @NonNull GroupConfig configuration;
     private final PluginHost host;
     private final PromptRenderer prompts;
@@ -76,9 +55,7 @@ public final class GroupRuntime implements AgentConfiguration, GroupObservations
     private final @NonNull GroupOrchestrator orchestrator;
     private final @NonNull GroupOperations operations;
 
-    private record AgentState(Context context, Transition transition, boolean restored) {}
-
-    private final @NonNull Map<Scope.@NonNull AgentScope, @NonNull AgentState> agents =
+    private final @NonNull Map<Scope.@NonNull AgentScope, @NonNull GroupAgentState> agents =
             new ConcurrentHashMap<>();
     private ScheduledExecutorService scheduler;
     private volatile boolean activationReady = true;
@@ -167,7 +144,7 @@ public final class GroupRuntime implements AgentConfiguration, GroupObservations
         agents.compute(
                 scope,
                 (ignored, prior) ->
-                        new AgentState(
+                        new GroupAgentState(
                                 prior == null ? null : prior.context(),
                                 transition,
                                 prior != null && prior.restored()));
@@ -182,7 +159,7 @@ public final class GroupRuntime implements AgentConfiguration, GroupObservations
                 agents.compute(
                         key,
                         (ignored, prior) ->
-                                new AgentState(
+                                new GroupAgentState(
                                         context,
                                         prior == null ? null : prior.transition(),
                                         prior != null && prior.restored()));
@@ -255,7 +232,8 @@ public final class GroupRuntime implements AgentConfiguration, GroupObservations
             groups.put(group);
         }
         agents.computeIfPresent(
-                key, (ignored, prior) -> new AgentState(prior.context(), prior.transition(), true));
+                key,
+                (ignored, prior) -> new GroupAgentState(prior.context(), prior.transition(), true));
         AgentProfile profile = own == null ? GroupProfiles.standalone(context) : own;
         if (group != null) {
             String profileKey = group.groupId() + "/leader";
@@ -469,6 +447,7 @@ public final class GroupRuntime implements AgentConfiguration, GroupObservations
         if (failure != null) throw failure;
     }
 
+    @EventHandler
     public void onSessionDeleted(@NonNull SessionDeletedEvent event) {
         var scope = event.scope();
         try {
@@ -481,6 +460,7 @@ public final class GroupRuntime implements AgentConfiguration, GroupObservations
         }
     }
 
+    @EventHandler
     public void onAgentTerminated(@NonNull AgentTerminatedEvent event) {
         var scope = event.scope();
         try {
@@ -494,6 +474,7 @@ public final class GroupRuntime implements AgentConfiguration, GroupObservations
         }
     }
 
+    @EventHandler
     public void onUserLogout(@NonNull UserLogoutEvent event) {
         var scope = event.scope();
         try {
@@ -552,4 +533,7 @@ public final class GroupRuntime implements AgentConfiguration, GroupObservations
                 saved.dispatchId(),
                 saved.requestId());
     }
+
+    /** Immutable group configuration, transition and recovery state for one agent. */
+    private record GroupAgentState(Context context, Transition transition, boolean restored) {}
 }

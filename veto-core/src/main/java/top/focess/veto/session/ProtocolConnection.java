@@ -41,10 +41,12 @@ import top.focess.veto.vault.ExecutionSecurity;
 import top.focess.veto.vault.UserEntity;
 
 /**
- * Shared, thread-safe application connection for an IPC peer or browser WebSocket. This monitor
- * owns exchanges and terminal command order; AgentSessions owns attachments. Preparation and
- * command execution run outside the monitor. Agent completion uses result/settlement callbacks.
- * Output only enters a bounded transport queue; its exclusive writer revalidates delivery.
+ * Backend protocol endpoint shared by IPC and WebSocket peers. Receives decoded frames from the
+ * transport server and dispatches them to agent sessions; it owns no socket or transport worker.
+ * This thread-safe connection's monitor owns exchanges and terminal command order; AgentSessions
+ * owns attachments. Preparation and command execution run outside the monitor. Agent completion
+ * uses result/settlement callbacks. Output only enters a bounded transport queue; its exclusive
+ * writer revalidates delivery.
  */
 public final class ProtocolConnection implements AutoCloseable {
     private static final @NonNull Logger log =
@@ -60,32 +62,26 @@ public final class ProtocolConnection implements AutoCloseable {
     private final CommandRegistry registry;
     private final @NonNull BooleanSupplier authenticated;
     private final @NonNull Predicate<@NonNull BooleanSupplier> authorization;
-    private final @NonNull Output output;
+    private final @NonNull ProtocolOutput output;
     private final @NonNull Consumer<@NonNull Boolean> onClose;
     private final @NonNull Locale locale;
-    private final @NonNull Map<@NonNull Long, @NonNull Operation> operations = new HashMap<>();
-    private final @NonNull ArrayDeque<@NonNull Operation> queued = new ArrayDeque<>();
-    private final @NonNull ThreadLocal<@Nullable Operation> execution = new ThreadLocal<>();
+    private final @NonNull Map<@NonNull Long, @NonNull ProtocolOperation> operations =
+            new HashMap<>();
+    private final @NonNull ArrayDeque<@NonNull ProtocolOperation> queued = new ArrayDeque<>();
+    private final @NonNull ThreadLocal<@Nullable ProtocolOperation> execution = new ThreadLocal<>();
     private final @NonNull AtomicLong outputSequence = new AtomicLong();
     // Authority changes exclude committed agent admission and durable approval decisions. This
     // gate is separate from the connection monitor so slow approval storage cannot block IO.
     // Lock order: authority gate -> login-token guard -> connection monitor -> runner/attachments.
     private final @NonNull ReentrantReadWriteLock authority = new ReentrantReadWriteLock();
-    private volatile @NonNull Identity identity;
+    private volatile @NonNull ConnectionIdentity identity;
     private volatile boolean closed;
     private volatile boolean draining;
     private boolean ready;
     private final @NonNull Set<@NonNull Long> receivedSequences = new HashSet<>();
-    private Operation active;
+    private ProtocolOperation active;
     private int controls;
     private VetoCommandSender sender;
-
-    /** Queue admission is nonblocking. The version binds output to its producing authority. */
-    @FunctionalInterface
-    public interface Output {
-        boolean send(
-                Frame.@NonNull ServerFrame frame, long version, @NonNull BooleanSupplier attached);
-    }
 
     public ProtocolConnection(
             @NonNull String id,
@@ -96,7 +92,7 @@ public final class ProtocolConnection implements AutoCloseable {
             UUID user,
             @NonNull BooleanSupplier authenticated,
             @NonNull Predicate<@NonNull BooleanSupplier> authorization,
-            @NonNull Output output,
+            @NonNull ProtocolOutput output,
             @NonNull Consumer<@NonNull Boolean> onClose,
             @NonNull Locale locale) {
         this.id = id;
@@ -104,33 +100,12 @@ public final class ProtocolConnection implements AutoCloseable {
         this.sessions = sessions;
         this.commands = commands;
         this.registry = registry;
-        this.identity = new Identity(user, null, 0);
+        this.identity = new ConnectionIdentity(user, null, 0);
         this.authenticated = authenticated;
         this.authorization = authorization;
         this.output = output;
         this.onClose = onClose;
         this.locale = locale;
-    }
-
-    private record Identity(UUID user, String username, long version) {}
-
-    private static final class Operation {
-        final long seq;
-        final Frame.ClientFrame frame;
-        @NonNull Identity authority;
-        Thread worker;
-        RequestHandle handle;
-        @NonNull Scope scope = new Scope.GlobalScope();
-        CompletableFuture<String> input;
-        volatile boolean cancelled;
-        @NonNull CompletableFuture<Void> cancelAcknowledged =
-                CompletableFuture.completedFuture(null);
-
-        Operation(long seq, Frame.@NonNull ClientFrame frame, @NonNull Identity authority) {
-            this.seq = seq;
-            this.frame = frame;
-            this.authority = authority;
-        }
     }
 
     public UUID userId() {
@@ -178,11 +153,11 @@ public final class ProtocolConnection implements AutoCloseable {
 
     /** Caller owns the authority write gate; only the short state update needs this monitor. */
     private void changeIdentity(UserEntity user) {
-        List<@NonNull Operation> pending;
-        Operation current;
+        List<@NonNull ProtocolOperation> pending;
+        ProtocolOperation current;
         synchronized (this) {
             identity =
-                    new Identity(
+                    new ConnectionIdentity(
                             user == null ? null : user.getUserId(),
                             user == null ? null : user.getUsername(),
                             identity.version() + 1);
@@ -292,30 +267,28 @@ public final class ProtocolConnection implements AutoCloseable {
     }
 
     private void admit(long seq, Frame.@NonNull ClientFrame frame) {
-        Operation start = null;
+        ProtocolOperation start = null;
         synchronized (this) {
             if (closed) return;
             if (operations.size() >= MAX_PENDING) {
                 send(new Frame.Error("Too many pending requests", seq));
                 return;
             }
-            var operation = new Operation(seq, frame, identity);
+            var operation = new ProtocolOperation(seq, frame, identity);
             operations.put(seq, operation);
             if (registry == null || !(frame instanceof Frame.Request)) start = operation;
             else {
                 queued.addLast(operation);
-                if (active == null) start = next();
+                if (active == null) {
+                    active = queued.pollFirst();
+                    start = active;
+                }
             }
         }
         if (start != null) start(start);
     }
 
-    private Operation next() {
-        active = queued.pollFirst();
-        return active;
-    }
-
-    private void start(@NonNull Operation operation) {
+    private void start(@NonNull ProtocolOperation operation) {
         synchronized (this) {
             if (closed || operations.get(operation.seq) != operation) return;
             // Queued terminal commands resolve identity at execution, after preceding login/logout.
@@ -328,7 +301,7 @@ public final class ProtocolConnection implements AutoCloseable {
         }
     }
 
-    private void execute(@NonNull Operation operation) {
+    private void execute(@NonNull ProtocolOperation operation) {
         execution.set(operation);
         LocaleContextHolder.setLocale(locale);
         Frame.ServerFrame response =
@@ -340,8 +313,12 @@ public final class ProtocolConnection implements AutoCloseable {
                 var user = requireUser(operation);
                 var session = runtime.requireOwned(decline.sessionId().toString(), user);
                 operation.scope = session.scope();
-                if (!authorizeControl(operation, () -> decline(session, user)))
-                    throw new IllegalStateException("Connection authority expired");
+                if (!authorizeControl(
+                        operation,
+                        () -> {
+                            session.declineAllVetoes(user);
+                            return true;
+                        })) throw new IllegalStateException("Connection authority expired");
                 response = new Frame.Done(session.scope(), null, -1, null, null, operation.seq);
             } else if (operation.frame instanceof Frame.Request request) {
                 if (request.sessionId() == null) {
@@ -403,12 +380,8 @@ public final class ProtocolConnection implements AutoCloseable {
         }
     }
 
-    private static boolean decline(@NonNull AgentSession session, @NonNull UUID user) {
-        session.declineAllVetoes(user);
-        return true;
-    }
-
-    private void submitRequest(@NonNull Operation operation, Frame.@NonNull Request request) {
+    private void submitRequest(
+            @NonNull ProtocolOperation operation, Frame.@NonNull Request request) {
         var user = requireUser(operation);
         var target = request.sessionId();
         if (target == null) throw new IllegalArgumentException("Session required");
@@ -493,7 +466,8 @@ public final class ProtocolConnection implements AutoCloseable {
     }
 
     /** Final runner enqueue is short and must also serialize with cancellation state. */
-    private boolean authorizeRunner(@NonNull Operation operation, @NonNull BooleanSupplier commit) {
+    private boolean authorizeRunner(
+            @NonNull ProtocolOperation operation, @NonNull BooleanSupplier commit) {
         return authorizeControl(
                 operation,
                 () -> {
@@ -508,7 +482,7 @@ public final class ProtocolConnection implements AutoCloseable {
      * connection monitor around that work: heartbeat, cancellation and admission must stay live.
      */
     private boolean authorizeControl(
-            @NonNull Operation operation, @NonNull BooleanSupplier commit) {
+            @NonNull ProtocolOperation operation, @NonNull BooleanSupplier commit) {
         authority.readLock().lock();
         try {
             return authorization.test(
@@ -518,7 +492,8 @@ public final class ProtocolConnection implements AutoCloseable {
         }
     }
 
-    private void completeAgent(@NonNull Operation operation, @NonNull RequestHandle handle) {
+    private void completeAgent(
+            @NonNull ProtocolOperation operation, @NonNull RequestHandle handle) {
         Frame.ServerFrame outcome;
         try {
             var result = handle.result().join();
@@ -556,8 +531,8 @@ public final class ProtocolConnection implements AutoCloseable {
         finish(operation, outcome);
     }
 
-    private void finish(@NonNull Operation operation, Frame.@NonNull ServerFrame response) {
-        Operation next = null;
+    private void finish(@NonNull ProtocolOperation operation, Frame.@NonNull ServerFrame response) {
+        ProtocolOperation next = null;
         synchronized (this) {
             if (!operation.cancelAcknowledged.isDone()) {
                 var pendingResponse = response;
@@ -590,7 +565,10 @@ public final class ProtocolConnection implements AutoCloseable {
                                 error.username(),
                                 error.code());
             send(response, operation.authority.version(), () -> true);
-            if (active == operation) next = next();
+            if (active == operation) {
+                active = queued.pollFirst();
+                next = active;
+            }
         }
         if (response instanceof Frame.Terminate) finish(true);
         else if (next != null) start(next);
@@ -610,7 +588,7 @@ public final class ProtocolConnection implements AutoCloseable {
     }
 
     private Frame.@NonNull CancelStatus cancel(long target) {
-        Operation operation;
+        ProtocolOperation operation;
         RequestHandle handle;
         synchronized (this) {
             operation = operations.get(target);
@@ -683,7 +661,7 @@ public final class ProtocolConnection implements AutoCloseable {
     }
 
     private void asyncControl(@NonNull Runnable action, long seq) {
-        Identity admittedAuthority;
+        ConnectionIdentity admittedAuthority;
         synchronized (this) {
             if (closed) return;
             if (controls >= MAX_PENDING) {
@@ -698,7 +676,8 @@ public final class ProtocolConnection implements AutoCloseable {
                 .start(
                         () -> {
                             var control =
-                                    new Operation(seq, new Frame.Heartbeat(), admittedAuthority);
+                                    new ProtocolOperation(
+                                            seq, new Frame.Heartbeat(), admittedAuthority);
                             execution.set(control);
                             LocaleContextHolder.setLocale(locale);
                             var security = ExecutionSecurity.open(admittedAuthority.user());
@@ -717,13 +696,13 @@ public final class ProtocolConnection implements AutoCloseable {
                         });
     }
 
-    private boolean valid(@NonNull Operation operation) {
+    private boolean valid(@NonNull ProtocolOperation operation) {
         return !closed
                 && identity.version() == operation.authority.version()
                 && authenticated.getAsBoolean();
     }
 
-    private @NonNull UUID requireUser(@NonNull Operation operation) {
+    private @NonNull UUID requireUser(@NonNull ProtocolOperation operation) {
         var user = operation.authority.user();
         if (user == null || !valid(operation))
             throw new IllegalStateException("Authentication required");
@@ -824,7 +803,7 @@ public final class ProtocolConnection implements AutoCloseable {
     }
 
     private void finish(boolean drain) {
-        List<@NonNull Operation> closing;
+        List<@NonNull ProtocolOperation> closing;
         synchronized (this) {
             if (closed) return;
             draining = drain;
@@ -845,5 +824,35 @@ public final class ProtocolConnection implements AutoCloseable {
             if (worker != null) worker.interrupt();
         }
         onClose.accept(drain);
+    }
+
+    /**
+     * Immutable authentication snapshot; the version changes whenever connection authority changes.
+     */
+    private record ConnectionIdentity(UUID user, String username, long version) {}
+
+    /**
+     * Execution state for one correlated protocol request. ProtocolConnection owns admission,
+     * cancellation and settlement; this state is not independently thread-safe. The volatile
+     * cancellation flag is also read by the executing worker.
+     */
+    private static final class ProtocolOperation {
+        private final long seq;
+        private final Frame.@NonNull ClientFrame frame;
+        private @NonNull ConnectionIdentity authority;
+        private Thread worker;
+        private RequestHandle handle;
+        private @NonNull Scope scope = new Scope.GlobalScope();
+        private CompletableFuture<String> input;
+        private volatile boolean cancelled;
+        private @NonNull CompletableFuture<Void> cancelAcknowledged =
+                CompletableFuture.completedFuture(null);
+
+        private ProtocolOperation(
+                long seq, Frame.@NonNull ClientFrame frame, @NonNull ConnectionIdentity authority) {
+            this.seq = seq;
+            this.frame = frame;
+            this.authority = authority;
+        }
     }
 }

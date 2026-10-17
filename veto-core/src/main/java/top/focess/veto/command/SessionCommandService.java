@@ -77,8 +77,9 @@ public class SessionCommandService {
                 admission -> session.compact(user, locale, admission));
     }
 
-    public static final class SessionNotFoundException extends IllegalArgumentException {
-        public SessionNotFoundException() {
+    /** Requested session could not be found by the command service. */
+    private static final class SessionNotFoundException extends IllegalArgumentException {
+        private SessionNotFoundException() {
             super("Session not found");
         }
     }

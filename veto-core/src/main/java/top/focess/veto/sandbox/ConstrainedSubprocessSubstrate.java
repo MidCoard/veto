@@ -54,13 +54,8 @@ public final class ConstrainedSubprocessSubstrate implements SandboxSubstrate {
     private final KernelSandboxSubstrate kernelWall;
 
     // Handle records with equal profiles still own distinct native retirement claims.
-    private final @NonNull Map<@NonNull SandboxHandle, @NonNull ProcessScope> retirements =
-            new IdentityHashMap<>();
-
-    private static final class ProcessScope {
-        final @NonNull List<@NonNull CompletableFuture<Void>> completions = new ArrayList<>();
-        boolean retiring;
-    }
+    private final @NonNull Map<@NonNull SandboxHandle, @NonNull SandboxProcessRetirement>
+            retirements = new IdentityHashMap<>();
 
     /** Test/local constructor without an OS wall; production construction supplies the wall. */
     public ConstrainedSubprocessSubstrate() {
@@ -94,7 +89,7 @@ public final class ConstrainedSubprocessSubstrate implements SandboxSubstrate {
         log.info("Sandbox provisioned (subprocess substrate): workspaceRoot={}", root);
         var handle = new SandboxHandle("local-" + root.hashCode(), this, root, profile);
         synchronized (retirements) {
-            retirements.put(handle, new ProcessScope());
+            retirements.put(handle, new SandboxProcessRetirement());
         }
         return handle;
     }
@@ -111,7 +106,7 @@ public final class ConstrainedSubprocessSubstrate implements SandboxSubstrate {
         }
         Duration effectiveTimeout = boundedTimeout(timeout, h.profile().maxWallClock());
         Path workdir = resolveUnderWorkspace(h, cwd);
-        List<PreparedProcess> builders = new ArrayList<>();
+        List<PreparedSandboxProcess> builders = new ArrayList<>();
         for (Command c : cmds) {
             builders.add(processBuilderFor(c, workdir, h.profile()));
         }
@@ -124,7 +119,7 @@ public final class ConstrainedSubprocessSubstrate implements SandboxSubstrate {
                             runSequential(builders, connect, effectiveTimeout, h);
                 };
             } finally {
-                builders.forEach(PreparedProcess::close);
+                builders.forEach(PreparedSandboxProcess::close);
             }
         } catch (InterruptedException e) {
             // A genuine interrupt (cancel/shutdown): restore the flag so the loop sees it.
@@ -155,7 +150,7 @@ public final class ConstrainedSubprocessSubstrate implements SandboxSubstrate {
     public @NonNull Process startBackground(
             @NonNull SandboxHandle h, @NonNull Command cmd, @NonNull Path cwd) {
         Path workdir = resolveUnderWorkspace(h, cwd);
-        PreparedProcess prepared = processBuilderFor(cmd, workdir, h.profile());
+        PreparedSandboxProcess prepared = processBuilderFor(cmd, workdir, h.profile());
         ProcessBuilder pb = prepared.builder();
         // Merge stderr into stdout so a single drain thread captures everything the server logs.
         pb.redirectErrorStream(true);
@@ -205,7 +200,7 @@ public final class ConstrainedSubprocessSubstrate implements SandboxSubstrate {
         if (!completion.complete(null)) log.debug("Process completion was already recorded");
     }
 
-    private @NonNull PreparedProcess processBuilderFor(
+    private @NonNull PreparedSandboxProcess processBuilderFor(
             @NonNull Command c, @NonNull Path workdir, @NonNull SandboxProfile profile) {
         List<String> command = new ArrayList<>();
         String executable = resolveExecutable(c.executable(), workdir);
@@ -237,7 +232,7 @@ public final class ConstrainedSubprocessSubstrate implements SandboxSubstrate {
         }
         ProcessBuilder pb = new ProcessBuilder(launchCommand).directory(workdir.toFile());
         configureEnvironment(pb.environment(), profile);
-        return new PreparedProcess(pb, prepared);
+        return new PreparedSandboxProcess(pb, prepared);
     }
 
     /**
@@ -262,19 +257,6 @@ public final class ConstrainedSubprocessSubstrate implements SandboxSubstrate {
         environment.put("TMPDIR", sandboxTemp);
         environment.put("TEMP", sandboxTemp);
         environment.put("TMP", sandboxTemp);
-    }
-
-    private record PreparedProcess(
-            @NonNull ProcessBuilder builder,
-            KernelSandboxSubstrate.PreparedCommand kernelPreparation)
-            implements AutoCloseable {
-
-        @Override
-        public void close() {
-            if (kernelPreparation != null) {
-                kernelPreparation.close();
-            }
-        }
     }
 
     /**
@@ -385,12 +367,12 @@ public final class ConstrainedSubprocessSubstrate implements SandboxSubstrate {
     }
 
     private @NonNull CommandResult runPipeline(
-            @NonNull List<PreparedProcess> builders,
+            @NonNull List<PreparedSandboxProcess> builders,
             @NonNull Duration timeout,
             @NonNull SandboxHandle handle)
             throws IOException, InterruptedException {
         List<ProcessBuilder> processBuilders =
-                builders.stream().map(PreparedProcess::builder).toList();
+                builders.stream().map(PreparedSandboxProcess::builder).toList();
         List<@NonNull CompletableFuture<Void>> completions;
         synchronized (retirements) {
             completions = builders.stream().map(ignored -> admitProcess(handle)).toList();
@@ -428,7 +410,7 @@ public final class ConstrainedSubprocessSubstrate implements SandboxSubstrate {
     }
 
     private @NonNull CommandResult runSequential(
-            @NonNull List<PreparedProcess> builders,
+            @NonNull List<PreparedSandboxProcess> builders,
             @NonNull ChainMode connect,
             @NonNull Duration timeout,
             @NonNull SandboxHandle handle)
@@ -443,7 +425,7 @@ public final class ConstrainedSubprocessSubstrate implements SandboxSubstrate {
                         ? Long.MAX_VALUE
                         : System.nanoTime() + timeout.toNanos();
         boolean capped = !timeout.isZero() && !timeout.isNegative();
-        for (PreparedProcess prepared : builders) {
+        for (PreparedSandboxProcess prepared : builders) {
             Duration remaining =
                     capped ? Duration.ofNanos(deadlineNanos - System.nanoTime()) : timeout;
             if (capped && remaining.isNegative()) {
@@ -580,7 +562,7 @@ public final class ConstrainedSubprocessSubstrate implements SandboxSubstrate {
     /** Attach the trusted bootstrap, then release it to start the untrusted target. */
     private void establishKernelWall(
             @NonNull Process process,
-            @NonNull PreparedProcess prepared,
+            @NonNull PreparedSandboxProcess prepared,
             @NonNull SandboxProfile profile,
             @NonNull CompletableFuture<Void> completion)
             throws IOException {
@@ -635,5 +617,26 @@ public final class ConstrainedSubprocessSubstrate implements SandboxSubstrate {
             throw new SecurityException("Path escapes sandbox workspace: " + rel);
         }
         return resolved;
+    }
+
+    /** Process retirement claims guarded by the substrate retirement-map monitor. */
+    private static final class SandboxProcessRetirement {
+        private final @NonNull List<@NonNull CompletableFuture<Void>> completions =
+                new ArrayList<>();
+        private boolean retiring;
+    }
+
+    /** Process builder and its optional owned native launch preparation. */
+    private record PreparedSandboxProcess(
+            @NonNull ProcessBuilder builder,
+            KernelSandboxSubstrate.PreparedCommand kernelPreparation)
+            implements AutoCloseable {
+
+        @Override
+        public void close() {
+            if (kernelPreparation != null) {
+                kernelPreparation.close();
+            }
+        }
     }
 }

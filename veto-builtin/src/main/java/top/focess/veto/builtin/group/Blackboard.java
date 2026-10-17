@@ -26,12 +26,7 @@ import org.jspecify.annotations.NonNull;
  */
 public class Blackboard {
 
-    private static final class Log {
-        final @NonNull Map<String, BlackboardMessage> messages = new LinkedHashMap<>();
-        long sequence;
-    }
-
-    private final @NonNull ConcurrentMap<UUID, Log> logs = new ConcurrentHashMap<>();
+    private final @NonNull ConcurrentMap<UUID, GroupMessageLog> logs = new ConcurrentHashMap<>();
 
     /** Append atomically; retrying a published message id returns its original sequence. */
     // The local log is the stable shared monitor for this group's publication and reads.
@@ -42,7 +37,7 @@ public class Blackboard {
             throw new IllegalArgumentException(
                     "Mate-to-Mate messages are forbidden (strict hub-and-spoke)");
         }
-        var log = logs.computeIfAbsent(message.groupId(), ignored -> new Log());
+        var log = logs.computeIfAbsent(message.groupId(), ignored -> new GroupMessageLog());
         BlackboardMessage stamped;
         synchronized (log) {
             var previous = log.messages.get(message.messageId());
@@ -103,5 +98,11 @@ public class Blackboard {
     /** Test-only: clear a group. */
     public void clear(@NonNull UUID groupId) {
         logs.remove(groupId);
+    }
+
+    /** One group message log; its monitor protects sequence allocation and message snapshots. */
+    private static final class GroupMessageLog {
+        final @NonNull Map<String, BlackboardMessage> messages = new LinkedHashMap<>();
+        long sequence;
     }
 }

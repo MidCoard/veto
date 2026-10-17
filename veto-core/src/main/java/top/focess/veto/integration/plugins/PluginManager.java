@@ -65,11 +65,13 @@ import top.focess.veto.api.plugin.storage.PluginStorage;
 import top.focess.veto.api.process.ProcessHost;
 import top.focess.veto.api.resources.CatalogueAccess;
 import top.focess.veto.bus.SessionActions;
+import top.focess.veto.event.EventHandlerCompiler;
 import top.focess.veto.event.EventListenerRegistry;
 import top.focess.veto.integration.plugins.storage.PluginInvocationContext;
 import top.focess.veto.integration.plugins.storage.PluginStorageFactory;
 import top.focess.veto.model.SessionRepository;
 import top.focess.veto.plugin.runtime.*;
+import top.focess.veto.plugin.runtime.ManagedPlugin;
 
 /**
  * Installed-package lifecycle and live catalog. Broken packages fail activation without replacing
@@ -99,7 +101,7 @@ public final class PluginManager implements AutoCloseable {
         return value == null ? null : type.cast(value);
     }
 
-    private final @NonNull ServiceAccess serviceAccess;
+    private final @NonNull PluginServiceAccess serviceAccess;
 
     private final @NonNull PluginServiceRegistry serviceRegistry;
 
@@ -181,23 +183,6 @@ public final class PluginManager implements AutoCloseable {
                     });
     }
 
-    private static final class ServiceAccess
-            implements BiPredicate<@NonNull String, @NonNull String> {
-        private final @NonNull ObjectProvider<SessionPlugins> sessions;
-
-        private ServiceAccess(@NonNull ObjectProvider<SessionPlugins> sessions) {
-            this.sessions = sessions;
-        }
-
-        public boolean test(@NonNull String caller, @NonNull String provider) {
-            var session = PluginInvocationContext.currentSession();
-            if (session == null) return ToolCallContextHolder.get() == null;
-            var selected = sessions.getObject();
-            return (caller.isEmpty() || selected.includes(session, caller))
-                    && selected.includes(session, provider);
-        }
-    }
-
     /** Host-side view of the plugin service registry. */
     public @NonNull PluginServices services() {
         return serviceRegistry.forHost();
@@ -225,7 +210,7 @@ public final class PluginManager implements AutoCloseable {
     private volatile @NonNull PluginRegistry published = PluginRegistry.empty();
 
     private final @NonNull Map<String, String> aliases;
-    private final @NonNull List<Registration> stagedRegistrations;
+    private final @NonNull List<StagedPluginContributions> stagedRegistrations;
 
     // Guarded by the manager monitor; dependent consumers can reload after startup completes.
     @SuppressWarnings("FieldMayBeFinal")
@@ -258,8 +243,7 @@ public final class PluginManager implements AutoCloseable {
                 .toList();
     }
 
-    private final EventListenerRegistry.@NonNull Preparation listenerPreparation =
-            new EventListenerRegistry.Preparation();
+    private final @NonNull EventHandlerCompiler listenerPreparation = new EventHandlerCompiler();
     private final @NonNull Map<@NonNull String, @NonNull String> toolNames;
     private final @NonNull Map<Class<?>, Object> baseServices;
     private final @NonNull PluginConfigurations configurations;
@@ -270,46 +254,11 @@ public final class PluginManager implements AutoCloseable {
     private final @NonNull ObjectProvider<SessionActions> invalidations;
     private final @NonNull Set<String> installedIds = new HashSet<>();
     private final @NonNull Set<String> dataLifecycleOwners = ConcurrentHashMap.newKeySet();
-    private final @NonNull Map<ContributionPoint<?>, PointDefinition> definedPoints =
+    private final @NonNull Map<ContributionPoint<?>, OwnedContributionPoint> definedPoints =
             new ConcurrentHashMap<>();
     private final @NonNull Map<String, Integer> pendingDataCleanups = new HashMap<>();
     // Guarded by this monitor; close rejects new deletion claims before draining existing ones.
     private boolean closing;
-
-    /** Manager-owned mutable registration staging, never retained by a query registry. */
-    private record Registration(@NonNull ManagedPlugin plugin, @NonNull PointRegistrations points) {
-        public @NonNull List<@NonNull Contribution<?>> entries() {
-            return points.entries();
-        }
-    }
-
-    /** Mutable only through the plugin's point handler; publication reads an immutable snapshot. */
-    private static final class PointRegistrations {
-        private final @NonNull
-                Map<
-                        @NonNull ContributionPoint<?>,
-                        @NonNull Map<@NonNull String, @NonNull Contribution<?>>>
-                entries = new LinkedHashMap<>();
-
-        private void add(@NonNull Contribution<?> contribution) {
-            String id = contribution.localId();
-            if (entries.values().stream().anyMatch(group -> group.containsKey(id)))
-                throw new IllegalArgumentException("Duplicate contribution identity");
-            entries.computeIfAbsent(contribution.point(), ignored -> new LinkedHashMap<>())
-                    .put(id, contribution);
-        }
-
-        private void remove(@NonNull Contribution<?> contribution) {
-            var group = entries.get(contribution.point());
-            if (group != null) group.remove(contribution.localId());
-        }
-
-        private @NonNull List<@NonNull Contribution<?>> entries() {
-            var result = new ArrayList<Contribution<?>>();
-            entries.values().forEach(group -> result.addAll(group.values()));
-            return List.copyOf(result);
-        }
-    }
 
     /** Host-owned metadata for an installed plugin that deliberately declined initialization. */
     public record DeclinedPlugin(
@@ -318,12 +267,9 @@ public final class PluginManager implements AutoCloseable {
             @NonNull String version,
             PluginDeclinedException.@NonNull Reason reason) {}
 
-    private record PointDefinition(
-            @NonNull String owner, @NonNull ProtocolPointDefinition definition) {}
-
-    private @NonNull Map<ContributionPoint<?>, PointDefinition> withdrawDefinitions(
+    private @NonNull Map<ContributionPoint<?>, OwnedContributionPoint> withdrawDefinitions(
             @UnknownInitialization PluginManager this, @NonNull String owner) {
-        Map<ContributionPoint<?>, PointDefinition> removed = new HashMap<>();
+        Map<ContributionPoint<?>, OwnedContributionPoint> removed = new HashMap<>();
         definedPoints.forEach(
                 (point, definition) -> {
                     if (definition.owner().equals(owner) && definedPoints.remove(point, definition))
@@ -355,7 +301,7 @@ public final class PluginManager implements AutoCloseable {
             @NonNull ObjectProvider<ToolEngineImpl> tools,
             @NonNull ObjectProvider<PluginLlmProviders> providers)
             throws IOException {
-        serviceAccess = new ServiceAccess(sessionPlugins);
+        serviceAccess = new PluginServiceAccess(sessionPlugins);
         serviceRegistry = new PluginServiceRegistry(serviceAccess, this::resolvePluginScope);
         this.sessions = sessions;
         this.invalidations = invalidations;
@@ -398,7 +344,7 @@ public final class PluginManager implements AutoCloseable {
             for (var plugin : disabledPackages)
                 if (!allIds.add(plugin.id()))
                     throw new IllegalArgumentException("Duplicate plugin identity");
-            List<Registration> registered = new ArrayList<>();
+            List<StagedPluginContributions> registered = new ArrayList<>();
             List<DeclinedPlugin> declinedPlugins = new ArrayList<>();
             Iterator<ManagedPlugin> pending = staged.iterator();
             while (pending.hasNext()) {
@@ -468,7 +414,7 @@ public final class PluginManager implements AutoCloseable {
     }
 
     @RequiresNonNull({"serviceRegistry", "serviceAccess"})
-    private @NonNull Registration constructPlugin(
+    private @NonNull StagedPluginContributions constructPlugin(
             @UnknownInitialization PluginManager this,
             @NonNull ManagedPlugin plugin,
             @NonNull Map<Class<?>, Object> availableServices,
@@ -526,7 +472,7 @@ public final class PluginManager implements AutoCloseable {
         grantedServices.put(plugin.identity().id(), Map.copyOf(pluginServices));
         pluginServices.put(PluginServices.class, serviceRegistry.forPlugin(plugin));
         pluginServices.put(PluginContributionsDirectory.class, contributionsFor(plugin));
-        var points = new PointRegistrations();
+        var points = new PluginContributionStaging();
         var handlers = contributionHandlers(plugin, points);
         plugin.construct(
                 new PluginContext(
@@ -539,14 +485,14 @@ public final class PluginManager implements AutoCloseable {
                         pluginServices,
                         handlers),
                 settings.forPlugin(plugin.identity().id()));
-        return new Registration(plugin, points);
+        return new StagedPluginContributions(plugin, points);
     }
 
     private @NonNull Map<@NonNull ContributionPoint<?>, @NonNull Consumer<@NonNull Contribution<?>>>
             contributionHandlers(
                     @UnknownInitialization PluginManager this,
                     @NonNull ManagedPlugin plugin,
-                    @NonNull PointRegistrations points) {
+                    @NonNull PluginContributionStaging points) {
         Map<ContributionPoint<?>, Consumer<Contribution<?>>> handlers = new HashMap<>();
         for (ContributionPoint<?> point : StandardContributionPoints.ALL) {
             if (point.equals(StandardContributionPoints.RESOURCES)) {
@@ -575,7 +521,7 @@ public final class PluginManager implements AutoCloseable {
                             if (handlers.containsKey(definedPoint)
                                     || definedPoints.putIfAbsent(
                                                     definedPoint,
-                                                    new PointDefinition(
+                                                    new OwnedContributionPoint(
                                                             plugin.identity().id(), definition))
                                             != null)
                                 throw new IllegalArgumentException("Duplicate contribution point");
@@ -622,7 +568,7 @@ public final class PluginManager implements AutoCloseable {
                 Consumer<Contribution<?>> standard = handlers.get(key);
                 if (standard != null) return standard;
                 if (!(key instanceof ContributionPoint<?> point)) return null;
-                PointDefinition registered = definedPoints.get(point);
+                OwnedContributionPoint registered = definedPoints.get(point);
                 if (registered == null) return null;
                 return entry -> {
                     if (definedPoints.get(point) != registered)
@@ -644,7 +590,7 @@ public final class PluginManager implements AutoCloseable {
     private synchronized void registerContribution(
             @UnknownInitialization PluginManager this,
             @NonNull ManagedPlugin plugin,
-            @NonNull PointRegistrations points,
+            @NonNull PluginContributionStaging points,
             @NonNull Contribution<?> contribution) {
         PluginState state = plugin.state();
         if (state == PluginState.STOPPING
@@ -692,7 +638,7 @@ public final class PluginManager implements AutoCloseable {
     // WHY: these plugin handles belong to this manager and are closed by manager shutdown.
     @SuppressWarnings("resource")
     private static @NonNull ContributionCatalog buildCatalog(
-            @NonNull List<Registration> registered) {
+            @NonNull List<StagedPluginContributions> registered) {
         var builder = new ContributionCatalog.Builder();
         for (var point : StandardContributionPoints.ALL) {
             if (point == StandardContributionPoints.TOOLS)
@@ -790,7 +736,7 @@ public final class PluginManager implements AutoCloseable {
 
     private void publish(
             @NonNull List<ManagedPlugin> nextPlugins,
-            @NonNull List<Registration> nextRegistrations,
+            @NonNull List<StagedPluginContributions> nextRegistrations,
             @NonNull List<InstalledPluginLoader.DisabledPackage> nextDisabled,
             @NonNull List<DeclinedPlugin> nextDeclined) {
         ContributionCatalog nextCatalog = buildCatalog(nextRegistrations);
@@ -833,7 +779,7 @@ public final class PluginManager implements AutoCloseable {
     private static @NonNull EventListenerRegistry preparedEvents(
             @NonNull ContributionCatalog catalog,
             @NonNull List<ManagedPlugin> plugins,
-            EventListenerRegistry.@NonNull Preparation preparation) {
+            @NonNull EventHandlerCompiler preparation) {
         Map<@NonNull String, @NonNull ManagedPlugin> indexed = new HashMap<>();
         for (var plugin : plugins) indexed.put(plugin.identity().id(), plugin);
         return EventListenerRegistry.build(catalog, Map.copyOf(indexed), preparation);
@@ -908,4 +854,63 @@ public final class PluginManager implements AutoCloseable {
             lifecycle.shutdown();
         }
     }
+
+    /** Applies the current invocation session selection to cross-plugin service access. */
+    private static final class PluginServiceAccess
+            implements BiPredicate<@NonNull String, @NonNull String> {
+        private final @NonNull ObjectProvider<SessionPlugins> sessions;
+
+        private PluginServiceAccess(@NonNull ObjectProvider<SessionPlugins> sessions) {
+            this.sessions = sessions;
+        }
+
+        @Override
+        public boolean test(@NonNull String caller, @NonNull String provider) {
+            var session = PluginInvocationContext.currentSession();
+            if (session == null) return ToolCallContextHolder.get() == null;
+            var selected = sessions.getObject();
+            return (caller.isEmpty() || selected.includes(session, caller))
+                    && selected.includes(session, provider);
+        }
+    }
+
+    /** Contribution staging owned and synchronized by PluginManager. */
+    private static final class PluginContributionStaging {
+        private final @NonNull
+                Map<
+                        @NonNull ContributionPoint<?>,
+                        @NonNull Map<@NonNull String, @NonNull Contribution<?>>>
+                entries = new LinkedHashMap<>();
+
+        private void add(@NonNull Contribution<?> contribution) {
+            String id = contribution.localId();
+            if (entries.values().stream().anyMatch(group -> group.containsKey(id)))
+                throw new IllegalArgumentException("Duplicate contribution identity");
+            entries.computeIfAbsent(contribution.point(), ignored -> new LinkedHashMap<>())
+                    .put(id, contribution);
+        }
+
+        private void remove(@NonNull Contribution<?> contribution) {
+            var group = entries.get(contribution.point());
+            if (group != null) group.remove(contribution.localId());
+        }
+
+        private @NonNull List<@NonNull Contribution<?>> entries() {
+            var result = new ArrayList<Contribution<?>>();
+            entries.values().forEach(group -> result.addAll(group.values()));
+            return List.copyOf(result);
+        }
+    }
+
+    /** A plugin activation and its manager-owned contribution staging. */
+    private record StagedPluginContributions(
+            @NonNull ManagedPlugin plugin, @NonNull PluginContributionStaging points) {
+        private @NonNull List<@NonNull Contribution<?>> entries() {
+            return points.entries();
+        }
+    }
+
+    /** Protocol point definition and its declaring plugin identity. */
+    private record OwnedContributionPoint(
+            @NonNull String owner, @NonNull ProtocolPointDefinition definition) {}
 }

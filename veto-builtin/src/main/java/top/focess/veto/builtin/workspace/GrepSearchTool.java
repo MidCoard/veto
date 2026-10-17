@@ -198,7 +198,7 @@ public final class GrepSearchTool extends WorkspaceReadTool<GrepSearchTool.Args>
                         output.append(rendered);
                         matches++;
                     }
-                } catch (SearchLimit limit) {
+                } catch (SearchLimitExceededException limit) {
                     reason = limit.getMessage();
                     break;
                 } catch (IOException ignored) {
@@ -230,7 +230,7 @@ public final class GrepSearchTool extends WorkspaceReadTool<GrepSearchTool.Args>
         int character;
         while ((character = reader.read()) != -1) {
             if ((line.length() & 4095) == 0 && !traversal.withinTime())
-                throw new SearchLimit("time limit 10 seconds");
+                throw new SearchLimitExceededException("time limit 10 seconds");
             if (character == '\n') return line.toString();
             if (character == '\r') {
                 reader.mark(1);
@@ -238,16 +238,11 @@ public final class GrepSearchTool extends WorkspaceReadTool<GrepSearchTool.Args>
                 return line.toString();
             }
             if (line.length() == 1_000_000)
-                throw new SearchLimit("line limit 1000000 chars; remaining input was not searched");
+                throw new SearchLimitExceededException(
+                        "line limit 1000000 chars; remaining input was not searched");
             line.append((char) character);
         }
         return line.isEmpty() ? null : line.toString();
-    }
-
-    private static final class SearchLimit extends IOException {
-        SearchLimit(@NonNull String reason) {
-            super(reason);
-        }
     }
 
     private static @NonNull List<PathMatcher> compileIncludes(List<String> patterns) {
@@ -259,5 +254,12 @@ public final class GrepSearchTool extends WorkspaceReadTool<GrepSearchTool.Args>
             }
         }
         return List.copyOf(matchers);
+    }
+
+    /** Stops a bounded workspace search when its read budget is exhausted. */
+    private static final class SearchLimitExceededException extends IOException {
+        SearchLimitExceededException(@NonNull String reason) {
+            super(reason);
+        }
     }
 }

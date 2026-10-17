@@ -115,7 +115,7 @@ class KeysteadVaultTest {
                                     value -> fail("Wrong service must not receive credential")));
             vault.logout(ALICE);
             assertThrows(
-                    KeysteadVault.VaultLockedException.class,
+                    VaultLockedException.class,
                     () ->
                             vault.withImportedCredential(
                                     ALICE,
@@ -207,7 +207,7 @@ class KeysteadVaultTest {
                                     "Repository",
                                     "different-token"));
             assertThrows(
-                    KeysteadVault.VaultLockedException.class,
+                    VaultLockedException.class,
                     () ->
                             importedNote(
                                     vault,
@@ -375,9 +375,8 @@ class KeysteadVaultTest {
     @Test
     void lockedVaultRejectsOperations(@TempDir @NonNull Path tempDir) {
         KeysteadVault vault = newVault(tempDir);
-        assertThrows(
-                KeysteadVault.VaultLockedException.class, () -> vault.readNoteBody("anything"));
-        assertThrows(KeysteadVault.VaultLockedException.class, () -> vault.saveNote("k", "v"));
+        assertThrows(VaultLockedException.class, () -> vault.readNoteBody("anything"));
+        assertThrows(VaultLockedException.class, () -> vault.saveNote("k", "v"));
     }
 
     @Test

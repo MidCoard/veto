@@ -10,9 +10,8 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import org.jspecify.annotations.NonNull;
-import top.focess.veto.agent.AgentRunner.VetoRefusedException;
 import top.focess.veto.agent.ExecutionControl.Wait;
-import top.focess.veto.agent.ToolExecutionBoundary.ScreenedInvocation;
+import top.focess.veto.agent.ToolExecutionBoundary.ScreenedToolInvocation;
 import top.focess.veto.agent.intercept.ApprovalDecision;
 import top.focess.veto.agent.intercept.ApprovalReceipt;
 import top.focess.veto.agent.intercept.InterceptResolution;
@@ -137,7 +136,7 @@ final class AgentToolExecution {
             calls = callsNeedingDecision;
 
             // 1. Check phase (screen all calls first)
-            Map<String, ScreenedInvocation> screenedInvocations = new LinkedHashMap<>();
+            Map<String, ScreenedToolInvocation> screenedInvocations = new LinkedHashMap<>();
             Set<String> cancelledCalls = new HashSet<>();
             boolean hasVeto = false;
             boolean hasRefused = false;
@@ -151,7 +150,7 @@ final class AgentToolExecution {
                     }
                     var hookDecision =
                             event == null ? BeforeToolEvent.Decision.CONTINUE : event.decision();
-                    ScreenedInvocation screened =
+                    ScreenedToolInvocation screened =
                             toolBoundary.assess(
                                     call,
                                     def,
@@ -161,7 +160,7 @@ final class AgentToolExecution {
                                     invocation.request().episode.id(),
                                     hookDecision);
                     screenedInvocations.put(call.callId(), screened);
-                    ApprovalDecision decision = screened.decision();
+                    ApprovalDecision decision = screened.decision;
                     if (decision instanceof ApprovalDecision.Prompt) hasVeto = true;
                     else if (decision instanceof ApprovalDecision.Refused) hasRefused = true;
                 }
@@ -181,7 +180,7 @@ final class AgentToolExecution {
                     String callId = call.callId();
                     var screened = screenedInvocations.get(callId);
                     if (screened == null) continue;
-                    ApprovalDecision decision = screened.decision();
+                    ApprovalDecision decision = screened.decision;
                     if (invocation
                             .request()
                             .declinedCallSignatures
@@ -284,7 +283,7 @@ final class AgentToolExecution {
 
     private @NonNull ToolResult executeOneConfirmedCall(
             @NonNull ToolCall call,
-            ScreenedInvocation screened,
+            ScreenedToolInvocation screened,
             @NonNull ToolBatch batch,
             @NonNull Invocation invocation) {
         ToolDefinition def = toolEngine.resolveDefinition(call.toolName());
@@ -296,11 +295,11 @@ final class AgentToolExecution {
     }
 
     private @NonNull ToolResult executeResolvedCall(
-            @NonNull ScreenedInvocation screened,
+            @NonNull ScreenedToolInvocation screened,
             @NonNull ToolBatch batch,
             @NonNull Invocation invocation) {
-        ToolCall call = screened.call();
-        ToolDefinition def = screened.definition();
+        ToolCall call = screened.call;
+        ToolDefinition def = screened.definition;
         runner.checkExecutionBoundary();
         output.appendToolCall(call, batch.modelCallId());
 
@@ -448,7 +447,7 @@ final class AgentToolExecution {
         var event = hooks.beforeTool(call);
         if (event != null && event.isCancelled()) return cancelledCall(call, batch);
         var hookDecision = event == null ? BeforeToolEvent.Decision.CONTINUE : event.decision();
-        ScreenedInvocation screened =
+        ScreenedToolInvocation screened =
                 toolBoundary.assess(
                         call,
                         def,
@@ -457,7 +456,7 @@ final class AgentToolExecution {
                         batch.step,
                         invocation.request().episode.id(),
                         hookDecision);
-        ApprovalDecision decision = screened.decision();
+        ApprovalDecision decision = screened.decision;
         {
             if (decision instanceof ApprovalDecision.AutoBlock ab) {
                 output.appendToolCall(call, batch.modelCallId());
@@ -548,11 +547,11 @@ final class AgentToolExecution {
     }
 
     private ToolCall awaitVeto(
-            @NonNull ScreenedInvocation screened,
+            @NonNull ScreenedToolInvocation screened,
             ApprovalDecision.@NonNull Prompt p,
             @NonNull ToolBatch batch,
             @NonNull Invocation invocation) {
-        ToolCall call = screened.call();
+        ToolCall call = screened.call;
         runner.beginWait(Wait.APPROVAL);
         // Register before advertising the prompt so a fast reply cannot beat registration.
         List<VetoOption> offered = p.options();

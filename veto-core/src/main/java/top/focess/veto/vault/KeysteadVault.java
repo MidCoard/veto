@@ -641,10 +641,4 @@ public class KeysteadVault {
     }
 
     /** Thrown when an operation is attempted on a locked vault. */
-    public static class VaultLockedException extends RuntimeException {
-        /** Constructs the exception with the given detail message. */
-        public VaultLockedException(@NonNull String message) {
-            super(message);
-        }
-    }
 }

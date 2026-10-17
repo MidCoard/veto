@@ -23,6 +23,7 @@ import top.focess.veto.api.plugin.contract.StandardContributionPoints;
 import top.focess.veto.api.plugin.contribution.Contribution;
 import top.focess.veto.api.plugin.contribution.ContributionCatalog;
 import top.focess.veto.api.plugin.contribution.ContributionSource;
+import top.focess.veto.event.EventHandlerCompiler;
 import top.focess.veto.event.EventListenerRegistry;
 import top.focess.veto.plugin.runtime.*;
 
@@ -118,11 +119,7 @@ class ApplyObservationMiddlewareTest {
         manager.close();
         EventListenerRegistry events =
                 ReflectionTestUtils.invokeMethod(
-                        manager,
-                        "preparedEvents",
-                        catalog,
-                        managed,
-                        new EventListenerRegistry.Preparation());
+                        manager, "preparedEvents", catalog, managed, new EventHandlerCompiler());
         if (events == null) throw new AssertionError("Prepared event registry must exist");
         var publication =
                 new PluginRegistry(

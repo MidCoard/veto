@@ -330,13 +330,13 @@ class IpcPeerIsolationTest {
             var sender = senderRef.get();
             if (sender == null) throw new AssertionError("Missing sender");
             terminal.send(new Frame.Bye());
-            var sessionsField = IpcServer.class.getDeclaredField("clients");
-            sessionsField.setAccessible(true);
-            if (!(sessionsField.get(server) instanceof Map<?, ?> sessions))
-                throw new AssertionError("Missing sessions");
+            var connectionsField = IpcServer.class.getDeclaredField("connections");
+            connectionsField.setAccessible(true);
+            if (!(connectionsField.get(server) instanceof Map<?, ?> connections))
+                throw new AssertionError("Missing connections");
             long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(3);
-            while (!sessions.isEmpty() && System.nanoTime() < deadline) Thread.sleep(1);
-            assertTrue(sessions.isEmpty(), "the Bye frame must retire the original session");
+            while (!connections.isEmpty() && System.nanoTime() < deadline) Thread.sleep(1);
+            assertTrue(connections.isEmpty(), "the Bye frame must retire the original connection");
             var delta =
                     new Delta(
                             new Scope.AgentScope(

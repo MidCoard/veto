@@ -14,10 +14,11 @@ import top.focess.veto.api.plugin.contribution.ContributionEntry;
 import top.focess.veto.api.plugin.contribution.ContributionId;
 import top.focess.veto.api.plugin.contribution.ContributionPoint;
 import top.focess.veto.api.plugin.contribution.PluginContributionsDirectory;
+import top.focess.veto.event.EventHandlerCompiler;
 import top.focess.veto.event.EventListenerRegistry;
-import top.focess.veto.plugin.runtime.CompositeAgentInbox;
 import top.focess.veto.plugin.runtime.InstalledPluginLoader;
 import top.focess.veto.plugin.runtime.ManagedPlugin;
+import top.focess.veto.plugin.runtime.PluginInboxSource;
 
 /**
  * Immutable queries over one published plugin generation. Capturing this registry keeps
@@ -32,7 +33,7 @@ public final class PluginRegistry {
     private final @NonNull List<PluginManager.DeclinedPlugin> declined;
     private final @NonNull ContributionCatalog catalog;
     private final @NonNull EventListenerRegistry events;
-    private final @NonNull List<CompositeAgentInbox.@NonNull Entry> inboxes;
+    private final @NonNull List<@NonNull PluginInboxSource> inboxes;
     private final @NonNull Map<String, String> aliases;
     private final @NonNull Map<String, String> toolNames;
     private final @NonNull Set<String> installedIds;
@@ -60,13 +61,11 @@ public final class PluginRegistry {
         this.aliases = Map.copyOf(aliases);
         this.toolNames = Map.copyOf(toolNames);
         this.installedIds = Set.copyOf(installedIds);
-        List<CompositeAgentInbox.@NonNull Entry> prepared = new ArrayList<>();
+        List<@NonNull PluginInboxSource> prepared = new ArrayList<>();
         for (var entry : catalog.entries(StandardContributionPoints.AGENT_INBOX)) {
             var owner = owners.get(entry.source().namespace());
             if (owner == null) throw new IllegalArgumentException("Inbox activation is missing");
-            prepared.add(
-                    new CompositeAgentInbox.Entry(
-                            entry.id().value(), owner, entry.implementation()));
+            prepared.add(new PluginInboxSource(entry.id().value(), owner, entry.implementation()));
         }
         inboxes = List.copyOf(prepared);
         directory = new PluginContributionDirectory(catalog, owners);
@@ -81,8 +80,7 @@ public final class PluginRegistry {
                 List.of(),
                 List.of(),
                 catalog,
-                EventListenerRegistry.build(
-                        catalog, Map.of(), new EventListenerRegistry.Preparation()),
+                EventListenerRegistry.build(catalog, Map.of(), new EventHandlerCompiler()),
                 Map.of(),
                 Map.of(),
                 Set.of());
@@ -159,7 +157,7 @@ public final class PluginRegistry {
     }
 
     /** Prepared inbox sources bound to the captured owners. */
-    public @NonNull List<CompositeAgentInbox.@NonNull Entry> inboxes() {
+    public @NonNull List<@NonNull PluginInboxSource> inboxes() {
         return inboxes;
     }
 

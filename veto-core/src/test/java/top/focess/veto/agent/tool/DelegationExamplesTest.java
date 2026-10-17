@@ -9,7 +9,7 @@ import java.util.Locale;
 import java.util.regex.Pattern;
 import org.junit.jupiter.api.Test;
 import top.focess.veto.agent.loop.PromptLibrary;
-import top.focess.veto.builtin.group.GroupTools.CreateGroup.Args;
+import top.focess.veto.builtin.group.CreateGroupTool.Args;
 import top.focess.veto.util.Nullness;
 
 class DelegationExamplesTest {

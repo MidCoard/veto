@@ -17,7 +17,9 @@ import top.focess.veto.api.agent.tool.ToolCapability;
 import top.focess.veto.api.agent.tool.ToolErrorCode;
 import top.focess.veto.api.agent.tool.ToolExecutionException;
 import top.focess.veto.api.agent.tool.ToolSecurity;
-import top.focess.veto.builtin.memory.MemoryTools;
+import top.focess.veto.builtin.memory.ForgetMemoryTool;
+import top.focess.veto.builtin.memory.RecallMemoryTool;
+import top.focess.veto.builtin.memory.WriteMemoryTool;
 import top.focess.veto.builtin.questions.Question;
 import top.focess.veto.builtin.tools.RunCommandTool;
 import top.focess.veto.builtin.tools.RunTaskTool;
@@ -236,8 +238,7 @@ class ToolSchemaCompilerTest {
     void toolManagedLimitsAreNotExposedAsCallArguments() {
         JsonNode findFiles = ToolSchemaCompiler.compileFromRecord(FindFilesTool.Args.class);
         JsonNode viewTask = ToolSchemaCompiler.compileFromRecord(ViewTaskTool.Args.class);
-        JsonNode recallMemory =
-                ToolSchemaCompiler.compileFromRecord(MemoryTools.RecallMemory.Args.class);
+        JsonNode recallMemory = ToolSchemaCompiler.compileFromRecord(RecallMemoryTool.Args.class);
 
         assertFalse(findFiles.path("properties").has("maxResults"));
         assertFalse(viewTask.path("properties").has("lines"));
@@ -279,7 +280,7 @@ class ToolSchemaCompilerTest {
 
     @Test
     void forgetMemoryIdIsRequired() {
-        JsonNode schema = ToolSchemaCompiler.compileFromRecord(MemoryTools.ForgetMemory.Args.class);
+        JsonNode schema = ToolSchemaCompiler.compileFromRecord(ForgetMemoryTool.Args.class);
 
         assertTrue(
                 contains(schema.path("required"), "memoryId"),
@@ -288,7 +289,7 @@ class ToolSchemaCompilerTest {
 
     @Test
     void enumArgumentIsRenderedAsAStringEnum() {
-        JsonNode schema = ToolSchemaCompiler.compileFromRecord(MemoryTools.WriteMemory.Args.class);
+        JsonNode schema = ToolSchemaCompiler.compileFromRecord(WriteMemoryTool.Args.class);
 
         JsonNode mode = schema.path("properties").path("mode");
         assertEquals("string", mode.path("type").asText());

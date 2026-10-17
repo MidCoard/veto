@@ -81,20 +81,6 @@ public final class AgentRunner {
     private long configurationRevision;
     private String configurationTransition;
 
-    static final class BreakerTripException extends RuntimeException {}
-
-    static final class VetoRefusedException extends RuntimeException {
-        final boolean approvalRequested;
-
-        VetoRefusedException() {
-            this(false);
-        }
-
-        VetoRefusedException(boolean approvalRequested) {
-            this.approvalRequested = approvalRequested;
-        }
-    }
-
     private volatile @NonNull ExecutionControl control = new ExecutionControl.Idle();
     private final @NonNull BlockingQueue<RunnerCommand> actionQueue;
     private final @NonNull List<QueuedRequest> deferredUserPrompts = new ArrayList<>();
@@ -381,7 +367,7 @@ public final class AgentRunner {
                     } catch (LinkageError error) {
                         completeFailure(output.failureMessage(error));
                         throw error;
-                    } catch (BreakerTripException e) {
+                    } catch (LoopBreakerTrippedException e) {
                         complete(
                                 AgentResult.failure(
                                         currentRequest().message,

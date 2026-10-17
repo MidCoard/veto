@@ -75,7 +75,7 @@ public sealed interface JsonValue {
         /** Defensively copies and validates the complete JSON tree. */
         public ArrayValue {
             values = List.copyOf(values);
-            Budget budget = new Budget();
+            JsonTreeBudget budget = new JsonTreeBudget();
             for (var value : values) budget.visit(value, 1);
         }
 
@@ -98,7 +98,7 @@ public sealed interface JsonValue {
         /** Defensively copies and validates the complete JSON tree. */
         public ObjectValue {
             values = Map.copyOf(values);
-            Budget budget = new Budget();
+            JsonTreeBudget budget = new JsonTreeBudget();
             for (var entry : values.entrySet()) {
                 budget.text(entry.getKey());
                 budget.visit(entry.getValue(), 1);
@@ -111,36 +111,6 @@ public sealed interface JsonValue {
         @Override
         public @NonNull String toString() {
             return "[JSON object]";
-        }
-    }
-}
-
-final class Budget {
-    private int nodes = 1;
-    private int characters;
-
-    void text(@NonNull String value) {
-        if (value.length() > 65536 - characters)
-            throw new IllegalArgumentException("JSON text limit exceeded");
-        characters += value.length();
-    }
-
-    void visit(@NonNull JsonValue value, int depth) {
-        if (++nodes > 4096) throw new IllegalArgumentException("JSON node limit exceeded");
-        switch (value) {
-            case JsonValue.StringValue string -> text(string.value());
-            case JsonValue.ArrayValue array -> {
-                if (depth >= 32) throw new IllegalArgumentException("JSON depth limit exceeded");
-                for (var child : array.values()) visit(child, depth + 1);
-            }
-            case JsonValue.ObjectValue object -> {
-                if (depth >= 32) throw new IllegalArgumentException("JSON depth limit exceeded");
-                for (var entry : object.values().entrySet()) {
-                    text(entry.getKey());
-                    visit(entry.getValue(), depth + 1);
-                }
-            }
-            default -> {}
         }
     }
 }

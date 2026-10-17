@@ -56,7 +56,7 @@ final class AnthropicStrictToolPolicy {
     @NonNull Selection select(@NonNull JsonNode schema) {
         if (!"object".equals(schema.path("type").asText()))
             return new Selection(false, "tool root is not an object schema");
-        var counts = new Counts();
+        var counts = new StrictSchemaCounts();
         String incompatible = inspect(schema, counts);
         if (incompatible != null) return new Selection(false, incompatible);
         if (strictTools >= 20) return new Selection(false, "strict tool count limit");
@@ -70,7 +70,7 @@ final class AnthropicStrictToolPolicy {
         return new Selection(true, "supported schema within request limits");
     }
 
-    private static String inspect(@NonNull JsonNode schema, @NonNull Counts counts) {
+    private static String inspect(@NonNull JsonNode schema, @NonNull StrictSchemaCounts counts) {
         if (!schema.isObject()) return "non-object schema node";
         for (var field : schema.properties())
             if (!KEYWORDS.contains(field.getKey()))
@@ -169,10 +169,11 @@ final class AnthropicStrictToolPolicy {
         }
     }
 
-    private static final class Counts {
+    record Selection(boolean strict, @NonNull String reason) {}
+
+    /** Per-inspection schema counts; confined to one strict-schema policy evaluation. */
+    private static final class StrictSchemaCounts {
         int optional;
         int unions;
     }
-
-    record Selection(boolean strict, @NonNull String reason) {}
 }

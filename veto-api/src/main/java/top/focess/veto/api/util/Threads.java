@@ -1,26 +1,10 @@
 package top.focess.veto.api.util;
 
-import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
-import org.jspecify.annotations.NonNull;
 
-/** Shared worker shutdown and deadline scheduling. */
+/** Worker termination waits that preserve caller interruption. */
 public final class Threads {
     private Threads() {}
-
-    /**
-     * Creates a single daemon timer that promptly removes cancelled deadline tasks.
-     *
-     * @param name timer thread name
-     * @return the caller-owned scheduler
-     */
-    public static @NonNull ScheduledThreadPoolExecutor newDeadlineScheduler(@NonNull String name) {
-        var scheduler =
-                new ScheduledThreadPoolExecutor(
-                        1, Thread.ofPlatform().daemon().name(name).factory());
-        scheduler.setRemoveOnCancelPolicy(true);
-        return scheduler;
-    }
 
     /**
      * Waits for a worker to terminate, then restores any caller interruption. A zero timeout waits

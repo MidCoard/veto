@@ -43,7 +43,7 @@ Service-directory change events let a provider retry registration after startup 
 directory publication. The host checks session selection, authorization and plugin lifecycle
 on service and callback calls; disabling a provider revokes its callback.
 
-Group lifecycle tools, including create_group, are grouped in `group/GroupTools`.
+Group lifecycle tools are standalone classes in `group/`, including `CreateGroupTool`, `DisbandGroupTool`, `InspectGroupTool`, and `PostGroupMessageTool`.
 Delegation uses builtin group runtimes with admitted generic agent host operations.
 
 The service, local providers and public tool share the same result policy: allow/block

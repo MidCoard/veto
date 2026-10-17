@@ -27,6 +27,7 @@ import top.focess.veto.api.plugin.contract.StandardContributionPoints;
 import top.focess.veto.api.plugin.contribution.Contribution;
 import top.focess.veto.api.plugin.contribution.ContributionCatalog;
 import top.focess.veto.api.plugin.contribution.ContributionSource;
+import top.focess.veto.event.EventHandlerCompiler;
 import top.focess.veto.event.EventListenerRegistry;
 import top.focess.veto.plugin.runtime.ManagedPlugin;
 
@@ -41,7 +42,7 @@ class EventActivationBindingTest {
             owners.put("fixture.activation", original.runtime);
             var routes =
                     EventListenerRegistry.build(
-                            original.catalog, owners, new EventListenerRegistry.Preparation());
+                            original.catalog, owners, new EventHandlerCompiler());
             owners.put("fixture.activation", replacement.runtime);
             replacement.runtime.close();
 
@@ -171,7 +172,7 @@ class EventActivationBindingTest {
                             "preparedEvents",
                             catalog,
                             List.of(runtime),
-                            new EventListenerRegistry.Preparation());
+                            new EventHandlerCompiler());
             if (prepared == null) throw new AssertionError("Prepared event registry must exist");
             events = prepared;
         }

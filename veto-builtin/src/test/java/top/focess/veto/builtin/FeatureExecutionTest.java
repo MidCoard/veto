@@ -14,8 +14,8 @@ import top.focess.veto.api.agent.tool.ToolExecutionException;
 import top.focess.veto.api.http.ApprovedHttpDestination;
 import top.focess.veto.api.http.HttpDocument;
 import top.focess.veto.api.plugin.agent.IsolatedAgent;
+import top.focess.veto.builtin.monitor.CreateMonitorTool;
 import top.focess.veto.builtin.monitor.MonitorOperations;
-import top.focess.veto.builtin.monitor.MonitorTools;
 import top.focess.veto.builtin.web.WebReadSession;
 import top.focess.veto.builtin.web.model.*;
 
@@ -106,15 +106,13 @@ class FeatureExecutionTest {
                         return Map.of("id", id);
                     }
                 };
-        var tool = new MonitorTools.CreateMonitor();
+        var tool = new CreateMonitorTool();
         assertThrows(
                 ToolExecutionException.class,
-                () ->
-                        tool.execute(
-                                new MonitorTools.CreateMonitor.Args("check", null, null), storage));
+                () -> tool.execute(new CreateMonitorTool.Args("check", null, null), storage));
         assertEquals(0, calls.get());
         assertTrue(
-                tool.execute(new MonitorTools.CreateMonitor.Args("check", 60L, null), storage)
+                tool.execute(new CreateMonitorTool.Args("check", 60L, null), storage)
                         .contains("check"));
         assertEquals(1, calls.get());
     }

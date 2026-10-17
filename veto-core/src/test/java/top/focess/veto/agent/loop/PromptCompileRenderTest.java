@@ -28,7 +28,7 @@ import top.focess.veto.api.agent.tool.ToolDocumentation;
 import top.focess.veto.api.agent.tool.ToolResultFormat;
 import top.focess.veto.api.llm.ToolDefinition;
 import top.focess.veto.api.llm.ToolResultPresentationMode;
-import top.focess.veto.builtin.memory.MemoryTools;
+import top.focess.veto.builtin.memory.ForgetMemoryTool;
 import top.focess.veto.builtin.tools.RunCommandTool;
 import top.focess.veto.builtin.workspace.GrepSearchTool;
 
@@ -459,12 +459,12 @@ class PromptCompileRenderTest {
 
     @Test
     void forgetResultContractUsesOneNonDisclosingFailure() {
-        var toolClass = MemoryTools.ForgetMemory.class;
+        var toolClass = ForgetMemoryTool.class;
         var manifest =
                 AgentToolDefinition.from(
                         "forget_memory",
                         toolClass,
-                        MemoryTools.ForgetMemory.Args.class,
+                        ForgetMemoryTool.Args.class,
                         ToolCapability.PLUGIN_LOCAL);
         List<ToolDefinition> flat =
                 new VetoCapabilityTranslator().translateTools(List.of(manifest));

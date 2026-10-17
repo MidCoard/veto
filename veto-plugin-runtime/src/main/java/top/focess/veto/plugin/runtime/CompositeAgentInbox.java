@@ -9,6 +9,7 @@ import java.util.function.BiConsumer;
 import java.util.function.Supplier;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.api.plugin.contract.AgentInbox;
+import top.focess.veto.api.plugin.contract.AgentInbox.Observation;
 import top.focess.veto.api.plugin.contract.PluginFailure;
 
 /**
@@ -21,62 +22,35 @@ import top.focess.veto.api.plugin.contract.PluginFailure;
  */
 public final class CompositeAgentInbox implements AgentInbox {
     /** An inbox source paired with its owning plugin and identity namespace. */
-    public record Entry(
-            @NonNull String id, @NonNull ManagedPlugin plugin, @NonNull AgentInbox source) {}
+    private final @NonNull Supplier<@NonNull List<@NonNull PluginInboxSource>> entries;
 
-    private final @NonNull Supplier<@NonNull List<@NonNull Entry>> entries;
     private final @NonNull ReferenceQueue<Observation> abandoned = new ReferenceQueue<>();
-    private final @NonNull Map<ObservationReference, Entry> routes = new HashMap<>();
+    private final @NonNull Map<InboxObservationReference, PluginInboxSource> routes =
+            new HashMap<>();
 
     // Observation records have structural equality; routing must distinguish equal live objects.
-    private static final class ObservationReference extends WeakReference<Observation> {
-        private final int hash;
-
-        private ObservationReference(
-                @NonNull Observation value, @NonNull ReferenceQueue<Observation> queue) {
-            super(value, queue);
-            hash = System.identityHashCode(value);
-        }
-
-        private ObservationReference(@NonNull Observation value) {
-            super(value);
-            hash = System.identityHashCode(value);
-        }
-
-        @Override
-        public int hashCode() {
-            return hash;
-        }
-
-        @Override
-        public boolean equals(Object other) {
-            if (this == other) return true;
-            var value = get();
-            return value != null
-                    && other instanceof ObservationReference reference
-                    && value == reference.get();
-        }
-    }
 
     // Called only while holding this composite's monitor.
     private void discardAbandonedRoutes() {
         for (var reference = abandoned.poll(); reference != null; reference = abandoned.poll()) {
-            if (reference instanceof ObservationReference observation) routes.remove(observation);
+            if (reference instanceof InboxObservationReference observation)
+                routes.remove(observation);
         }
     }
 
-    private synchronized void bind(@NonNull Observation value, @NonNull Entry entry) {
+    private synchronized void bind(@NonNull Observation value, @NonNull PluginInboxSource entry) {
         discardAbandonedRoutes();
-        routes.put(new ObservationReference(value, abandoned), entry);
+        routes.put(new InboxObservationReference(value, abandoned), entry);
     }
 
-    private synchronized Entry bound(@NonNull Observation value) {
+    private synchronized PluginInboxSource bound(@NonNull Observation value) {
         discardAbandonedRoutes();
-        return routes.get(new ObservationReference(value));
+        return routes.get(new InboxObservationReference(value));
     }
 
     /** Creates a composite that reads its namespaced entries from the given supplier. */
-    public CompositeAgentInbox(@NonNull Supplier<@NonNull List<@NonNull Entry>> entries) {
+    public CompositeAgentInbox(
+            @NonNull Supplier<@NonNull List<@NonNull PluginInboxSource>> entries) {
         this.entries = entries;
     }
 
@@ -116,7 +90,7 @@ public final class CompositeAgentInbox implements AgentInbox {
     // The @NonNull bound is required so T satisfies Operation<T>.
     @SuppressWarnings({"resource", "NullableProblems"})
     private static <T extends @NonNull Object> T invoke(
-            @NonNull Entry entry, ManagedPlugin.@NonNull Operation<T> action) {
+            @NonNull PluginInboxSource entry, ManagedPlugin.@NonNull Operation<T> action) {
         try {
             return entry.plugin().execute(action);
         } catch (PluginFailure failure) {
@@ -144,7 +118,8 @@ public final class CompositeAgentInbox implements AgentInbox {
                 .toList();
     }
 
-    // Entry handles are borrowed from their lifecycle owners, not owned by inbox callbacks.
+    // PluginInboxSource handles are borrowed from their lifecycle owners, not owned by inbox
+    // callbacks.
     @SuppressWarnings("resource")
     private void notify(
             @NonNull Observation observation,
@@ -190,5 +165,38 @@ public final class CompositeAgentInbox implements AgentInbox {
     @Override
     public void cancelled(@NonNull InboxContext scope, @NonNull Observation value) {
         notify(value, (source, raw) -> source.cancelled(scope, raw));
+    }
+
+    /**
+     * Weak observation identity; routing distinguishes equal records from the exact admitted
+     * object.
+     */
+    private static final class InboxObservationReference extends WeakReference<Observation> {
+        private final int hash;
+
+        InboxObservationReference(
+                @NonNull Observation value, @NonNull ReferenceQueue<Observation> queue) {
+            super(value, queue);
+            hash = System.identityHashCode(value);
+        }
+
+        InboxObservationReference(@NonNull Observation value) {
+            super(value);
+            hash = System.identityHashCode(value);
+        }
+
+        @Override
+        public int hashCode() {
+            return hash;
+        }
+
+        @Override
+        public boolean equals(Object other) {
+            if (this == other) return true;
+            var value = get();
+            return value != null
+                    && other instanceof InboxObservationReference reference
+                    && value == reference.get();
+        }
     }
 }

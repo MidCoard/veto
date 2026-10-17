@@ -1,9 +1,6 @@
 package top.focess.veto.event;
 
 import java.lang.invoke.MethodHandle;
-import java.lang.invoke.MethodHandles;
-import java.lang.reflect.Method;
-import java.lang.reflect.Modifier;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -25,7 +22,6 @@ import top.focess.veto.api.event.BeforeToolEvent;
 import top.focess.veto.api.event.BeforeUserRegisterEvent;
 import top.focess.veto.api.event.Cancellable;
 import top.focess.veto.api.event.Event;
-import top.focess.veto.api.event.EventHandler;
 import top.focess.veto.api.event.EventPriority;
 import top.focess.veto.api.event.Listener;
 import top.focess.veto.api.event.ServiceDirectoryChangedEvent;
@@ -38,8 +34,8 @@ import top.focess.veto.api.plugin.contract.PluginFailure;
 import top.focess.veto.api.plugin.contract.StandardContributionPoints;
 import top.focess.veto.api.plugin.contribution.ContributionCatalog;
 import top.focess.veto.api.plugin.contribution.ContributionEntry;
+import top.focess.veto.event.EventHandlerCompiler.CompiledEventHandler;
 import top.focess.veto.plugin.runtime.ManagedPlugin;
-import top.focess.veto.util.Nullness;
 
 /**
  * Immutable dispatch table of compiled event handlers.
@@ -61,7 +57,7 @@ import top.focess.veto.util.Nullness;
  * listener concurrently. Producers own each mutable event for the duration of one dispatch.
  */
 public final class EventListenerRegistry {
-    private static final @NonNull List<Class<? extends Event>> HOST_EVENTS =
+    static final @NonNull List<Class<? extends Event>> HOST_EVENTS =
             List.of(
                     BeforeInputEvent.class,
                     BeforeModelEvent.class,
@@ -80,29 +76,10 @@ public final class EventListenerRegistry {
     private static final @NonNull Logger log =
             LoggerFactory.getLogger("top.focess.veto.event.EventListenerRegistry");
 
-    private final @NonNull Map<Class<?>, List<RegisteredHandler>> byEventType;
+    private final @NonNull Map<Class<?>, List<RegisteredEventHandler>> byEventType;
 
-    /** Host-owned preparation cache; ClassValue does not retain unloaded listener classes. */
-    public static final class Preparation {
-        private final @NonNull ClassValue<@NonNull List<Compiled>> handlers =
-                new ClassValue<>() {
-                    @Override
-                    protected @NonNull List<Compiled> computeValue(@NonNull Class<?> type) {
-                        return List.copyOf(compile(type));
-                    }
-                };
-
-        /** Checks and compiles a listener before its registration is stored or published. */
-        public void prepare(@NonNull Listener listener) {
-            log.debug("Prepared {} listener handlers", compiled(listener).size());
-        }
-
-        private @NonNull List<Compiled> compiled(@NonNull Listener listener) {
-            return handlers.get(listener.getClass());
-        }
-    }
-
-    private EventListenerRegistry(@NonNull Map<Class<?>, List<RegisteredHandler>> byEventType) {
+    private EventListenerRegistry(
+            @NonNull Map<Class<?>, List<RegisteredEventHandler>> byEventType) {
         this.byEventType = byEventType;
     }
 
@@ -117,18 +94,18 @@ public final class EventListenerRegistry {
     public static @NonNull EventListenerRegistry build(
             @NonNull ContributionCatalog catalog,
             @NonNull Map<@NonNull String, @NonNull ManagedPlugin> owners,
-            @NonNull Preparation preparation) {
-        Map<Class<?>, List<RegisteredHandler>> grouped = new HashMap<>();
+            @NonNull EventHandlerCompiler preparation) {
+        Map<Class<?>, List<RegisteredEventHandler>> grouped = new HashMap<>();
         var listeners = catalog.entries(StandardContributionPoints.LISTENERS);
         for (ContributionEntry<Listener> entry : listeners) {
             Listener listener = entry.implementation();
             String namespace = entry.source().namespace();
             ManagedPlugin owner = owners.get(namespace);
             if (owner == null) throw new IllegalArgumentException("Listener activation is missing");
-            List<Compiled> compiled = preparation.compiled(listener);
-            for (Compiled handler : compiled) {
-                RegisteredHandler registered =
-                        new RegisteredHandler(
+            List<CompiledEventHandler> compiled = preparation.compiled(listener);
+            for (CompiledEventHandler handler : compiled) {
+                RegisteredEventHandler registered =
+                        new RegisteredEventHandler(
                                 namespace,
                                 owner,
                                 handler.handle().bindTo(listener),
@@ -140,14 +117,14 @@ public final class EventListenerRegistry {
             }
         }
         for (var group : grouped.values())
-            group.sort(Comparator.comparingInt(RegisteredHandler::weight));
-        Map<Class<?>, List<RegisteredHandler>> frozen = new HashMap<>();
+            group.sort(Comparator.comparingInt(RegisteredEventHandler::weight));
+        Map<Class<?>, List<RegisteredEventHandler>> frozen = new HashMap<>();
         for (Class<? extends Event> concrete : HOST_EVENTS) {
-            List<RegisteredHandler> dispatch = new ArrayList<>();
+            List<RegisteredEventHandler> dispatch = new ArrayList<>();
             for (Class<?> type = concrete;
                     type != null && Event.class.isAssignableFrom(type);
                     type = type.getSuperclass()) {
-                List<RegisteredHandler> group = grouped.get(type);
+                List<RegisteredEventHandler> group = grouped.get(type);
                 if (group != null) dispatch.addAll(group);
             }
             frozen.put(concrete, List.copyOf(dispatch));
@@ -173,9 +150,9 @@ public final class EventListenerRegistry {
     // WHY: listener owners are manager-owned activations; delivery only borrows their handles.
     @SuppressWarnings({"removal", "resource"}) // ThreadDeath remains fatal while supported.
     public void submit(@NonNull Event event, Set<String> selected) {
-        List<RegisteredHandler> handlers = byEventType.get(event.getClass());
+        List<RegisteredEventHandler> handlers = byEventType.get(event.getClass());
         if (handlers == null) throw new IllegalArgumentException("Unregistered event type");
-        for (RegisteredHandler handler : handlers) {
+        for (RegisteredEventHandler handler : handlers) {
             if (selected != null && !selected.contains(handler.namespace())) continue;
             if (event.isPrevent() && handler.notCallIfPrevented()) continue;
             if (handler.notCallIfCancelled()
@@ -194,61 +171,8 @@ public final class EventListenerRegistry {
         }
     }
 
-    private record Compiled(
-            @NonNull Class<?> eventType,
-            @NonNull MethodHandle handle,
-            int weight,
-            boolean notCallIfPrevented,
-            boolean notCallIfCancelled) {}
-
-    private static @NonNull List<Compiled> compile(@NonNull Class<?> type) {
-        List<Compiled> result = new ArrayList<>();
-        for (Method method : type.getMethods()) {
-            if (method.isSynthetic() || method.isBridge()) continue;
-            EventHandler annotation = method.getAnnotation(EventHandler.class);
-            if (annotation == null) continue;
-            if (Modifier.isStatic(method.getModifiers()))
-                throw new IllegalArgumentException("@EventHandler must be an instance method");
-            if (method.getParameterCount() != 1)
-                throw new IllegalArgumentException("@EventHandler takes exactly one parameter");
-            Class<?> eventType = method.getParameterTypes()[0];
-            if (!Event.class.isAssignableFrom(eventType))
-                throw new IllegalArgumentException("@EventHandler parameter must be an Event");
-            if (HOST_EVENTS.stream().noneMatch(eventType::isAssignableFrom))
-                throw new IllegalArgumentException("@EventHandler has no host event route");
-            if (method.getReturnType() != void.class)
-                throw new IllegalArgumentException("@EventHandler must return void");
-            result.add(
-                    new Compiled(
-                            eventType,
-                            compileInvoker(method),
-                            Nullness.requireNonNull(annotation.priority()).weight(),
-                            annotation.notCallIfPrevented(),
-                            annotation.notCallIfCancelled()));
-        }
-        return result;
-    }
-
-    @SuppressWarnings("removal") // ThreadDeath remains a fatal preparation signal while supported.
-    private static @NonNull MethodHandle compileInvoker(@NonNull Method method) {
-        Class<?> declaring = method.getDeclaringClass();
-        try {
-            MethodHandles.Lookup lookup;
-            try {
-                lookup = MethodHandles.privateLookupIn(declaring, MethodHandles.lookup());
-            } catch (IllegalAccessException inaccessible) {
-                method.setAccessible(true);
-                lookup = MethodHandles.lookup();
-            }
-            return lookup.unreflect(method);
-        } catch (VirtualMachineError | ThreadDeath fatal) {
-            throw fatal;
-        } catch (Throwable failure) {
-            throw new IllegalArgumentException("Cannot compile event handler " + method, failure);
-        }
-    }
-
-    private record RegisteredHandler(
+    /** Immutable listener invocation bound to one plugin activation. */
+    private record RegisteredEventHandler(
             @NonNull String namespace,
             @NonNull ManagedPlugin owner,
             @NonNull MethodHandle handle,

@@ -107,7 +107,7 @@ class EventListenerRegistryTest {
 
     @Test
     void preparationRejectsStaticHandlersBeforeAnyDispatch() {
-        var preparation = new EventListenerRegistry.Preparation();
+        var preparation = new EventHandlerCompiler();
         var error =
                 assertThrows(
                         IllegalArgumentException.class,
@@ -121,7 +121,7 @@ class EventListenerRegistryTest {
         var source =
                 new ContributionSource("demo.listener", "1.0.0", ContributionSource.Origin.PLUGIN);
         var listener = new NormalProbe(calls, "active");
-        var preparation = new EventListenerRegistry.Preparation();
+        var preparation = new EventHandlerCompiler();
         preparation.prepare(listener);
         var catalog =
                 new ContributionCatalog.Builder()
@@ -315,7 +315,7 @@ class EventListenerRegistryTest {
                         .stage(source, contributions)
                         .freeze();
         return EventListenerRegistry.build(
-                catalog, Map.of("demo.listener", userId), new EventListenerRegistry.Preparation());
+                catalog, Map.of("demo.listener", userId), new EventHandlerCompiler());
     }
 
     private static @NonNull ManagedPlugin userId() {
@@ -729,9 +729,7 @@ class EventListenerRegistryTest {
                         .freeze();
         var registry =
                 EventListenerRegistry.build(
-                        catalog,
-                        Map.of("demo.listener", userId()),
-                        new EventListenerRegistry.Preparation());
+                        catalog, Map.of("demo.listener", userId()), new EventHandlerCompiler());
         registry.submit(
                 new UserRegisteredEvent(
                         new Scope.UserScope(

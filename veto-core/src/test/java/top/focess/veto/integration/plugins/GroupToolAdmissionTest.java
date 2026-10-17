@@ -29,12 +29,13 @@ import top.focess.veto.api.plugin.contract.JsonValue;
 import top.focess.veto.api.plugin.storage.PluginStorage;
 import top.focess.veto.builtin.group.Blackboard;
 import top.focess.veto.builtin.group.BlackboardMessage;
+import top.focess.veto.builtin.group.DisbandGroupTool;
 import top.focess.veto.builtin.group.ExecutionDag;
 import top.focess.veto.builtin.group.Group;
 import top.focess.veto.builtin.group.GroupRegistry;
 import top.focess.veto.builtin.group.GroupRuntime;
 import top.focess.veto.builtin.group.GroupState;
-import top.focess.veto.builtin.group.GroupTools;
+import top.focess.veto.builtin.group.PostGroupMessageTool;
 import top.focess.veto.bus.SessionActions;
 
 class GroupToolAdmissionTest {
@@ -156,9 +157,9 @@ class GroupToolAdmissionTest {
                                     SecurityException.class,
                                     () -> operations.snapshot("wrong_tool"));
                             if (local.equals("post_message")) {
-                                new GroupTools.PostMessage(operations)
+                                new PostGroupMessageTool(operations)
                                         .execute(
-                                                new GroupTools.PostMessage.Args(
+                                                new PostGroupMessageTool.Args(
                                                         BlackboardMessage.MessageType.STATUS,
                                                         "LEADER",
                                                         "progress"));
@@ -166,8 +167,8 @@ class GroupToolAdmissionTest {
                             } else if (local.equals("disband_group")) {
                                 assertEquals(
                                         "",
-                                        new GroupTools.DisbandGroup(operations)
-                                                .execute(new GroupTools.DisbandGroup.Args()));
+                                        new DisbandGroupTool(operations)
+                                                .execute(new DisbandGroupTool.Args()));
                                 var disbanded = registry.get(group.groupId());
                                 if (disbanded == null)
                                     throw new AssertionError("Missing disbanded group");

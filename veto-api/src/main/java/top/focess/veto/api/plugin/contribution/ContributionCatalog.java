@@ -17,9 +17,10 @@ import org.jspecify.annotations.NonNull;
  * a catalog into a running application. The host owns those actions after validation and startup.
  */
 public final class ContributionCatalog {
-    private final @NonNull Map<ContributionId, Definition<?>> definitions;
+    private final @NonNull Map<ContributionId, ResolvedContributions<?>> definitions;
 
-    private ContributionCatalog(@NonNull Map<ContributionId, Definition<?>> definitions) {
+    private ContributionCatalog(
+            @NonNull Map<ContributionId, ResolvedContributions<?>> definitions) {
         this.definitions = Map.copyOf(definitions);
     }
 
@@ -35,7 +36,7 @@ public final class ContributionCatalog {
     // WHY: exact point equality includes the runtime contract; preparation casts each entry to it.
     @SuppressWarnings("unchecked")
     public <T> @NonNull List<ContributionEntry<T>> entries(@NonNull ContributionPoint<T> point) {
-        Definition<?> definition = definitions.get(point.id());
+        ResolvedContributions<?> definition = definitions.get(point.id());
         if (definition == null || !definition.point().equals(point)) throw invalid();
         return (List<ContributionEntry<T>>) (List<?>) definition.entries();
     }
@@ -61,14 +62,6 @@ public final class ContributionCatalog {
                 .toList();
     }
 
-    private record Definition<T>(
-            @NonNull ContributionPoint<T> point, @NonNull List<ContributionEntry<T>> entries) {}
-
-    private record Staged(
-            @NonNull ContributionId id,
-            @NonNull ContributionSource source,
-            @NonNull Contribution<?> contribution) {}
-
     private static @NonNull IllegalArgumentException invalid() {
         return new IllegalArgumentException("Invalid contribution registration");
     }
@@ -78,30 +71,10 @@ public final class ContributionCatalog {
      * during single-threaded bootstrap only; do not expose it to contribution implementations.
      */
     public static final class Builder {
-        private record Registration<T>(
-                @NonNull ContributionPoint<T> point, @NonNull Consumer<T> validator) {
-            void validate(@NonNull Contribution<?> contribution) {
-                if (!point.equals(contribution.point())) throw invalid();
-                T implementation = point.contract().cast(contribution.implementation());
-                if (implementation == null) throw invalid();
-                validator.accept(implementation);
-            }
-
-            @NonNull Definition<T> prepare(@NonNull List<Staged> ordered) {
-                List<ContributionEntry<T>> prepared = new ArrayList<>();
-                for (Staged entry : ordered) {
-                    T implementation = point.contract().cast(entry.contribution().implementation());
-                    if (implementation == null) throw invalid();
-                    prepared.add(
-                            new ContributionEntry<>(entry.id(), entry.source(), implementation));
-                }
-                return new Definition<>(point, List.copyOf(prepared));
-            }
-        }
-
-        private final @NonNull Map<ContributionId, Registration<?>> definitions =
+        private final @NonNull Map<ContributionId, ContributionPointRegistration<?>> definitions =
                 new LinkedHashMap<>();
-        private final @NonNull Map<ContributionId, Staged> staged = new LinkedHashMap<>();
+        private final @NonNull Map<ContributionId, StagedContribution> staged =
+                new LinkedHashMap<>();
         private final @NonNull Set<String> sources = new HashSet<>();
         private final @NonNull Set<ContributionId> required = new HashSet<>();
         private boolean frozen;
@@ -135,7 +108,7 @@ public final class ContributionCatalog {
                 @NonNull ContributionPoint<T> point, @NonNull Consumer<T> validator) {
             mutable();
             if (definitions.size() >= 256 || definitions.containsKey(point.id())) throw invalid();
-            definitions.put(point.id(), new Registration<>(point, validator));
+            definitions.put(point.id(), new ContributionPointRegistration<>(point, validator));
             return this;
         }
 
@@ -147,7 +120,7 @@ public final class ContributionCatalog {
          */
         public @NonNull Builder require(@NonNull ContributionPoint<?> point) {
             mutable();
-            Registration<?> definition = definitions.get(point.id());
+            ContributionPointRegistration<?> definition = definitions.get(point.id());
             if (definition == null || !definition.point().equals(point)) throw invalid();
             required.add(point.id());
             return this;
@@ -166,14 +139,15 @@ public final class ContributionCatalog {
             mutable();
             if (sources.contains(source.namespace()) || staged.size() + contributions.size() > 4096)
                 throw invalid();
-            Map<ContributionId, Staged> batch = new LinkedHashMap<>();
+            Map<ContributionId, StagedContribution> batch = new LinkedHashMap<>();
             for (Contribution<?> contribution : contributions) {
-                Registration<?> definition = definitions.get(contribution.point().id());
+                ContributionPointRegistration<?> definition =
+                        definitions.get(contribution.point().id());
                 if (definition == null) throw invalid();
                 definition.validate(contribution);
                 ContributionId id = source.qualify(contribution.localId());
                 if (staged.containsKey(id) || batch.containsKey(id)) throw invalid();
-                batch.put(id, new Staged(id, source, contribution));
+                batch.put(id, new StagedContribution(id, source, contribution));
             }
             staged.putAll(batch);
             sources.add(source.namespace());
@@ -200,10 +174,10 @@ public final class ContributionCatalog {
          */
         public @NonNull ContributionCatalog freeze() {
             mutable();
-            Map<ContributionId, Definition<?>> prepared = new LinkedHashMap<>();
-            for (Registration<?> definition : definitions.values()) {
+            Map<ContributionId, ResolvedContributions<?>> prepared = new LinkedHashMap<>();
+            for (ContributionPointRegistration<?> definition : definitions.values()) {
                 ContributionPoint<?> point = definition.point();
-                List<Staged> group =
+                List<StagedContribution> group =
                         staged.values().stream()
                                 .filter(entry -> entry.contribution().point().equals(point))
                                 .toList();
@@ -218,16 +192,17 @@ public final class ContributionCatalog {
             return catalog;
         }
 
-        private static @NonNull List<Staged> sort(@NonNull List<Staged> group) {
-            Map<ContributionId, Staged> nodes = new HashMap<>();
+        private static @NonNull List<StagedContribution> sort(
+                @NonNull List<StagedContribution> group) {
+            Map<ContributionId, StagedContribution> nodes = new HashMap<>();
             Map<ContributionId, Set<ContributionId>> edges = new HashMap<>();
             Map<ContributionId, Integer> degree = new HashMap<>();
-            for (Staged entry : group) {
+            for (StagedContribution entry : group) {
                 nodes.put(entry.id(), entry);
                 edges.put(entry.id(), new HashSet<>());
                 degree.put(entry.id(), 0);
             }
-            for (Staged entry : group) {
+            for (StagedContribution entry : group) {
                 for (ContributionId target : entry.contribution().before())
                     edge(entry.id(), target, edges, degree);
                 for (ContributionId target : entry.contribution().after())
@@ -236,10 +211,10 @@ public final class ContributionCatalog {
             PriorityQueue<ContributionId> ready = new PriorityQueue<>();
             for (var entry : degree.entrySet())
                 if (entry.getValue() == 0) ready.add(entry.getKey());
-            List<Staged> result = new ArrayList<>();
+            List<StagedContribution> result = new ArrayList<>();
             while (!ready.isEmpty()) {
                 ContributionId id = ready.remove();
-                Staged entry = nodes.get(id);
+                StagedContribution entry = nodes.get(id);
                 Set<ContributionId> targets = edges.get(id);
                 if (entry == null || targets == null) throw invalid();
                 result.add(entry);
@@ -269,5 +244,38 @@ public final class ContributionCatalog {
         private void mutable() {
             if (frozen) throw new IllegalStateException("Contribution catalog already frozen");
         }
+
+        /** Validates implementations against one registered contract before catalog publication. */
+        private record ContributionPointRegistration<T>(
+                @NonNull ContributionPoint<T> point, @NonNull Consumer<T> validator) {
+            private void validate(@NonNull Contribution<?> contribution) {
+                if (!point.equals(contribution.point())) throw invalid();
+                T implementation = point.contract().cast(contribution.implementation());
+                if (implementation == null) throw invalid();
+                validator.accept(implementation);
+            }
+
+            private @NonNull ResolvedContributions<T> prepare(
+                    @NonNull List<StagedContribution> ordered) {
+                List<ContributionEntry<T>> prepared = new ArrayList<>();
+                for (StagedContribution entry : ordered) {
+                    T implementation = point.contract().cast(entry.contribution().implementation());
+                    if (implementation == null) throw invalid();
+                    prepared.add(
+                            new ContributionEntry<>(entry.id(), entry.source(), implementation));
+                }
+                return new ResolvedContributions<>(point, List.copyOf(prepared));
+            }
+        }
+
+        /** A host-attributed contribution awaiting dependency ordering and catalog validation. */
+        private record StagedContribution(
+                @NonNull ContributionId id,
+                @NonNull ContributionSource source,
+                @NonNull Contribution<?> contribution) {}
     }
+
+    /** Immutable, ordered implementations resolved for one contribution point. */
+    private record ResolvedContributions<T>(
+            @NonNull ContributionPoint<T> point, @NonNull List<ContributionEntry<T>> entries) {}
 }
