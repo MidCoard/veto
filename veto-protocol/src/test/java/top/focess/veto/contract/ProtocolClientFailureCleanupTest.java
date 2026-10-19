@@ -1,16 +1,12 @@
 package top.focess.veto.contract;
 
 import static org.junit.jupiter.api.Assertions.*;
-import static top.focess.veto.contract.ContractTestSupport.assertThrows;
+import static top.focess.veto.contract.ContractTestSupport.assertInstanceOf;
 
 import java.io.IOException;
 import java.util.List;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import org.jspecify.annotations.NonNull;
@@ -20,28 +16,16 @@ import org.junit.jupiter.api.Timeout;
 class ProtocolClientFailureCleanupTest {
     @Test
     @Timeout(5)
-    void transportFactoryFailureReachesConstructor() {
-        var setupFailure = new IllegalStateException("transport setup failed");
-        var failure =
-                assertThrows(
-                        ExecutionException.class,
-                        () ->
-                                new ProtocolClient(
-                                        () -> {
-                                            throw setupFailure;
-                                        }));
-        assertSame(setupFailure, assertInstanceOf(IllegalStateException.class, failure.getCause()));
-    }
-
-    @Test
-    @Timeout(5)
-    void rejectedHandshakeClosesTransportAndPreservesTheOriginalFailure() {
+    void rejectedHandshakeClosesTransportAndPreservesTheOriginalFailure() throws Exception {
         var handshakeFailure = new IllegalStateException("handshake rejected");
         var cleanupFailure = new IllegalStateException("cleanup failed");
         var closes = new CountDownLatch(1);
+        var closeCount = new AtomicInteger();
+        var writer = new AtomicReference<Thread>();
         var transport =
                 new FrameTransport() {
                     public void send(@NonNull Frame frame) {
+                        writer.set(Thread.currentThread());
                         throw handshakeFailure;
                     }
 
@@ -51,28 +35,37 @@ class ProtocolClientFailureCleanupTest {
                     }
 
                     public void close() {
+                        closeCount.incrementAndGet();
                         closes.countDown();
                         throw cleanupFailure;
                     }
                 };
-        var failure =
-                assertThrows(ExecutionException.class, () -> new ProtocolClient(() -> transport));
-        assertSame(
-                handshakeFailure,
-                assertInstanceOf(IllegalStateException.class, failure.getCause()));
-        assertArrayEquals(new Throwable[] {cleanupFailure}, handshakeFailure.getSuppressed());
-        assertEquals(0, closes.getCount());
+        var client = new ProtocolClient(transport);
+        try {
+            assertNull(client.receive(2, TimeUnit.SECONDS));
+            assertTrue(client.isClosed());
+            client.close();
+            assertWorkerStopped(writer.get());
+            assertArrayEquals(new Throwable[] {cleanupFailure}, handshakeFailure.getSuppressed());
+            assertEquals(1, closeCount.get());
+            assertNull(client.receive());
+        } finally {
+            client.close();
+        }
     }
 
     @Test
     @Timeout(5)
-    void incompatibleWelcomeAndWrongDirectionFailTheHandshakeAndClose() {
+    void incompatibleWelcomeWrongDirectionAndEarlyApplicationDataFailTheHandshake()
+            throws Exception {
         List<@NonNull Frame> invalid =
                 List.of(
                         new Frame.Welcome(Frame.PROTOCOL_VERSION + 1, 1, Version.UNKNOWN),
-                        new Frame.Request(1, null, null, "wrong direction"));
+                        new Frame.Request(1, null, null, "wrong direction"),
+                        Delta.message("not negotiated"));
         for (var frame : invalid) {
             var closed = new CountDownLatch(1);
+            var closes = new AtomicInteger();
             var transport =
                     new FrameTransport() {
                         public void send(@NonNull Frame ignored) {}
@@ -82,31 +75,66 @@ class ProtocolClientFailureCleanupTest {
                         }
 
                         public void close() {
+                            closes.incrementAndGet();
                             closed.countDown();
                         }
                     };
-            var failure =
-                    assertThrows(
-                            ExecutionException.class, () -> new ProtocolClient(() -> transport));
-            if (frame instanceof Frame.Welcome)
-                assertInstanceOf(IllegalStateException.class, failure.getCause());
-            else assertInstanceOf(IOException.class, failure.getCause());
-            assertEquals(0, closed.getCount());
+            var client = new ProtocolClient(transport);
+            try {
+                assertNull(client.receive(1, TimeUnit.SECONDS));
+                assertTrue(closed.await(1, TimeUnit.SECONDS));
+                assertTrue(client.isClosed());
+                client.close();
+                assertEquals(1, closes.get());
+                assertNull(client.receive());
+            } finally {
+                client.close();
+            }
+        }
+    }
+
+    @Test
+    @Timeout(5)
+    void backendHandshakeRejectionPreservesItsExplanation() throws Exception {
+        List<@NonNull Frame> rejections =
+                List.of(
+                        new Frame.Error("Backend unavailable", 1),
+                        new Frame.Terminate("Backend unavailable"));
+        for (var rejection : rejections) {
+            var closed = new CountDownLatch(1);
+            var transport =
+                    new FrameTransport() {
+                        public void send(@NonNull Frame ignored) {}
+
+                        public @NonNull Frame receive() {
+                            return rejection;
+                        }
+
+                        public void close() {
+                            closed.countDown();
+                        }
+                    };
+            try (var client = new ProtocolClient(transport)) {
+                assertTrue(rejection == client.receive(1, TimeUnit.SECONDS));
+                assertTrue(closed.await(1, TimeUnit.SECONDS));
+                assertNull(client.receive());
+            }
         }
     }
 
     @Test
     @Timeout(15)
-    void handshakeWaitTimeoutClosesBlockedReaderAndWriter() throws Exception {
+    void missingWelcomeDeadlineClosesReaderAndWriter() throws Exception {
         var closed = new CountDownLatch(1);
+        var helloSent = new CountDownLatch(1);
         var reader = new AtomicReference<Thread>();
         var writer = new AtomicReference<Thread>();
         var transport =
                 new FrameTransport() {
-                    public void send(@NonNull Frame frame) throws IOException {
+                    public void send(@NonNull Frame frame) {
                         writer.set(Thread.currentThread());
-                        await(closed);
-                        throw new IOException("Transport closed");
+                        assertInstanceOf(Frame.Hello.class, frame);
+                        helloSent.countDown();
                     }
 
                     public @NonNull Frame receive() throws IOException {
@@ -119,150 +147,47 @@ class ProtocolClientFailureCleanupTest {
                         closed.countDown();
                     }
                 };
-        assertThrows(TimeoutException.class, () -> new ProtocolClient(() -> transport));
-        assertEquals(0, closed.getCount());
-        assertWorkerStopped(reader);
-        assertWorkerStopped(writer);
-    }
-
-    @Test
-    @Timeout(15)
-    void startupWaitTimeoutInterruptsTransportSetup() throws Exception {
-        var setupWorker = new AtomicReference<Thread>();
-        assertThrows(
-                TimeoutException.class,
-                () ->
-                        new ProtocolClient(
-                                () -> {
-                                    setupWorker.set(Thread.currentThread());
-                                    new CountDownLatch(1).await();
-                                    throw new AssertionError("Setup should be interrupted");
-                                }));
-        assertWorkerStopped(setupWorker);
-    }
-
-    @Test
-    @Timeout(5)
-    void interruptedConstructorInterruptsTransportSetupAndPropagatesInterruption()
-            throws Exception {
-        var entering = new CountDownLatch(1);
-        var setupWorker = new AtomicReference<Thread>();
-        var interrupted = new AtomicBoolean();
-        var result = new CompletableFuture<@NonNull Throwable>();
-        var caller =
-                Thread.ofVirtual()
-                        .start(
-                                () -> {
-                                    try (var opened =
-                                            new ProtocolClient(
-                                                    () -> {
-                                                        setupWorker.set(Thread.currentThread());
-                                                        entering.countDown();
-                                                        new CountDownLatch(1).await();
-                                                        throw new AssertionError(
-                                                                "Setup should be interrupted");
-                                                    })) {
-                                        assertFalse(opened.isClosed());
-                                        result.complete(
-                                                new AssertionError("Connection should not open"));
-                                    } catch (Throwable failure) {
-                                        interrupted.set(Thread.currentThread().isInterrupted());
-                                        result.complete(failure);
-                                    }
-                                });
-        assertTrue(entering.await(1, TimeUnit.SECONDS));
-        caller.interrupt();
-        assertInstanceOf(InterruptedException.class, result.get(2, TimeUnit.SECONDS));
-        assertWorkerStopped(setupWorker);
-        assertFalse(interrupted.get());
-        caller.join(1_000);
-        assertFalse(caller.isAlive());
-    }
-
-    @Test
-    @Timeout(5)
-    void transportReturnedAfterStartupCancellationClosesOnceWithoutIo() throws Exception {
-        var entering = new CountDownLatch(1);
-        var setupWorker = new AtomicReference<Thread>();
-        var closes = new AtomicInteger();
-        var attemptedIo = new AtomicBoolean();
-        var result = new CompletableFuture<@NonNull Throwable>();
-        var transport =
-                new FrameTransport() {
-                    public void send(@NonNull Frame frame) {
-                        attemptedIo.set(true);
-                        throw new AssertionError("Cancelled setup must not send");
-                    }
-
-                    public @NonNull Frame receive() {
-                        attemptedIo.set(true);
-                        throw new AssertionError("Cancelled setup must not receive");
-                    }
-
-                    public void close() {
-                        assertEquals(1, closes.incrementAndGet());
-                    }
-                };
-        var caller =
-                Thread.ofVirtual()
-                        .start(
-                                () -> {
-                                    try (var opened =
-                                            new ProtocolClient(
-                                                    () -> {
-                                                        setupWorker.set(Thread.currentThread());
-                                                        entering.countDown();
-                                                        try {
-                                                            new CountDownLatch(1).await();
-                                                        } catch (InterruptedException cancelled) {
-                                                            // Setup completes as cancellation
-                                                            // arrives.
-                                                            return transport;
-                                                        }
-                                                        throw new AssertionError(
-                                                                "Setup should be interrupted");
-                                                    })) {
-                                        assertFalse(opened.isClosed());
-                                        result.complete(
-                                                new AssertionError("Connection should not open"));
-                                    } catch (Throwable failure) {
-                                        result.complete(failure);
-                                    }
-                                });
+        long started = System.nanoTime();
+        var client = new ProtocolClient(transport);
         try {
-            assertTrue(entering.await(1, TimeUnit.SECONDS));
+            assertTrue(helloSent.await(1, TimeUnit.SECONDS));
+            client.send(new Frame.Request(client.nextSequence(), null, null, "queued"));
+            assertNull(client.receive(12, TimeUnit.SECONDS));
+            assertTrue(System.nanoTime() - started >= TimeUnit.SECONDS.toNanos(9));
+            assertTrue(closed.await(1, TimeUnit.SECONDS));
+            client.close();
+            assertWorkerStopped(reader.get());
+            assertWorkerStopped(writer.get());
+            assertNull(client.receive());
         } finally {
-            caller.interrupt();
+            client.close();
         }
-        assertInstanceOf(InterruptedException.class, result.get(2, TimeUnit.SECONDS));
-        assertWorkerStopped(setupWorker);
-        caller.join(1_000);
-        assertFalse(caller.isAlive());
-        assertEquals(1, closes.get());
-        assertFalse(attemptedIo.get());
     }
 
     @Test
     @Timeout(5)
-    void receiveFailureClosesBothVirtualWorkers() throws Exception {
+    void receiveFailureRetainsEarlierFramesThenEndsStreamAndStopsBothWorkers() throws Exception {
         var failReceive = new CountDownLatch(1);
+        var helloSent = new CountDownLatch(1);
         var closed = new CountDownLatch(1);
         var reader = new AtomicReference<Thread>();
         var writer = new AtomicReference<Thread>();
+        var progress = Delta.message("accepted progress");
         var transport =
                 new FrameTransport() {
-                    private boolean welcomed;
+                    private int received;
 
                     public void send(@NonNull Frame frame) {
                         writer.set(Thread.currentThread());
+                        helloSent.countDown();
                     }
 
                     public @NonNull Frame receive() throws IOException {
                         reader.set(Thread.currentThread());
-                        if (!welcomed) {
-                            welcomed = true;
+                        await(helloSent);
+                        if (received++ == 0)
                             return new Frame.Welcome(Frame.PROTOCOL_VERSION, 1, Version.UNKNOWN);
-                        }
+                        if (received == 2) return progress;
                         await(failReceive);
                         throw new IOException("receive failed");
                     }
@@ -271,14 +196,20 @@ class ProtocolClientFailureCleanupTest {
                         closed.countDown();
                     }
                 };
-        try (var client = new ProtocolClient(() -> transport)) {
+        var client = new ProtocolClient(transport);
+        try {
+            assertInstanceOf(Frame.Welcome.class, client.receive(1, TimeUnit.SECONDS));
             failReceive.countDown();
             assertTrue(closed.await(2, TimeUnit.SECONDS));
             assertTrue(client.isClosed());
-            assertWorkerStopped(reader);
-            assertWorkerStopped(writer);
+            assertEquals(progress, client.receive());
+            assertNull(client.receive());
+            client.close();
+            assertWorkerStopped(reader.get());
+            assertWorkerStopped(writer.get());
         } finally {
             failReceive.countDown();
+            client.close();
         }
     }
 
@@ -291,9 +222,7 @@ class ProtocolClientFailureCleanupTest {
         }
     }
 
-    private static void assertWorkerStopped(@NonNull AtomicReference<Thread> reference)
-            throws InterruptedException {
-        var worker = reference.get();
+    private static void assertWorkerStopped(Thread worker) throws InterruptedException {
         if (worker == null) throw new AssertionError("Missing worker");
         assertTrue(worker.isVirtual());
         worker.join(1_000);

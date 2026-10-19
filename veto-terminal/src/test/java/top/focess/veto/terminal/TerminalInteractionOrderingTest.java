@@ -26,7 +26,7 @@ class TerminalInteractionOrderingTest {
     @Timeout(10)
     void acceptedInputEntersProtocolQueueBeforeCompletionDispatchesNextCommand() throws Exception {
         var peer = new Peer();
-        try (var client = new ProtocolClient(() -> peer)) {
+        try (var client = new ProtocolClient(peer)) {
             var terminal = new VetoTerminal(MordantTerminal.create(), client);
             var replySelected = new CountDownLatch(1);
             var releaseReply = new CountDownLatch(1);

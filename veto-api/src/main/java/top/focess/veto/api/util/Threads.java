@@ -1,36 +1,35 @@
 package top.focess.veto.api.util;
 
-import java.util.concurrent.TimeUnit;
+import org.jspecify.annotations.NonNull;
 
-/** Worker termination waits that preserve caller interruption. */
+/** Waits for owned workers. */
 public final class Threads {
     private Threads() {}
 
     /**
-     * Waits for a worker to terminate, then restores any caller interruption. A zero timeout waits
-     * without a deadline; a positive timeout bounds the total wait, including interruptions. Null
-     * and the current thread require no wait. This method does not stop or interrupt the worker.
+     * Joins owned workers in order. Interruption ends the wait without stopping the workers; the
+     * caller decides whether to continue cleanup. Workers must be distinct from the calling thread.
+     *
+     * @param workers owned workers whose shutdown has already been signalled
+     * @throws InterruptedException if the caller is interrupted while waiting
+     */
+    public static void joinAll(@NonNull Iterable<@NonNull Thread> workers)
+            throws InterruptedException {
+        for (var worker : workers) worker.join();
+    }
+
+    /**
+     * Waits for a worker to terminate. A zero timeout waits without a deadline. Null and the
+     * current thread require no wait. Interruption ends the wait; it does not stop the worker.
      *
      * @param worker worker being shut down
      * @param timeoutMillis total wait limit in milliseconds, or zero for no limit
+     * @throws InterruptedException if the caller is interrupted while waiting
      */
-    public static void awaitTermination(Thread worker, long timeoutMillis) {
+    public static void awaitTermination(Thread worker, long timeoutMillis)
+            throws InterruptedException {
         if (timeoutMillis < 0) throw new IllegalArgumentException("Timeout must not be negative");
         if (worker == null || worker == Thread.currentThread()) return;
-        long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMillis);
-        boolean interrupted = false;
-        while (worker.isAlive()) {
-            try {
-                if (timeoutMillis == 0) worker.join();
-                else {
-                    long remaining = deadline - System.nanoTime();
-                    if (remaining <= 0) break;
-                    TimeUnit.NANOSECONDS.timedJoin(worker, remaining);
-                }
-            } catch (InterruptedException ignored) {
-                interrupted = true;
-            }
-        }
-        if (interrupted) Thread.currentThread().interrupt();
+        worker.join(timeoutMillis);
     }
 }

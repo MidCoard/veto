@@ -139,7 +139,7 @@ class WebSocketRequestTest {
     }
 
     @AfterEach
-    void close() {
+    void close() throws InterruptedException {
         handler.stop();
     }
 

@@ -1,7 +1,6 @@
 package top.focess.veto.terminal;
 
 import java.io.IOException;
-import java.util.ArrayDeque;
 import java.util.Locale;
 import java.util.UUID;
 import java.util.concurrent.Executor;
@@ -10,6 +9,7 @@ import java.util.function.Consumer;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import top.focess.veto.api.util.ByteBoundedQueue;
 import top.focess.veto.command.CommandRegistry;
 import top.focess.veto.command.SessionCommandService;
 import top.focess.veto.contract.Frame;
@@ -34,9 +34,9 @@ final class IpcConnection {
     private final @NonNull TcpConnection transport;
     private final @NonNull Executor workers;
     private final @NonNull Consumer<@NonNull IpcConnection> onClosed;
-    private final @NonNull ArrayDeque<@NonNull IpcOutboundFrame> outbox = new ArrayDeque<>();
-    private int queuedBytes;
-    private boolean stopped;
+    private final @NonNull ByteBoundedQueue<@NonNull IpcOutboundFrame> outbox =
+            new ByteBoundedQueue<>(MAX_MESSAGES, MAX_BYTES);
+    private @NonNull State state = State.OPEN;
     private boolean writing;
 
     // Callbacks are stored until the completed connection is registered and its workers start.
@@ -68,19 +68,18 @@ final class IpcConnection {
     }
 
     private synchronized boolean isOpen() {
-        return !stopped;
+        return state == State.OPEN;
     }
 
     private boolean send(
             Frame.@NonNull ServerFrame frame, long version, @NonNull BooleanSupplier attached) {
         var payload = FrameCodec.encode(frame);
         synchronized (this) {
-            if (stopped) return false;
-            if (outbox.size() < MAX_MESSAGES
-                    && payload.length <= TcpConnection.MAX_FRAME_BYTES
-                    && payload.length <= MAX_BYTES - queuedBytes) {
-                outbox.addLast(new IpcOutboundFrame(frame, payload, version, attached));
-                queuedBytes += payload.length;
+            if (state != State.OPEN) return false;
+            if (payload.length <= TcpConnection.MAX_FRAME_BYTES
+                    && outbox.offer(
+                            new IpcOutboundFrame(frame, payload, version, attached),
+                            payload.length)) {
                 if (!writing) {
                     writing = true;
                     workers.execute(this::write);
@@ -97,19 +96,22 @@ final class IpcConnection {
         boolean first;
         boolean closeSocket;
         synchronized (this) {
-            first = !stopped;
-            stopped = true;
-            if (!drain) {
-                outbox.clear();
-                queuedBytes = 0;
-            }
+            if (state == State.CLOSED) return;
+            first = state == State.OPEN;
             closeSocket = !drain || !writing;
+            state = closeSocket ? State.CLOSED : State.DRAINING;
+            if (closeSocket) {
+                outbox.clear();
+            }
         }
-        if (closeSocket) {
-            transport.close();
-            onClosed.accept(this);
+        try {
+            if (first) protocol.close();
+        } finally {
+            if (closeSocket) {
+                transport.close();
+                onClosed.accept(this);
+            }
         }
-        if (first) protocol.close();
     }
 
     void read() {
@@ -133,10 +135,9 @@ final class IpcConnection {
                 IpcOutboundFrame pending;
                 boolean closing;
                 synchronized (this) {
-                    pending = outbox.pollFirst();
-                    closing = stopped;
+                    pending = outbox.poll();
+                    closing = state != State.OPEN;
                     if (pending == null) writing = false;
-                    else queuedBytes -= pending.payload().length;
                 }
                 if (pending == null) {
                     if (closing) stop(false);
@@ -159,6 +160,13 @@ final class IpcConnection {
         synchronized (this) {
             writing = false;
         }
+    }
+
+    /** One transition to CLOSED owns socket cleanup and removal from the server. */
+    private enum State {
+        OPEN,
+        DRAINING,
+        CLOSED
     }
 
     /**

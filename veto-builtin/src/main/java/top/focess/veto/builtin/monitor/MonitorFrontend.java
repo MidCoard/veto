@@ -1,37 +1,24 @@
 package top.focess.veto.builtin.monitor;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.api.plugin.Scope;
-import top.focess.veto.api.plugin.contract.FrontendContribution;
 import top.focess.veto.api.plugin.contract.JsonValue;
-import top.focess.veto.api.plugin.contract.JsonValues;
 import top.focess.veto.api.plugin.contract.PluginFailure;
+import top.focess.veto.builtin.BuiltinJson;
+import top.focess.veto.builtin.BundledFrontend;
 import top.focess.veto.builtin.monitor.MonitorRecord.ActivationState;
 
 /** Monitor presentation and actions ship with the same plugin as their domain lifecycle. */
-public final class MonitorFrontend implements FrontendContribution {
+public final class MonitorFrontend extends BundledFrontend {
     private final @NonNull MonitorService service;
-    private final @NonNull ObjectMapper mapper = new ObjectMapper().findAndRegisterModules();
 
     /** Creates a frontend backed by the given monitor service. */
     public MonitorFrontend(@NonNull MonitorService service) {
+        super("/frontend/monitors.js");
         this.service = service;
-    }
-
-    /** Serves the bundled monitors script and routes its actions to {@link #handle}. */
-    public @NonNull String module() {
-        try (var stream = MonitorFrontend.class.getResourceAsStream("/frontend/monitors.js")) {
-            if (stream == null) throw new IllegalStateException("Missing monitor frontend");
-            return new String(stream.readAllBytes(), StandardCharsets.UTF_8);
-        } catch (IOException failure) {
-            throw new IllegalStateException("Cannot load monitor frontend", failure);
-        }
     }
 
     /**
@@ -54,7 +41,7 @@ public final class MonitorFrontend implements FrontendContribution {
                                 .limit(20)
                                 .map(MonitorFrontend::summary)
                                 .toList();
-                return json(
+                return BuiltinJson.value(
                         Map.of(
                                 "revision",
                                 snapshot.revision(),
@@ -73,7 +60,7 @@ public final class MonitorFrontend implements FrontendContribution {
             if (action.equals("purpose")) {
                 String content = record.purpose();
                 if (offset > content.length()) throw new IllegalArgumentException();
-                return json(
+                return BuiltinJson.value(
                         Map.of(
                                 "content",
                                 content.substring(
@@ -93,7 +80,7 @@ public final class MonitorFrontend implements FrontendContribution {
                                 .orElseThrow(IllegalArgumentException::new);
                 String content = event.content();
                 if (offset > content.length()) throw new IllegalArgumentException();
-                return json(
+                return BuiltinJson.value(
                         Map.of(
                                 "content",
                                 content.substring(
@@ -126,7 +113,7 @@ public final class MonitorFrontend implements FrontendContribution {
                                                         "state",
                                                         activation(record, event)))
                                 .toList();
-                return json(Map.of("items", items, "total", events.size()));
+                return BuiltinJson.value(Map.of("items", items, "total", events.size()));
             }
             if (!List.of("pause", "resume", "cancel").contains(action))
                 throw new IllegalArgumentException();
@@ -173,9 +160,5 @@ public final class MonitorFrontend implements FrontendContribution {
         int result = number.value().intValueExact();
         if (result < 0) throw new IllegalArgumentException();
         return result;
-    }
-
-    private @NonNull JsonValue json(@NonNull Object value) {
-        return JsonValues.from(mapper.valueToTree(value));
     }
 }

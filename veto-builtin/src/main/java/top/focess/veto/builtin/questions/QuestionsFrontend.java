@@ -1,32 +1,21 @@
 package top.focess.veto.builtin.questions;
 
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.api.plugin.Scope;
-import top.focess.veto.api.plugin.contract.FrontendContribution;
 import top.focess.veto.api.plugin.contract.JsonValue;
 import top.focess.veto.api.plugin.contract.PluginFailure;
+import top.focess.veto.builtin.BundledFrontend;
 
 /** Authenticated frontend actions share the exact tool invocation scope. */
-public final class QuestionsFrontend implements FrontendContribution {
+public final class QuestionsFrontend extends BundledFrontend {
     private final @NonNull QuestionRuntime runtime;
 
     /** Creates a frontend backed by the given question runtime. */
     public QuestionsFrontend(@NonNull QuestionRuntime runtime) {
+        super("/frontend/questions.js");
         this.runtime = runtime;
-    }
-
-    /** Serves the bundled interactions script and routes its actions to {@link #handle}. */
-    public @NonNull String module() {
-        try (var stream = QuestionsFrontend.class.getResourceAsStream("/frontend/questions.js")) {
-            if (stream == null) throw new IllegalStateException("Missing questions frontend");
-            return new String(stream.readAllBytes(), StandardCharsets.UTF_8);
-        } catch (IOException failure) {
-            throw new IllegalStateException("Cannot load questions frontend", failure);
-        }
     }
 
     /**

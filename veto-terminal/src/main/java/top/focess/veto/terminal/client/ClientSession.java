@@ -30,8 +30,8 @@ import top.focess.veto.contract.ProtocolClient;
  * <p>Deltas render in every state, including connection-local messages without a session or agent.
  * Command input requires an active command; session approvals can arrive independently and are
  * queued in arrival order. Command input takes display priority without discarding approvals. Done
- * and Error settle only the matching positive request sequence. Terminate tears down from any
- * state.
+ * and Error settle only the matching positive request sequence. Welcome reports the connected
+ * backend version without changing command state. Terminate tears down from any state.
  *
  * <h3>Thread model</h3>
  *
@@ -221,6 +221,11 @@ public final class ClientSession {
      * @return the client frame to send (a dispatched next {@link Frame.Request}), or {@code null}
      */
     public Frame.ClientFrame onFrame(Frame.@NonNull ServerFrame frame) {
+        if (frame instanceof Frame.Terminate termination) {
+            var reason = termination.reason();
+            onConnectionClosed(reason == null ? "Server terminated the session." : reason);
+            return null;
+        }
         List<Runnable> events = new ArrayList<>();
         Frame.ClientFrame reply = null;
         synchronized (lock) {
@@ -233,6 +238,14 @@ public final class ClientSession {
                 if (snapshot != null) events.add(() -> view.onMetaChanged(snapshot));
             }
             switch (frame) {
+                case Frame.Welcome welcome ->
+                        events.add(
+                                () ->
+                                        view.onProgress(
+                                                StyledText.muted(
+                                                        "Connected to veto-core "
+                                                                + welcome.productVersion()
+                                                                + ".")));
                 // ── streaming ───────────────────────────────────────────────────
                 case Delta event -> {
                     switch (event.data()) {
@@ -342,18 +355,6 @@ public final class ClientSession {
                         reply = dispatchNextOrIdle(events);
                     }
                 }
-                case Frame.Terminate t -> {
-                    String receivedReason = t.reason();
-                    String reason =
-                            receivedReason != null
-                                    ? receivedReason
-                                    : "Server terminated the session.";
-                    commandPrompt = null;
-                    approvals.clear();
-                    activeRequestSeq = 0;
-                    events.add(() -> view.onTerminate(StyledText.muted(reason)));
-                }
-
                 default ->
                         log.warn(
                                 "Unexpected server frame {} — ignoring",
@@ -365,6 +366,17 @@ public final class ClientSession {
         }
         fire(events);
         return reply;
+    }
+
+    /** Releases local interaction state after EOF, local failure or server termination. */
+    public void onConnectionClosed(@NonNull String reason) {
+        synchronized (lock) {
+            commandPrompt = null;
+            approvals.clear();
+            pendingRequests.clear();
+            activeRequestSeq = 0;
+        }
+        view.onTerminate(StyledText.muted(reason));
     }
 
     private static boolean sameApproval(Frame.@NonNull Veto first, Frame.@NonNull Veto second) {

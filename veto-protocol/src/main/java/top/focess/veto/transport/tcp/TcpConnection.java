@@ -1,18 +1,22 @@
 package top.focess.veto.transport.tcp;
 
-import java.io.BufferedInputStream;
-import java.io.BufferedOutputStream;
-import java.io.DataOutputStream;
 import java.io.EOFException;
 import java.io.IOException;
-import java.io.InputStream;
 import java.net.InetSocketAddress;
-import java.net.ServerSocket;
-import java.net.Socket;
 import java.net.SocketTimeoutException;
+import java.net.StandardSocketOptions;
 import java.net.URI;
 import java.net.UnknownHostException;
-import java.util.concurrent.ScheduledThreadPoolExecutor;
+import java.nio.ByteBuffer;
+import java.nio.channels.ClosedByInterruptException;
+import java.nio.channels.ClosedChannelException;
+import java.nio.channels.ClosedSelectorException;
+import java.nio.channels.NotYetConnectedException;
+import java.nio.channels.SelectionKey;
+import java.nio.channels.Selector;
+import java.nio.channels.ServerSocketChannel;
+import java.nio.channels.SocketChannel;
+import java.util.List;
 import java.util.concurrent.TimeUnit;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
@@ -23,62 +27,73 @@ import top.focess.veto.contract.FrameCodec;
 import top.focess.veto.contract.FrameTransport;
 
 /**
- * Socket transport used by the terminal's ProtocolClient and the backend's IpcServer. Owns the
- * socket and its length-prefixed UTF-8 JSON frames; it does not interpret requests or manage agent
- * sessions. The four-byte big-endian length excludes the header. An invalid or incomplete frame
- * ends the connection.
+ * Channel transport used by the terminal's ProtocolClient and the backend's IpcServer. Owns the
+ * channel and its length-prefixed UTF-8 JSON frames; the four-byte big-endian length excludes the
+ * header. Invalid or incomplete input is reported to the owner, which must end the connection.
  *
- * <p><b>Thread safety:</b> follows {@link FrameTransport}: one reader, one writer and concurrent
- * close. Read and write have separate stream state. Callers own their output queues; this class
- * neither queues frames nor creates IO workers. Closing the socket releases blocked IO.
+ * <p><b>Thread safety:</b> one reader, one writer and concurrent close. Each direction owns its
+ * buffers and selector, so a stalled write does not block reads. The calling workers wait for IO
+ * readiness with a deadline; this transport creates no threads, executor or output queue. Closing
+ * the channel and selectors wakes both directions.
  */
 public final class TcpConnection implements FrameTransport {
     private static final int IO_TIMEOUT_MILLIS = 10_000;
     private static final int IDLE_TIMEOUT_MILLIS = 90_000;
     private static final @NonNull Logger log =
             LoggerFactory.getLogger("top.focess.veto.transport.tcp.TcpConnection");
-    private static final @NonNull ScheduledThreadPoolExecutor WRITE_DEADLINES =
-            new ScheduledThreadPoolExecutor(
-                    1, Thread.ofPlatform().daemon().name("tcp-write-deadline").factory());
 
-    static {
-        WRITE_DEADLINES.setRemoveOnCancelPolicy(true);
-    }
+    private final @NonNull SocketChannel channel;
+    private final @NonNull Selector readable;
+    private final @NonNull Selector writable;
+    // Concurrent owner close releases all three resources once, even if the JDK closed the channel.
+    private boolean closed;
 
-    private final @NonNull Socket socket;
-    private final @NonNull InputStream input;
-    private final @NonNull DataOutputStream output;
-
-    private TcpConnection(@NonNull Socket socket, InetSocketAddress endpoint) throws IOException {
-        this.socket = socket;
+    private TcpConnection(@NonNull SocketChannel channel, InetSocketAddress endpoint)
+            throws IOException {
+        this.channel = channel;
+        Selector input = null;
+        Selector output = null;
         try {
-            if (endpoint != null) socket.connect(endpoint, IO_TIMEOUT_MILLIS);
-            socket.setTcpNoDelay(true);
-            input = new BufferedInputStream(socket.getInputStream());
-            output = new DataOutputStream(new BufferedOutputStream(socket.getOutputStream()));
+            if (endpoint != null) channel.socket().connect(endpoint, IO_TIMEOUT_MILLIS);
+            if (!channel.isConnected()) throw new NotYetConnectedException();
+            channel.setOption(StandardSocketOptions.TCP_NODELAY, true);
+            channel.configureBlocking(false);
+            input = Selector.open();
+            channel.register(input, SelectionKey.OP_READ);
+            output = Selector.open();
+            channel.register(output, SelectionKey.OP_WRITE);
+            readable = input;
+            writable = output;
         } catch (Throwable failure) {
-            Resources.closeOnFailure(socket, failure);
+            if (output != null) Resources.closeOnFailure(output, failure);
+            if (input != null) Resources.closeOnFailure(input, failure);
+            Resources.closeOnFailure(channel, failure);
             throw failure;
         }
     }
 
-    /** Opens an owned client socket, with a bounded connect and no implicit reconnect. */
+    /** Opens an owned client channel, with a bounded connect and no implicit reconnect. */
     public static @NonNull TcpConnection connect(@NonNull String address) throws IOException {
         var endpoint = endpoint(address, false);
-        return new TcpConnection(new Socket(), endpoint);
+        return new TcpConnection(SocketChannel.open(), endpoint);
     }
 
-    /** Takes ownership of an accepted socket, including cleanup if stream setup fails. */
-    public static @NonNull TcpConnection accept(@NonNull Socket socket) throws IOException {
-        return new TcpConnection(socket, null);
+    /** Takes ownership of an accepted channel, including cleanup if initialization fails. */
+    public static @NonNull TcpConnection accept(@NonNull SocketChannel channel) throws IOException {
+        return new TcpConnection(channel, null);
     }
 
-    /** Binds a listener; its caller owns closure. Port zero requests an ephemeral port. */
-    public static @NonNull ServerSocket bind(@NonNull String address) throws IOException {
+    /** Binds a blocking listener; its caller owns closure. Port zero requests an ephemeral port. */
+    public static @NonNull ServerSocketChannel bind(@NonNull String address) throws IOException {
         var endpoint = endpoint(address, true);
-        var host = endpoint.getAddress();
-        if (host == null) throw new UnknownHostException(endpoint.getHostString());
-        return new ServerSocket(endpoint.getPort(), 50, host);
+        if (endpoint.isUnresolved()) throw new UnknownHostException(endpoint.getHostString());
+        var listener = ServerSocketChannel.open();
+        try {
+            return listener.bind(endpoint, 50);
+        } catch (Throwable failure) {
+            Resources.closeOnFailure(listener, failure);
+            throw failure;
+        }
     }
 
     private static @NonNull InetSocketAddress endpoint(@NonNull String address, boolean listener) {
@@ -102,65 +117,78 @@ public final class TcpConnection implements FrameTransport {
         send(FrameCodec.encode(frame));
     }
 
-    /** Writes an already encoded frame. The caller must keep its bytes unchanged until return. */
+    /**
+     * Writes a complete encoded frame. Invalid lengths are rejected before IO; the connection is
+     * still usable. An IO failure may leave a partial frame, so the owner must close instead of
+     * retry.
+     */
     public void send(byte @NonNull [] payload) throws IOException {
         if (payload.length == 0 || payload.length > MAX_FRAME_BYTES)
             throw new IOException("Protocol frame exceeds the allowed size");
-        // SO_TIMEOUT bounds reads only. Closing on this deadline also releases a blocked write.
-        var deadline =
-                WRITE_DEADLINES.schedule(this::close, IO_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS);
-        try {
-            output.writeInt(payload.length);
-            output.write(payload);
-            output.flush();
-        } finally {
-            if (!deadline.cancel(false)) log.debug("TCP write deadline already elapsed");
+        var buffer = ByteBuffer.allocate(Integer.BYTES + payload.length);
+        buffer.putInt(payload.length).put(payload).flip();
+        long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(IO_TIMEOUT_MILLIS);
+        while (buffer.hasRemaining()) {
+            if (deadline - System.nanoTime() <= 0)
+                throw new SocketTimeoutException("TCP write timed out");
+            if (channel.write(buffer) == 0) awaitReady(writable, deadline);
         }
     }
 
     @Override
     public @NonNull Frame receive() throws IOException {
-        socket.setSoTimeout(IDLE_TIMEOUT_MILLIS);
-        int first = input.read();
-        if (first < 0) throw new EOFException("Peer closed the connection");
+        var header = ByteBuffer.allocate(Integer.BYTES);
+        header.limit(1);
+        readFully(header, System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(IDLE_TIMEOUT_MILLIS));
         long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(IO_TIMEOUT_MILLIS);
-        var header = new byte[4];
-        header[0] = (byte) first;
-        readFully(header, 1, 3, deadline);
-        int length =
-                ((header[0] & 0xff) << 24)
-                        | ((header[1] & 0xff) << 16)
-                        | ((header[2] & 0xff) << 8)
-                        | (header[3] & 0xff);
+        header.limit(Integer.BYTES);
+        readFully(header, deadline);
+        int length = header.flip().getInt();
         if (length <= 0 || length > MAX_FRAME_BYTES)
             throw new IOException("Invalid protocol frame length");
-        var payload = new byte[length];
-        readFully(payload, 0, length, deadline);
-        var frame = FrameCodec.decode(payload);
+        var payload = ByteBuffer.allocate(length);
+        readFully(payload, deadline);
+        var frame = FrameCodec.decode(payload.array());
         if (frame == null) throw new IOException("Invalid protocol frame payload");
         return frame;
     }
 
-    private void readFully(byte @NonNull [] bytes, int offset, int length, long deadline)
-            throws IOException {
-        int end = offset + length;
-        while (offset < end) {
-            long remaining = deadline - System.nanoTime();
-            if (remaining <= 0) throw new SocketTimeoutException("Protocol frame timed out");
-            socket.setSoTimeout((int) Math.max(1, TimeUnit.NANOSECONDS.toMillis(remaining)));
-            int read = input.read(bytes, offset, end - offset);
+    private void readFully(@NonNull ByteBuffer buffer, long deadline) throws IOException {
+        while (buffer.hasRemaining()) {
+            if (deadline - System.nanoTime() <= 0)
+                throw new SocketTimeoutException("TCP read timed out");
+            int read = channel.read(buffer);
             if (read < 0) throw new EOFException("Peer closed during a protocol frame");
-            offset += read;
+            if (read == 0) awaitReady(readable, deadline);
         }
     }
 
-    /** Idempotent; may be called while either direction is blocked. */
-    @Override
-    public void close() {
+    /** Waits on the caller's IO thread; a readiness notification may still require another try. */
+    private void awaitReady(@NonNull Selector selector, long deadline) throws IOException {
+        // Selector.select wakes on interruption without clearing it. End IO instead of spinning.
+        if (Thread.currentThread().isInterrupted()) throw new ClosedByInterruptException();
+        long remaining = deadline - System.nanoTime();
+        if (remaining <= 0) throw new SocketTimeoutException("TCP IO timed out");
         try {
-            socket.close();
-        } catch (IOException failure) {
-            log.debug("Could not close TCP socket ({})", failure.getClass().getSimpleName());
+            if (selector.select(Math.max(1, TimeUnit.NANOSECONDS.toMillis(remaining))) > 0)
+                selector.selectedKeys().clear();
+        } catch (ClosedSelectorException closed) {
+            // Concurrent close ends both selectors; expose the same IO contract as channel close.
+            throw new ClosedChannelException();
+        }
+    }
+
+    /** Idempotent; may be called while either direction waits for IO readiness. */
+    @Override
+    public synchronized void close() {
+        if (closed) return;
+        closed = true;
+        for (var resource : List.of(channel, readable, writable)) {
+            try {
+                resource.close();
+            } catch (IOException failure) {
+                log.debug("Could not close TCP resource ({})", failure.getClass().getSimpleName());
+            }
         }
     }
 }

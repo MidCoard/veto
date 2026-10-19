@@ -12,6 +12,7 @@ import java.util.UUID;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
+import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
@@ -24,7 +25,6 @@ import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.context.i18n.LocaleContextHolder;
 import top.focess.veto.VetoVersion;
 import top.focess.veto.agent.ProtectedInputException;
 import top.focess.veto.agent.RequestHandle;
@@ -37,7 +37,6 @@ import top.focess.veto.command.SessionCommandService;
 import top.focess.veto.command.VetoCommandSender;
 import top.focess.veto.contract.Delta;
 import top.focess.veto.contract.Frame;
-import top.focess.veto.vault.ExecutionSecurity;
 import top.focess.veto.vault.UserEntity;
 
 /**
@@ -80,7 +79,7 @@ public final class ProtocolConnection implements AutoCloseable {
     private boolean ready;
     private final @NonNull Set<@NonNull Long> receivedSequences = new HashSet<>();
     private ProtocolOperation active;
-    private int controls;
+    private final @NonNull Semaphore controlSlots = new Semaphore(MAX_PENDING);
     private VetoCommandSender sender;
 
     public ProtocolConnection(
@@ -303,11 +302,10 @@ public final class ProtocolConnection implements AutoCloseable {
 
     private void execute(@NonNull ProtocolOperation operation) {
         execution.set(operation);
-        LocaleContextHolder.setLocale(locale);
         Frame.ServerFrame response =
                 new Frame.Done(new Scope.GlobalScope(), null, -1, null, null, operation.seq);
-        var security = ExecutionSecurity.open(operation.authority.user());
-        try {
+        var context = new ConnectionExecutionScope(operation.authority.user(), locale);
+        try (context) {
             if (!valid(operation) || operation.cancelled) throw new CancellationException();
             if (operation.frame instanceof Frame.DeclineVetoes decline) {
                 var user = requireUser(operation);
@@ -353,9 +351,7 @@ public final class ProtocolConnection implements AutoCloseable {
                             null,
                             "REQUEST_REJECTED");
         } finally {
-            security.close();
             execution.remove();
-            LocaleContextHolder.resetLocaleContext();
             synchronized (this) {
                 operation.worker = null;
             }
@@ -664,11 +660,10 @@ public final class ProtocolConnection implements AutoCloseable {
         ConnectionIdentity admittedAuthority;
         synchronized (this) {
             if (closed) return;
-            if (controls >= MAX_PENDING) {
+            if (!controlSlots.tryAcquire()) {
                 send(new Frame.Error("Too many pending controls", seq));
                 return;
             }
-            controls++;
             admittedAuthority = identity;
         }
         Thread.ofVirtual()
@@ -679,19 +674,15 @@ public final class ProtocolConnection implements AutoCloseable {
                                     new ProtocolOperation(
                                             seq, new Frame.Heartbeat(), admittedAuthority);
                             execution.set(control);
-                            LocaleContextHolder.setLocale(locale);
-                            var security = ExecutionSecurity.open(admittedAuthority.user());
-                            try {
+                            var context =
+                                    new ConnectionExecutionScope(admittedAuthority.user(), locale);
+                            try (context) {
                                 if (valid(control)) action.run();
                             } catch (Throwable failure) {
                                 send(new Frame.Error("Control could not be processed", seq));
                             } finally {
-                                security.close();
                                 execution.remove();
-                                LocaleContextHolder.resetLocaleContext();
-                                synchronized (this) {
-                                    controls--;
-                                }
+                                controlSlots.release();
                             }
                         });
     }

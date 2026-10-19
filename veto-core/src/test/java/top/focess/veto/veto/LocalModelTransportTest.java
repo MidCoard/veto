@@ -12,7 +12,10 @@ import java.net.http.HttpResponse;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
@@ -142,6 +145,23 @@ class LocalModelTransportTest {
         assertEquals(
                 "{\"veto_decision\":\"pass\",\"data\":{\"error\":\"unavailable\"}}",
                 bridge.infer("prompt", "veto-output").get());
+
+        var response = mock(HttpResponse.class);
+        var callbackFailure = new AssertionError("Response mapping failed");
+        when(response.statusCode()).thenThrow(callbackFailure);
+        doReturn(CompletableFuture.completedFuture(response))
+                .when(http)
+                .sendAsync(
+                        any(HttpRequest.class),
+                        ArgumentMatchers.<HttpResponse.BodyHandler<String>>any());
+        for (var result :
+                List.of(
+                        bridge.infer("prompt", "veto-output"),
+                        bridge.inferWithGrammar("prompt", "root ::= \"x\""))) {
+            var failure =
+                    assertThrows(ExecutionException.class, () -> result.get(1, TimeUnit.SECONDS));
+            assertTrue(failure.getCause() == callbackFailure);
+        }
     }
 
     @Test

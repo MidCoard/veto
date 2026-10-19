@@ -7,7 +7,7 @@ import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
-import java.net.Socket;
+import java.nio.channels.SocketChannel;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
@@ -93,7 +93,7 @@ class IpcPeerIsolationTest {
         context.registerBean(AgentSessions.class, () -> runtime);
         context.registerBean(SessionService.class, () -> mock(SessionService.class));
         context.registerBean(SessionCommandService.class, () -> mock(SessionCommandService.class));
-        context.register(TerminalConfiguration.class, IpcServer.class);
+        context.register(IpcServer.class);
         context.refresh();
         return context;
     }
@@ -683,13 +683,14 @@ class IpcPeerIsolationTest {
         when(registry.complete(any(), eq("explode")))
                 .thenThrow(new IllegalArgumentException("invalid completion syntax"));
         when(registry.complete(any(), eq("healthy"))).thenReturn(List.of());
+        String address;
+        try (var reservation = new ServerSocket(0)) {
+            address = "tcp://127.0.0.1:" + reservation.getLocalPort();
+        }
         try (var endpoint =
                 openEndpoint(
-                        registry,
-                        mock(AgentService.class),
-                        TestAgentSessions.create(),
-                        "tcp://127.0.0.1:0")) {
-            var address = "tcp://127.0.0.1:" + endpoint.getBean(ServerSocket.class).getLocalPort();
+                        registry, mock(AgentService.class), TestAgentSessions.create(), address)) {
+            assertTrue(endpoint.isActive());
             try (var uninitialized = TcpConnection.connect(address)) {
                 uninitialized.send(new Frame.Heartbeat());
                 assertInstanceOf(Frame.Error.class, receive(uninitialized));
@@ -734,17 +735,21 @@ class IpcPeerIsolationTest {
                             }
                             return done(null);
                         });
+        int port;
+        try (var reservation = new ServerSocket(0)) {
+            port = reservation.getLocalPort();
+        }
         try (var endpoint =
                 openEndpoint(
                         registry,
                         mock(AgentService.class),
                         TestAgentSessions.create(),
-                        "tcp://127.0.0.1:0")) {
-            int port = endpoint.getBean(ServerSocket.class).getLocalPort();
-            try (var socket = new Socket();
+                        "tcp://127.0.0.1:" + port)) {
+            assertTrue(endpoint.isActive());
+            try (var socket = SocketChannel.open();
                     var healthy = connect("tcp://127.0.0.1:" + port)) {
-                socket.setReceiveBufferSize(1024);
-                socket.connect(new InetSocketAddress("127.0.0.1", port));
+                socket.socket().setReceiveBufferSize(1024);
+                assertTrue(socket.connect(new InetSocketAddress("127.0.0.1", port)));
                 try (var slow = TcpConnection.accept(socket)) {
                     slow.send(new Frame.Hello(Frame.PROTOCOL_VERSION, 1, Version.UNKNOWN, "."));
                     assertInstanceOf(Frame.Welcome.class, slow.receive());

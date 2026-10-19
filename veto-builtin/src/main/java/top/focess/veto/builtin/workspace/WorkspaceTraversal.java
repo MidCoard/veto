@@ -10,9 +10,7 @@ import top.focess.veto.api.agent.capability.WorkspaceFile;
 /** Bounded tool-side traversal over already restricted resource handles. */
 final class WorkspaceTraversal {
     private static final long MAX_NANOS = 10_000_000_000L;
-    private final @NonNull ArrayDeque<@NonNull Iterator<? extends @NonNull WorkspaceFile>> pending =
-            new ArrayDeque<>();
-    private final @NonNull ArrayDeque<@NonNull String> prefixes = new ArrayDeque<>();
+    private final @NonNull ArrayDeque<@NonNull DirectoryCursor> pending = new ArrayDeque<>();
     private final @NonNull WorkspaceFile root;
     private @NonNull String relativeName = "";
     private final long started = System.nanoTime();
@@ -22,33 +20,31 @@ final class WorkspaceTraversal {
 
     WorkspaceTraversal(@NonNull WorkspaceFile root) {
         this.root = root;
-        pending.push(List.of(root).iterator());
-        prefixes.push("");
+        pending.push(new DirectoryCursor(List.of(root).iterator(), ""));
     }
 
     WorkspaceFile next() throws IOException {
         while (!pending.isEmpty() && withinTime()) {
-            var iterator = pending.peek();
-            if (iterator == null) return null;
-            if (!iterator.hasNext()) {
+            var directory = pending.peek();
+            if (directory == null) return null;
+            if (!directory.files().hasNext()) {
                 pending.pop();
-                prefixes.pop();
                 continue;
             }
             if (++visited > 50_000) {
                 reason = "VISIT_LIMIT";
                 return null;
             }
-            WorkspaceFile file = iterator.next();
-            String prefix = prefixes.peek();
-            if (prefix == null) throw new IllegalStateException("Missing traversal prefix");
-            String relative = file == root ? "" : prefix + file.name();
+            WorkspaceFile file = directory.files().next();
+            String relative = file == root ? "" : directory.prefix() + file.name();
             String kind;
             try {
                 kind = file.kind();
                 if (kind.equals("directory")) {
-                    pending.push(file.children().iterator());
-                    prefixes.push(relative.isEmpty() ? "" : relative + "/");
+                    pending.push(
+                            new DirectoryCursor(
+                                    file.children().iterator(),
+                                    relative.isEmpty() ? "" : relative + "/"));
                 }
             } catch (IOException e) {
                 if (visited == 1) throw e;
@@ -88,4 +84,8 @@ final class WorkspaceTraversal {
     @NonNull String relativeName() {
         return relativeName;
     }
+
+    /** The traversal's thread-confined iterator and the prefix shared by its children. */
+    private record DirectoryCursor(
+            @NonNull Iterator<? extends @NonNull WorkspaceFile> files, @NonNull String prefix) {}
 }

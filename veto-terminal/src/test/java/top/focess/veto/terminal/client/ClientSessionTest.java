@@ -16,6 +16,7 @@ import top.focess.veto.api.plugin.Scope;
 import top.focess.veto.contract.Delta;
 import top.focess.veto.contract.Frame;
 import top.focess.veto.contract.ProtocolClient;
+import top.focess.veto.contract.Version;
 
 /**
  * Direct, deterministic tests of {@link ClientSession}'s protocol logic — one per cell of the
@@ -30,6 +31,30 @@ class ClientSessionTest {
     private @NonNull ClientSession newSession(@NonNull ClientView view) {
         sequences.set(1);
         return new ClientSession(view, sequences::incrementAndGet);
+    }
+
+    @Test
+    void welcomeReportsBackendVersionWithoutSettlingAnEarlyCommand() {
+        var view = new RecordingView();
+        var session = newSession(view);
+        var first = (Frame.Request) requireFrame(session.submit("first", null));
+        assertNull(session.submit("second", null));
+        var promptBeforeWelcome = session.promptView();
+        var statusBeforeWelcome = session.statusView();
+        view.events.clear();
+
+        assertNull(
+                session.onFrame(
+                        new Frame.Welcome(Frame.PROTOCOL_VERSION, 1, Version.parse("2.3.4"))));
+
+        assertEquals(List.of("progress:Connected to veto-core 2.3.4."), view.events);
+        assertEquals(promptBeforeWelcome, session.promptView());
+        assertEquals(statusBeforeWelcome, session.statusView());
+        assertEquals(
+                new Frame.Request(first.seq() + 1, null, null, "second"),
+                session.onFrame(
+                        new Frame.Done(
+                                new Scope.GlobalScope(), null, -1, null, null, first.seq())));
     }
 
     @Test
@@ -1110,12 +1135,31 @@ class ClientSessionTest {
         s.submit("first", null);
         s.onFrame(new Frame.Prompt("pw", false, 2)); // PROMPTED
         requirePrompt(s.promptView().activePrompt());
+        s.submit("queued", null);
 
         Frame f = s.onFrame(new Frame.Terminate("bye now"));
 
         assertNull(f); // no dispatch on terminate
         assertTrue(v.events.contains("terminate:bye now"));
         assertNull(s.promptView().activePrompt()); // cleared on teardown
+        assertEquals(0, s.promptView().requestSeq());
+        assertTrue(s.statusView().pending().isEmpty());
+    }
+
+    @Test
+    void localConnectionCloseClearsInteractionAndQueuedCommands() {
+        var view = new RecordingView();
+        var session = newSession(view);
+        session.submit("first", null);
+        session.onFrame(new Frame.Prompt("password", true, 2));
+        session.submit("queued", null);
+
+        session.onConnectionClosed("Backend connection closed.");
+
+        assertTrue(view.events.contains("terminate:Backend connection closed."));
+        assertNull(session.promptView().activePrompt());
+        assertEquals(0, session.promptView().requestSeq());
+        assertTrue(session.statusView().pending().isEmpty());
     }
 
     // ═══ meta application ═════════════════════════════════════════════════

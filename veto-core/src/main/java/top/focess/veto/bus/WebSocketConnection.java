@@ -1,6 +1,5 @@
 package top.focess.veto.bus;
 
-import java.util.ArrayDeque;
 import java.util.List;
 import java.util.Locale;
 import java.util.function.BooleanSupplier;
@@ -11,6 +10,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.web.socket.CloseStatus;
 import org.springframework.web.socket.TextMessage;
 import org.springframework.web.socket.WebSocketSession;
+import top.focess.veto.api.util.ByteBoundedQueue;
 import top.focess.veto.command.SessionCommandService;
 import top.focess.veto.contract.Frame;
 import top.focess.veto.contract.FrameCodec;
@@ -36,9 +36,8 @@ final class WebSocketConnection {
     private final @NonNull LoginSession login;
     final @NonNull ProtocolConnection protocol;
     final @NonNull Thread writer;
-    private final @NonNull ArrayDeque<@NonNull WebSocketOutboundMessage> outbox =
-            new ArrayDeque<>();
-    private int queuedBytes;
+    private final @NonNull ByteBoundedQueue<@NonNull WebSocketOutboundMessage> outbox =
+            new ByteBoundedQueue<>(MAX_MESSAGES, MAX_BYTES);
     private CloseStatus closeStatus;
 
     // These callbacks are stored, not invoked, until the completed connection is registered.
@@ -97,10 +96,8 @@ final class WebSocketConnection {
         var message = new TextMessage(FrameCodec.encode(frame));
         synchronized (this) {
             if (closeStatus != null) return false;
-            if (outbox.size() < MAX_MESSAGES
-                    && message.getPayloadLength() <= MAX_BYTES - queuedBytes) {
-                outbox.addLast(new WebSocketOutboundMessage(message, attached));
-                queuedBytes += message.getPayloadLength();
+            if (outbox.offer(
+                    new WebSocketOutboundMessage(message, attached), message.getPayloadLength())) {
                 notifyAll();
                 return true;
             }
@@ -116,7 +113,6 @@ final class WebSocketConnection {
             if (first) closeStatus = status;
             if (!drain) {
                 outbox.clear();
-                queuedBytes = 0;
             }
             notifyAll();
         }
@@ -125,9 +121,7 @@ final class WebSocketConnection {
 
     private synchronized WebSocketOutboundMessage next() throws InterruptedException {
         while (outbox.isEmpty() && closeStatus == null) wait();
-        var pending = outbox.pollFirst();
-        if (pending != null) queuedBytes -= pending.message().getPayloadLength();
-        return pending;
+        return outbox.poll();
     }
 
     private void write() {

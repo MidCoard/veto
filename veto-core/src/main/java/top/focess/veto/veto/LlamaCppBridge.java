@@ -167,24 +167,21 @@ public class LlamaCppBridge {
 
         String grammar = grammarEngine.resolveGrammar(grammarName);
         var transport = requestCompletion(prompt, grammar, Duration.ofSeconds(30));
-        CompletableFuture<String> result = new CompletableFuture<>();
-        transport.whenComplete(
-                (response, failure) -> {
-                    if (result.isCancelled()) return;
-                    if (failure != null) {
-                        log.error("gateway LlamaCpp: Inference failed", failure);
-                        result.complete(
-                                "{\"veto_decision\":\"pass\",\"data\":{\"error\":\""
+        var result =
+                transport.handle(
+                        (response, failure) -> {
+                            if (failure != null) {
+                                log.error("gateway LlamaCpp: Inference failed", failure);
+                                return "{\"veto_decision\":\"pass\",\"data\":{\"error\":\""
                                         + escapeJson(failure.getMessage())
-                                        + "\"}}");
-                    } else if (response.statusCode() != 200) {
-                        log.warn(
-                                "gateway LlamaCpp: Inference returned status {}",
-                                response.statusCode());
-                        result.complete(
-                                "{\"veto_decision\":\"pass\",\"data\":{\"note\":\"SLM inference error\"}}");
-                    } else result.complete(extractContentFromResponse(response.body()));
-                });
+                                        + "\"}}";
+                            } else if (response.statusCode() != 200) {
+                                log.warn(
+                                        "gateway LlamaCpp: Inference returned status {}",
+                                        response.statusCode());
+                                return "{\"veto_decision\":\"pass\",\"data\":{\"note\":\"SLM inference error\"}}";
+                            } else return extractContentFromResponse(response.body());
+                        });
         result.whenComplete(
                 (value, failure) -> {
                     if (result.isCancelled())
@@ -202,14 +199,14 @@ public class LlamaCppBridge {
             return CompletableFuture.failedFuture(
                     new IllegalStateException("Local model unavailable"));
         var transport = requestCompletion(prompt, grammar, Duration.ofSeconds(2));
-        CompletableFuture<String> result = new CompletableFuture<>();
-        transport.whenComplete(
-                (response, failure) -> {
-                    if (failure != null || response.statusCode() != 200) {
-                        result.completeExceptionally(
-                                new IllegalStateException("Local model completion unavailable"));
-                    } else result.complete(extractContentFromResponse(response.body()));
-                });
+        var result =
+                transport.thenApply(
+                        response -> {
+                            if (response.statusCode() != 200)
+                                throw new IllegalStateException(
+                                        "Local model completion unavailable");
+                            return extractContentFromResponse(response.body());
+                        });
         result.whenComplete(
                 (value, failure) -> {
                     if (result.isCancelled())

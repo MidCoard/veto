@@ -5,7 +5,6 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.ArrayDeque;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
@@ -18,6 +17,8 @@ import java.util.function.Supplier;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.api.plugin.Scope;
 import top.focess.veto.api.process.ProcessHost;
+import top.focess.veto.api.util.ByteBoundedQueue;
+import top.focess.veto.api.util.RecentHistory;
 
 /**
  * Volatile builtin task state. The host alone starts and authorizes process effects.
@@ -145,11 +146,12 @@ public final class BackgroundTasks implements AutoCloseable {
         BackgroundTask task = owned(scope, id);
         if (task == null) return Optional.empty();
         synchronized (task.lines) {
+            var retained = task.lines.snapshot();
             return Optional.of(
                     String.join(
                             "\n",
-                            task.lines.stream()
-                                    .skip(Math.max(0, task.lines.size() - Math.max(1, lines)))
+                            retained.stream()
+                                    .skip(Math.max(0, retained.size() - Math.max(1, lines)))
                                     .toList()));
         }
     }
@@ -163,14 +165,14 @@ public final class BackgroundTasks implements AutoCloseable {
             int limit) {
         BackgroundTask task = require(scope, id, instance);
         synchronized (task.lines) {
+            var lines = task.lines.snapshot();
             int total =
-                    task.lines.stream().mapToInt(String::length).sum()
-                            + Math.max(0, task.lines.size() - 1);
+                    lines.stream().mapToInt(String::length).sum() + Math.max(0, lines.size() - 1);
             int start = Math.min(Math.max(0, offset), total);
             int end = Math.min(total, start + Math.min(8192, Math.max(2, limit)));
             var text = new StringBuilder();
             int position = 0;
-            for (String line : task.lines) {
+            for (String line : lines) {
                 if (position > 0) {
                     if (position - 1 >= start && position - 1 < end) text.append('\n');
                 }
@@ -196,7 +198,7 @@ public final class BackgroundTasks implements AutoCloseable {
         BackgroundTask task = owned(scope, id);
         if (task == null) return List.of();
         synchronized (task.inputLock) {
-            return List.copyOf(task.failures);
+            return task.failures.snapshot();
         }
     }
 
@@ -213,10 +215,8 @@ public final class BackgroundTasks implements AutoCloseable {
             int bytes = write.byteCount();
             if (bytes < 0 || bytes > MAX_INPUT_BYTES)
                 return InputResult.failure(InputStatus.INPUT_TOO_LARGE);
-            if (task.queuedBytes + bytes > MAX_QUEUED_BYTES)
+            if (!task.input.offer(write, bytes))
                 return InputResult.failure(InputStatus.INPUT_QUEUE_FULL);
-            task.input.addLast(write);
-            task.queuedBytes += bytes;
             task.closeQueued |= write.closeStdin();
             if (!task.writing) {
                 task.writing = true;
@@ -305,8 +305,7 @@ public final class BackgroundTasks implements AutoCloseable {
         String line = AnsiEscapes.strip(SubprocessOutput.decode(bytes.toByteArray()));
         if (truncated) line += " [line truncated at " + MAX_LINE_BYTES + " bytes]";
         synchronized (task.lines) {
-            task.lines.addLast(line);
-            while (task.lines.size() > MAX_LINES) task.lines.removeFirst();
+            task.lines.add(line);
         }
         bytes.reset();
     }
@@ -315,12 +314,11 @@ public final class BackgroundTasks implements AutoCloseable {
         while (true) {
             ProcessHost.InputWrite write;
             synchronized (task.inputLock) {
-                write = task.input.pollFirst();
+                write = task.input.poll();
                 if (write == null) {
                     task.writing = false;
                     return;
                 }
-                task.queuedBytes -= write.byteCount();
             }
             try {
                 write.write();
@@ -332,11 +330,9 @@ public final class BackgroundTasks implements AutoCloseable {
                 synchronized (task.inputLock) {
                     task.stdinClosed = true;
                     task.input.clear();
-                    task.queuedBytes = 0;
                     task.writing = false;
-                    task.failures.addLast(
+                    task.failures.add(
                             "Approved stdin delivery failed; the task input stream is closed.");
-                    while (task.failures.size() > 20) task.failures.removeFirst();
                 }
                 return;
             }
@@ -429,16 +425,16 @@ public final class BackgroundTasks implements AutoCloseable {
         final Scope.@NonNull AgentScope scope;
         final ProcessHost.@NonNull Running process;
         final @NonNull Instant started = Instant.now();
-        final @NonNull ArrayDeque<String> lines = new ArrayDeque<>();
+        final @NonNull RecentHistory<@NonNull String> lines = new RecentHistory<>(MAX_LINES);
         final @NonNull Object inputLock = new Object();
-        final @NonNull ArrayDeque<ProcessHost.InputWrite> input = new ArrayDeque<>();
-        final @NonNull ArrayDeque<String> failures = new ArrayDeque<>();
+        final @NonNull ByteBoundedQueue<ProcessHost.@NonNull InputWrite> input =
+                new ByteBoundedQueue<>(Integer.MAX_VALUE, MAX_QUEUED_BYTES);
+        final @NonNull RecentHistory<@NonNull String> failures = new RecentHistory<>(20);
         final @NonNull CountDownLatch drained = new CountDownLatch(1);
         volatile boolean alive = true;
         volatile Integer exitCode;
         volatile Instant finished;
         volatile @NonNull ExitCause cause = ExitCause.NATURAL;
-        int queuedBytes;
         boolean writing, closeQueued, stdinClosed;
 
         BackgroundTask(

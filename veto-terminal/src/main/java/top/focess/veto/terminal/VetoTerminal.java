@@ -5,8 +5,6 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.TimeoutException;
 import org.jline.reader.Completer;
 import org.jline.reader.EndOfFileException;
 import org.jline.reader.LineReader;
@@ -16,10 +14,8 @@ import org.jline.terminal.TerminalBuilder;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import top.focess.veto.api.util.Threads;
 import top.focess.veto.contract.Frame;
 import top.focess.veto.contract.ProtocolClient;
-import top.focess.veto.contract.Version;
 import top.focess.veto.terminal.client.ClientOptions;
 import top.focess.veto.terminal.client.ClientSession;
 import top.focess.veto.terminal.client.Logging;
@@ -185,10 +181,20 @@ public class VetoTerminal {
         } finally {
             // Stop rendering before restoring the terminal and closing its status bar.
             running = false;
-            client.close();
-            Threads.awaitTermination(consumerThread, 2_000);
-            hintWidgets.disable();
-            status.close();
+            try {
+                client.close();
+            } finally {
+                while (true) {
+                    try {
+                        consumerThread.join();
+                        break;
+                    } catch (InterruptedException ignored) {
+                        // A REPL wake must not leave the consumer running during terminal cleanup.
+                    }
+                }
+                hintWidgets.disable();
+                status.close();
+            }
         }
     }
 
@@ -198,16 +204,24 @@ public class VetoTerminal {
                 var frame = client.receive();
                 if (!running) return;
                 if (frame == null) {
-                    acceptFrame(new Frame.Terminate("Backend connection closed."));
+                    connectionClosed("Backend connection closed.");
                     return;
                 }
                 acceptFrame(frame);
+                if (frame instanceof Frame.Terminate) return;
             }
         } catch (Throwable failure) {
             if (running) {
                 log.warn("Terminal receive failed ({})", failure.getClass().getSimpleName());
-                acceptFrame(new Frame.Terminate("Backend connection failed."));
+                connectionClosed("Backend connection failed.");
             }
+        }
+    }
+
+    /** Local connection lifecycle, separate from received protocol frames. */
+    void connectionClosed(@NonNull String reason) {
+        synchronized (interactionLock) {
+            session.onConnectionClosed(reason);
         }
     }
 
@@ -253,112 +267,129 @@ public class VetoTerminal {
     @SuppressWarnings("argument") // JLine uses null mask to request unmasked input.
     private void repl() {
         while (running) {
-            ClientSession.PromptView view = session.promptView();
-            ClientSession.State state = view.state();
-            Frame.ServerFrame interaction = view.activePrompt();
-            Frame.Prompt activePrompt = interaction instanceof Frame.Prompt text ? text : null;
-            Frame.Veto activeVeto = interaction instanceof Frame.Veto veto ? veto : null;
-
-            String promptText;
-            Character mask;
-            if (state == ClientSession.State.PROMPTED && interaction != null) {
-                if (activeVeto != null) {
-                    // HITL veto: render a numbered option picker above the prompt. The reply is
-                    // resolved to an option name (by index or name) after readLine and sent as an
-                    // VetoResult frame matching the parked approval.
-                    renderVetoPicker(activeVeto);
-                    promptText =
-                            theme.style(StyleToken.PROMPT, "▸")
-                                    + " "
-                                    + theme.style(StyleToken.ACCENT, "veto " + activeVeto.tool())
-                                    + " pick> ";
-                    mask = null;
-                    reader.setVariable(LineReader.DISABLE_HISTORY, Boolean.TRUE);
-                } else if (activePrompt != null) {
-                    // Server-prompted input request.
-                    promptText =
-                            theme.style(StyleToken.PROMPT, "▸")
-                                    + " "
-                                    + theme.style(StyleToken.ACCENT, activePrompt.content())
-                                    + " ";
-                    mask = activePrompt.mask() ? '*' : null;
-                    reader.setVariable(LineReader.DISABLE_HISTORY, Boolean.TRUE);
-                } else {
-                    throw new IllegalStateException("Unknown interaction");
-                }
-            } else {
-                // Standard prompt: green when logged in, red when logged out.
-                boolean loggedIn = view.username() != null;
-                promptText =
-                        loggedIn
-                                ? theme.style(StyleToken.SUCCESS, "▸ ")
-                                : theme.style(StyleToken.ERROR, "◇ ");
-                mask = null;
-                reader.setVariable(LineReader.DISABLE_HISTORY, Boolean.FALSE);
-            }
-
-            String line;
             try {
-                line = reader.readLine(promptText, mask);
-            } catch (UserInterruptException e) {
-                if (!running) break;
-                // two ways to trigger this, first the user press the ctrl+C,
-                // second the consumerThread actively call the mainThread to interrupt.
-                // when consumerThread actively call the mainThread to interrupt, the
-                // promptSwapPending flag is always first set
-                // and then the mainThread interrupts, so when two ways come both, there are
-                // multiple cases.
-                // case 1: the ctrl+C is always first, so we move to cancel, it is expected
-                // behavior.
-                // case 2: the ctrl+C is first, but promptSwapPending is true when codes come to
-                // here, and until calling the "continue", the mainThread is not interrupted.
-                // so in this case, when come to reader.readLine again, another
-                // UserInterruptException is thrown, and we move to cancel, this is also expected.
-                // case 3: the ctrl+C is first, but promptSwapPending is true and the mainThread
-                // interrupts when codes come to here, so thread's interrupt status is cleared.
-                // when codes come to reader.readLine again, nothing break this, the user might need
-                // ctrl+C again, but it is acceptable, and rarely happened.
-                // case 4: the ctrl+C is last, so we first change the prompt and then move to
-                // cancel, it is expected behavior
-                if (promptSwapPending) {
-                    promptSwapPending = false;
-                    boolean interruptWasSet = Thread.interrupted();
-                    log.trace("Cleared prompt-swap interrupt: {}", interruptWasSet);
+                ClientSession.PromptView view = session.promptView();
+                ClientSession.State state = view.state();
+                Frame.ServerFrame interaction = view.activePrompt();
+                Frame.Prompt activePrompt = interaction instanceof Frame.Prompt text ? text : null;
+                Frame.Veto activeVeto = interaction instanceof Frame.Veto veto ? veto : null;
+
+                String promptText;
+                Character mask;
+                if (state == ClientSession.State.PROMPTED && interaction != null) {
+                    if (activeVeto != null) {
+                        // HITL veto: render a numbered option picker above the prompt. The reply is
+                        // resolved to an option name (by index or name) after readLine and sent as
+                        // an
+                        // VetoResult frame matching the parked approval.
+                        renderVetoPicker(activeVeto);
+                        promptText =
+                                theme.style(StyleToken.PROMPT, "▸")
+                                        + " "
+                                        + theme.style(
+                                                StyleToken.ACCENT, "veto " + activeVeto.tool())
+                                        + " pick> ";
+                        mask = null;
+                        reader.setVariable(LineReader.DISABLE_HISTORY, Boolean.TRUE);
+                    } else if (activePrompt != null) {
+                        // Server-prompted input request.
+                        promptText =
+                                theme.style(StyleToken.PROMPT, "▸")
+                                        + " "
+                                        + theme.style(StyleToken.ACCENT, activePrompt.content())
+                                        + " ";
+                        mask = activePrompt.mask() ? '*' : null;
+                        reader.setVariable(LineReader.DISABLE_HISTORY, Boolean.TRUE);
+                    } else {
+                        throw new IllegalStateException("Unknown interaction");
+                    }
+                } else {
+                    // Standard prompt: green when logged in, red when logged out.
+                    boolean loggedIn = view.username() != null;
+                    promptText =
+                            loggedIn
+                                    ? theme.style(StyleToken.SUCCESS, "▸ ")
+                                    : theme.style(StyleToken.ERROR, "◇ ");
+                    mask = null;
+                    reader.setVariable(LineReader.DISABLE_HISTORY, Boolean.FALSE);
+                }
+
+                String line;
+                try {
+                    line = reader.readLine(promptText, mask);
+                } catch (UserInterruptException e) {
+                    if (!running) {
+                        // terminate() has delivered its wake; do not carry it into shutdown joins.
+                        if (Thread.interrupted()) log.trace("Consumed terminal shutdown wake");
+                        break;
+                    }
+                    // two ways to trigger this, first the user press the ctrl+C,
+                    // second the consumerThread actively call the mainThread to interrupt.
+                    // when consumerThread actively call the mainThread to interrupt, the
+                    // promptSwapPending flag is always first set
+                    // and then the mainThread interrupts, so when two ways come both, there are
+                    // multiple cases.
+                    // case 1: the ctrl+C is always first, so we move to cancel, it is expected
+                    // behavior.
+                    // case 2: the ctrl+C is first, but promptSwapPending is true when codes come to
+                    // here, and until calling the "continue", the mainThread is not interrupted.
+                    // so in this case, when come to reader.readLine again, another
+                    // UserInterruptException is thrown, and we move to cancel, this is also
+                    // expected.
+                    // case 3: the ctrl+C is first, but promptSwapPending is true and the mainThread
+                    // interrupts when codes come to here, so thread's interrupt status is cleared.
+                    // when codes come to reader.readLine again, nothing break this, the user might
+                    // need
+                    // ctrl+C again, but it is acceptable, and rarely happened.
+                    // case 4: the ctrl+C is last, so we first change the prompt and then move to
+                    // cancel, it is expected behavior
+                    if (promptSwapPending) {
+                        promptSwapPending = false;
+                        boolean interruptWasSet = Thread.interrupted();
+                        log.trace("Cleared prompt-swap interrupt: {}", interruptWasSet);
+                        continue;
+                    }
+                    // Flag false ⇒ not a swap ⇒ genuine Ctrl+C → cancel the in-flight
+                    // request/prompt,
+                    // or exit if idle (cancel returns null as the shutdown signal per IDLE ×
+                    // cancel).
+                    if (!cancelCommand(view)) {
+                        break; // idle → exit the REPL
+                    }
                     continue;
+                } catch (EndOfFileException e) {
+                    break;
                 }
-                // Flag false ⇒ not a swap ⇒ genuine Ctrl+C → cancel the in-flight request/prompt,
-                // or exit if idle (cancel returns null as the shutdown signal per IDLE ×
-                // cancel).
-                if (!cancelCommand(view)) {
-                    break; // idle → exit the REPL
+
+                if (line == null || !running) break;
+                line = normalizeInput(line, interaction);
+                if (line.isEmpty()) continue;
+
+                // A veto picker reply is resolved to an option name (by 1-based index or name)
+                // before
+                // submit. An invalid choice re-renders the picker (the veto is still pending
+                // server-side,
+                // so the snapshot still shows PROMPTED + veto). Cancel-during-veto is handled by
+                // the
+                // UserInterruptException catch above, which sends a refusal for that exact
+                // approval.
+                if (activeVeto != null) {
+                    String resolved = resolveVetoChoice(activeVeto, line);
+                    if (resolved == null) {
+                        renderer.println(theme.style(StyleToken.ERROR, "  invalid choice"));
+                        continue;
+                    }
+                    line = resolved;
                 }
-                continue;
-            } catch (EndOfFileException e) {
-                break;
+
+                // Bind the reply to what the user actually saw. The atomic identity check discards
+                // stale secrets and approval choices; ordinary command input remains a command even
+                // if a new interaction arrived while readLine was returning.
+                submitInput(line, interaction);
+            } catch (IllegalStateException failure) {
+                if (!client.isClosed()) throw failure;
+                // The consumer owns the queued failure message and the shutdown wakeup.
             }
-
-            if (line == null || !running) break;
-            line = normalizeInput(line, interaction);
-            if (line.isEmpty()) continue;
-
-            // A veto picker reply is resolved to an option name (by 1-based index or name) before
-            // submit. An invalid choice re-renders the picker (the veto is still pending
-            // server-side,
-            // so the snapshot still shows PROMPTED + veto). Cancel-during-veto is handled by the
-            // UserInterruptException catch above, which sends a refusal for that exact approval.
-            if (activeVeto != null) {
-                String resolved = resolveVetoChoice(activeVeto, line);
-                if (resolved == null) {
-                    renderer.println(theme.style(StyleToken.ERROR, "  invalid choice"));
-                    continue;
-                }
-                line = resolved;
-            }
-
-            // Bind the reply to what the user actually saw. The atomic identity check discards
-            // stale secrets and approval choices; ordinary command input remains a command even
-            // if a new interaction arrived while readLine was returning.
-            submitInput(line, interaction);
         }
     }
 
@@ -462,15 +493,14 @@ public class VetoTerminal {
         // The workspace root is sent to the backend in the IPC Hello handshake and becomes the
         // agent's operational root. --workspace makes it explicit; otherwise it falls back to the
         // JVM cwd (user.dir) - i.e. wherever the terminal is launched from.
-        String configuredWorkspace = options.workspace();
-        String workspaceCwd =
-                configuredWorkspace != null ? configuredWorkspace : System.getProperty("user.dir");
-        if (configuredWorkspace != null && !Files.isDirectory(Path.of(configuredWorkspace))) {
-            System.err.println("Workspace not a directory: " + configuredWorkspace);
+        String workspace = options.workspace();
+        if (workspace == null) workspace = System.getProperty("user.dir");
+        if (workspace == null) {
+            System.err.println("Cannot determine workspace: user.dir is not set");
             return;
         }
-        if (workspaceCwd == null) {
-            System.err.println("Cannot determine workspace: user.dir is not set");
+        if (!Files.isDirectory(Path.of(workspace))) {
+            System.err.println("Workspace not a directory: " + workspace);
             return;
         }
 
@@ -494,16 +524,9 @@ public class VetoTerminal {
             System.out.println("Connecting to backend at " + options.address() + " ...");
             try (var transport =
                     new ProtocolClient(
-                            () -> TcpConnection.connect(options.address()),
+                            TcpConnection.connect(options.address()),
                             VetoVersion.VERSION,
-                            workspaceCwd)) {
-                Version serverVersion = transport.serverProductVersion();
-                System.out.println(
-                        "Connected to veto-core "
-                                + serverVersion
-                                + " (veto-terminal "
-                                + VetoVersion.VERSION
-                                + ").");
+                            workspace)) {
                 VetoTerminal vt = new VetoTerminal(mt, transport);
                 Completer completer = new CommandCompleter(transport);
                 LineReader r =
@@ -511,17 +534,6 @@ public class VetoTerminal {
                 r.setVariable(LineReader.HISTORY_FILE, Path.of(".veto_history"));
                 vt.start(r);
             }
-        } catch (InterruptedException interrupted) {
-            Thread.currentThread().interrupt();
-            System.err.println("Backend connection interrupted.");
-        } catch (TimeoutException timeout) {
-            System.err.println("Backend connection timed out.");
-        } catch (ExecutionException failure) {
-            var cause = failure.getCause();
-            System.err.println(
-                    "Backend connection failed: "
-                            + (cause == null ? failure.getMessage() : cause.getMessage()));
-            log.debug("Backend connection failed", failure);
         } catch (IOException e) {
             System.err.println("Terminal failed: " + e.getMessage());
         } finally {

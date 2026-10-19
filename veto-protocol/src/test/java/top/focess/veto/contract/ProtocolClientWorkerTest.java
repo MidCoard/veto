@@ -6,6 +6,7 @@ import java.io.IOException;
 import java.time.Instant;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -23,7 +24,8 @@ class ProtocolClientWorkerTest {
             throws Exception {
         var transport = new RecordingTransport();
         transport.acknowledge = false;
-        try (var client = new ProtocolClient(() -> transport, Version.UNKNOWN, "", 20)) {
+        try (var client = new ProtocolClient(transport, Version.UNKNOWN, "", 20)) {
+            assertInstanceOf(Frame.Welcome.class, client.receive(1, TimeUnit.SECONDS));
             long started = System.nanoTime();
             assertNull(client.hint("pending", 30, TimeUnit.SECONDS));
             assertTrue(client.isClosed());
@@ -31,7 +33,7 @@ class ProtocolClientWorkerTest {
             assertEquals(
                     2, transport.heartbeats.getCount(), "Only one heartbeat may be outstanding");
             assertTrue(System.nanoTime() - started >= TimeUnit.SECONDS.toNanos(9));
-            assertNull(client.receive(1, TimeUnit.SECONDS));
+            assertNull(client.receive());
         }
     }
 
@@ -41,7 +43,8 @@ class ProtocolClientWorkerTest {
         var transport = new RecordingTransport();
         transport.acknowledge = false;
         transport.pacedWrites = true;
-        try (var client = new ProtocolClient(() -> transport, Version.UNKNOWN, "", 20)) {
+        try (var client = new ProtocolClient(transport, Version.UNKNOWN, "", 20)) {
+            assertInstanceOf(Frame.Welcome.class, client.receive(1, TimeUnit.SECONDS));
             transport.client.set(client);
             transport.keepSending.set(true);
             client.send(new Frame.Request(client.nextSequence(), null, null, "test"));
@@ -62,7 +65,8 @@ class ProtocolClientWorkerTest {
         var transport = new RecordingTransport();
         transport.acknowledge = false;
         transport.blockRequests = true;
-        try (var client = new ProtocolClient(() -> transport, Version.UNKNOWN, "", 20)) {
+        try (var client = new ProtocolClient(transport, Version.UNKNOWN, "", 20)) {
+            assertInstanceOf(Frame.Welcome.class, client.receive(1, TimeUnit.SECONDS));
             assertTrue(transport.firstHeartbeat.await(1, TimeUnit.SECONDS));
             client.send(new Frame.Request(client.nextSequence(), null, null, "blocked"));
             assertTrue(transport.blockedWrite.await(1, TimeUnit.SECONDS));
@@ -96,10 +100,11 @@ class ProtocolClientWorkerTest {
 
     private void exerciseWorkers(boolean busy) throws Exception {
         var transport = new RecordingTransport();
-        var client = new ProtocolClient(() -> transport, Version.UNKNOWN, "", 20);
+        var client = new ProtocolClient(transport, Version.UNKNOWN, "", 20);
         transport.client.set(client);
         transport.keepSending.set(busy);
         try (client) {
+            assertInstanceOf(Frame.Welcome.class, client.receive(1, TimeUnit.SECONDS));
             if (busy) client.send(new Frame.Request(client.nextSequence(), null, null, "test"));
             assertTrue(transport.heartbeats.await(2, TimeUnit.SECONDS), "heartbeats were starved");
             var reader = transport.reader.get();
@@ -112,16 +117,78 @@ class ProtocolClientWorkerTest {
             if (busy) assertTrue(transport.sends.get() > 0);
         } finally {
             transport.keepSending.set(false);
-            client.close();
         }
         assertTrue(transport.closed.await(1, TimeUnit.SECONDS));
         var reader = transport.reader.get();
         var writer = transport.writer.get();
         if (reader == null || writer == null) throw new AssertionError("Missing IO worker");
-        reader.join(1_000);
-        writer.join(1_000);
         assertFalse(reader.isAlive());
         assertFalse(writer.isAlive());
+    }
+
+    @Test
+    @Timeout(5)
+    void concurrentCloseUsesPrivateMonitorAndJoinsBothWorkersDespiteInterruption()
+            throws Exception {
+        var transport = new RecordingTransport();
+        transport.blockRequests = true;
+        transport.holdExit = true;
+        var client = new ProtocolClient(transport);
+        var callerInterrupted = new AtomicBoolean();
+        var closingCaller = new AtomicReference<Thread>();
+        try (var closingWorkers = Executors.newVirtualThreadPerTaskExecutor()) {
+            try {
+                synchronized (client) {
+                    assertInstanceOf(Frame.Welcome.class, client.receive(1, TimeUnit.SECONDS));
+                    client.send(new Frame.Request(client.nextSequence(), null, null, "blocked"));
+                    assertTrue(transport.blockedWrite.await(1, TimeUnit.SECONDS));
+                    var first =
+                            closingWorkers.submit(
+                                    () -> {
+                                        Thread.currentThread().interrupt();
+                                        closingCaller.set(Thread.currentThread());
+                                        client.close();
+                                        callerInterrupted.set(
+                                                Thread.currentThread().isInterrupted());
+                                        return null;
+                                    });
+                    assertTrue(transport.exiting.await(1, TimeUnit.SECONDS));
+                    var second =
+                            closingWorkers.submit(
+                                    () -> {
+                                        client.close();
+                                        return null;
+                                    });
+                    assertFalse(first.isDone(), "close must wait after the transport is released");
+                    assertFalse(second.isDone(), "another close must also wait for worker exit");
+                    var status = closingWorkers.submit(client::isClosed);
+                    assertTrue(
+                            Boolean.TRUE.equals(status.get(1, TimeUnit.SECONDS)),
+                            "Worker joins must not hold the protocol monitor");
+                    var caller = closingCaller.get();
+                    if (caller == null) throw new AssertionError("Missing close caller");
+                    long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(1);
+                    while (caller.isInterrupted() && deadline - System.nanoTime() > 0)
+                        LockSupport.parkNanos(TimeUnit.MILLISECONDS.toNanos(1));
+                    assertFalse(caller.isInterrupted(), "close must consume the caught interrupt");
+                    transport.releaseExit.countDown();
+                    assertNull(first.get(1, TimeUnit.SECONDS));
+                    assertNull(second.get(1, TimeUnit.SECONDS));
+                    assertFalse(
+                            callerInterrupted.get(), "Final close must not restore interruption");
+                    assertEquals(1, transport.closes.get());
+                    var reader = transport.reader.get();
+                    var writer = transport.writer.get();
+                    if (reader == null || writer == null)
+                        throw new AssertionError("Missing IO workers");
+                    assertFalse(reader.isAlive());
+                    assertFalse(writer.isAlive());
+                }
+            } finally {
+                transport.releaseExit.countDown();
+                client.close();
+            }
+        }
     }
 
     private static final class RecordingTransport implements FrameTransport {
@@ -138,6 +205,10 @@ class ProtocolClientWorkerTest {
         private final @NonNull CountDownLatch firstHeartbeat = new CountDownLatch(1);
         private final @NonNull CountDownLatch blockedWrite = new CountDownLatch(1);
         private final @NonNull CountDownLatch closed = new CountDownLatch(1);
+        private final @NonNull AtomicInteger closes = new AtomicInteger();
+        private final @NonNull CountDownLatch exiting = new CountDownLatch(2);
+        private final @NonNull CountDownLatch releaseExit = new CountDownLatch(1);
+        private boolean holdExit;
         private boolean acknowledge = true;
         private boolean pacedWrites;
         private boolean blockRequests;
@@ -159,6 +230,10 @@ class ProtocolClientWorkerTest {
                 try {
                     if (!closed.await(15, TimeUnit.SECONDS))
                         throw new IOException("Simulated write timed out");
+                    if (holdExit) {
+                        exiting.countDown();
+                        releaseExit.await();
+                    }
                 } catch (InterruptedException interrupted) {
                     Thread.currentThread().interrupt();
                     throw new IOException(interrupted);
@@ -183,7 +258,13 @@ class ProtocolClientWorkerTest {
             recordOwner(reader);
             try {
                 var frame = incoming.take();
-                if (frame == END) throw new IOException("Transport closed");
+                if (frame == END) {
+                    if (holdExit) {
+                        exiting.countDown();
+                        releaseExit.await();
+                    }
+                    throw new IOException("Transport closed");
+                }
                 return frame;
             } catch (InterruptedException interrupted) {
                 Thread.currentThread().interrupt();
@@ -193,6 +274,7 @@ class ProtocolClientWorkerTest {
 
         @Override
         public void close() {
+            closes.incrementAndGet();
             closed.countDown();
             deliver(END);
         }

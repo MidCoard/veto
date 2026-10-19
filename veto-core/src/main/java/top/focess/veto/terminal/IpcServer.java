@@ -3,8 +3,8 @@ package top.focess.veto.terminal;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import java.io.IOException;
-import java.net.ServerSocket;
-import java.net.Socket;
+import java.nio.channels.ServerSocketChannel;
+import java.nio.channels.SocketChannel;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
@@ -12,9 +12,10 @@ import java.util.concurrent.Executors;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
+import top.focess.veto.api.util.Resources;
 import top.focess.veto.api.util.Threads;
 import top.focess.veto.command.CommandRegistry;
 import top.focess.veto.command.SessionCommandService;
@@ -23,7 +24,7 @@ import top.focess.veto.session.SessionService;
 import top.focess.veto.transport.tcp.TcpConnection;
 
 /**
- * TCP terminal server. Spring owns the listener; this server owns connection tasks. Each {@link
+ * TCP terminal server. This Spring component owns its listener and connection tasks. Each {@link
  * IpcConnection} owns its socket, protocol and bounded output queue. Only receiving waits on an
  * idle connection; a serialized output task runs while data is queued. Admission, output and
  * closure are thread-safe.
@@ -37,7 +38,7 @@ public final class IpcServer {
     private final @NonNull AgentSessions runtime;
     private final @NonNull SessionService sessionService;
     private final @NonNull SessionCommandService commands;
-    private final @NonNull ServerSocket listener;
+    private final @NonNull ServerSocketChannel listener;
     private final @NonNull ConcurrentHashMap<@NonNull String, @NonNull IpcConnection> connections =
             new ConcurrentHashMap<>();
     private final @NonNull ExecutorService workers =
@@ -48,35 +49,46 @@ public final class IpcServer {
 
     public IpcServer(
             @NonNull CommandRegistry registry,
-            @Qualifier("ipcListener") @NonNull ServerSocket listener,
+            @Value("${veto.terminal.bind-address}") @NonNull String bindAddress,
             @NonNull AgentSessions runtime,
             @NonNull SessionService sessionService,
-            @NonNull SessionCommandService commands) {
+            @NonNull SessionCommandService commands)
+            throws IOException {
         this.registry = registry;
-        this.listener = listener;
         this.runtime = runtime;
         this.sessionService = sessionService;
         this.commands = commands;
+        listener = TcpConnection.bind(bindAddress);
     }
 
     @PostConstruct
     public synchronized void start() {
         if (acceptor != null) throw new IllegalStateException("Terminal server already started");
         running = true;
-        acceptor = Thread.ofVirtual().name("terminal-accept").start(this::accept);
+        try {
+            acceptor = Thread.ofVirtual().name("terminal-accept").start(this::accept);
+        } catch (Throwable failure) {
+            Resources.closeOnFailure(listener, failure);
+            workers.close();
+            throw failure;
+        }
     }
 
     @PreDestroy
-    public void stop() {
-        Thread accepting;
-        synchronized (this) {
-            running = false;
-            accepting = acceptor;
+    public void stop() throws IOException, InterruptedException {
+        try {
+            synchronized (this) {
+                running = false;
+                // Close wakes accept; joins below must not hold the admission monitor.
+                if (listener.isOpen()) listener.close();
+            }
+        } finally {
+            try {
+                Threads.awaitTermination(acceptor, 0);
+            } finally {
+                workers.close();
+            }
         }
-        // Interrupting a virtual thread in ServerSocket.accept closes the listener and wakes it.
-        if (accepting != null) accepting.interrupt();
-        Threads.awaitTermination(accepting, 0);
-        workers.close();
     }
 
     private void accept() {
@@ -91,10 +103,10 @@ public final class IpcServer {
         for (var connection : connections.values()) connection.stop(false);
     }
 
-    private void admit(@NonNull Socket socket) {
+    private void admit(@NonNull SocketChannel channel) {
         TcpConnection transport;
         try {
-            transport = TcpConnection.accept(socket);
+            transport = TcpConnection.accept(channel);
         } catch (IOException failure) {
             log.debug("Terminal connection initialization failed ({})", failure.toString());
             return;

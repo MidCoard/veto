@@ -14,6 +14,7 @@ import org.jline.terminal.impl.DumbTerminal;
 import org.junit.jupiter.api.Test;
 import top.focess.veto.api.plugin.Scope;
 import top.focess.veto.contract.Frame;
+import top.focess.veto.contract.Version;
 import top.focess.veto.terminal.client.ClientSession;
 
 class TerminalViewTest {
@@ -42,6 +43,7 @@ class TerminalViewTest {
                             statusRefreshes::incrementAndGet);
             var session = new ClientSession(view, () -> 7);
 
+            session.onFrame(new Frame.Welcome(Frame.PROTOCOL_VERSION, 1, Version.parse("2.3.4")));
             session.submit("first prompt", null);
             var prompt = new Frame.Prompt("Password:", true, 7);
             session.onFrame(prompt);
@@ -57,6 +59,7 @@ class TerminalViewTest {
             assertEquals(1, terminations.get());
             terminal.flush();
             var rendered = output.toString(StandardCharsets.UTF_8);
+            assertTrue(rendered.contains("Connected to veto-core 2.3.4."));
             assertTrue(rendered.contains("first prompt"));
             assertTrue(rendered.contains("Backend closed"));
             assertFalse(rendered.contains("synthetic-secret"));

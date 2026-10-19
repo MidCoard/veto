@@ -17,9 +17,16 @@ public interface FrameTransport extends AutoCloseable {
     /** Writes one complete frame; completion is not acknowledgement of remote execution. */
     void send(@NonNull Frame frame) throws IOException;
 
-    /** Blocks for a complete frame. EOF, malformed input and IO failures end the connection. */
+    /**
+     * Blocks for a complete frame. After EOF, malformed input or IO failure, the owner must close
+     * the connection. Failure does not imply that the transport has already released its resources.
+     */
     @NonNull Frame receive() throws IOException;
 
+    /**
+     * Releases this transport's IO resources without joining protocol workers or invoking endpoint
+     * callbacks. The endpoint owns worker termination after close unblocks their IO.
+     */
     @Override
     void close();
 }

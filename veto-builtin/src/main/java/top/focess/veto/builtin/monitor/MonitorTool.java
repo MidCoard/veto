@@ -1,12 +1,12 @@
 package top.focess.veto.builtin.monitor;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.api.agent.tool.AgentTool;
 import top.focess.veto.api.agent.tool.ToolCapability;
 import top.focess.veto.api.agent.tool.ToolErrorCode;
 import top.focess.veto.api.agent.tool.ToolErrors;
+import top.focess.veto.builtin.BuiltinJson;
 
 /** Shared execution and result encoding for tools backed by {@link MonitorOperations}. */
 public abstract class MonitorTool<T> extends AgentTool<T> {
@@ -46,7 +46,7 @@ public abstract class MonitorTool<T> extends AgentTool<T> {
     /** Encodes the monitor result using the existing tool error contract. */
     protected static @NonNull String encodeResult(@NonNull Object value) {
         try {
-            return new ObjectMapper().findAndRegisterModules().writeValueAsString(value);
+            return BuiltinJson.encode(value);
         } catch (JsonProcessingException error) {
             return ToolErrors.failure(
                     ToolErrorCode.RESULT.ENCODING_FAILED,

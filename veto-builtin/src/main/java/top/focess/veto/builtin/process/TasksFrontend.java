@@ -1,37 +1,24 @@
 package top.focess.veto.builtin.process;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 import top.focess.veto.api.plugin.Scope;
-import top.focess.veto.api.plugin.contract.FrontendContribution;
 import top.focess.veto.api.plugin.contract.JsonValue;
-import top.focess.veto.api.plugin.contract.JsonValues;
 import top.focess.veto.api.plugin.contract.PluginFailure;
+import top.focess.veto.builtin.BuiltinJson;
+import top.focess.veto.builtin.BundledFrontend;
 
 /** Scoped process cards and bounded, explicitly paged access to retained output. */
-public final class TasksFrontend implements FrontendContribution {
+public final class TasksFrontend extends BundledFrontend {
     private final @NonNull BackgroundTasks tasks;
-    private final @NonNull ObjectMapper mapper = new ObjectMapper();
 
     /** Creates a frontend backed by the given task registry. */
     public TasksFrontend(@NonNull BackgroundTasks tasks) {
+        super("/frontend/tasks.js");
         this.tasks = tasks;
-    }
-
-    /** Serves the bundled tasks script and routes its actions to {@link #handle}. */
-    public @NonNull String module() {
-        try (var source = TasksFrontend.class.getResourceAsStream("/frontend/tasks.js")) {
-            if (source == null) throw new IllegalStateException("Missing tasks frontend");
-            return new String(source.readAllBytes(), StandardCharsets.UTF_8);
-        } catch (IOException failure) {
-            throw new IllegalStateException("Cannot load tasks frontend", failure);
-        }
     }
 
     /**
@@ -58,13 +45,13 @@ public final class TasksFrontend implements FrontendContribution {
                         values.subList(from, end).stream().map(task -> row(owned, task)).toList());
                 result.put("total", values.size());
                 result.put("nextOffset", end < values.size() ? end : null);
-                return json(result);
+                return BuiltinJson.value(result);
             }
             String id = text(arguments, "taskId");
             UUID instance = UUID.fromString(text(arguments, "taskInstanceId"));
             int limit = Math.max(2, Math.min(8192, number(arguments, "limit", 8192)));
             if (action.equals("output"))
-                return json(tasks.outputPage(owned, id, instance, offset, limit));
+                return BuiltinJson.value(tasks.outputPage(owned, id, instance, offset, limit));
             if (action.equals("detail")) {
                 var task = tasks.exact(owned, id, instance);
                 String value =
@@ -78,7 +65,7 @@ public final class TasksFrontend implements FrontendContribution {
                 if (end < value.length()
                         && end > from
                         && Character.isHighSurrogate(value.charAt(end - 1))) end--;
-                return json(
+                return BuiltinJson.value(
                         new BackgroundTasks.TextPage(
                                 value.substring(from, end),
                                 value.length(),
@@ -86,7 +73,8 @@ public final class TasksFrontend implements FrontendContribution {
             }
             if (action.equals("stopOrRemove")) {
                 var result = tasks.stopOrRemove(owned, id, instance);
-                return json(Map.of("status", result.status(), "task", row(owned, result.task())));
+                return BuiltinJson.value(
+                        Map.of("status", result.status(), "task", row(owned, result.task())));
             }
             throw new IllegalArgumentException("Unknown tasks action");
         } catch (IllegalArgumentException | ArithmeticException failure) {
@@ -138,9 +126,5 @@ public final class TasksFrontend implements FrontendContribution {
         if (value == null) return fallback;
         if (value instanceof JsonValue.NumberValue number) return number.value().intValueExact();
         throw new IllegalArgumentException("Invalid page argument");
-    }
-
-    private @NonNull JsonValue json(@NonNull Object value) {
-        return JsonValues.from(mapper.valueToTree(value));
     }
 }

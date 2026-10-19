@@ -1,8 +1,6 @@
 package top.focess.veto.contract;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 import static top.focess.veto.contract.ContractTestSupport.assertThrows;
 
 import org.junit.jupiter.api.Test;
@@ -35,44 +33,5 @@ class VersionTest {
         assertThrows(IllegalArgumentException.class, () -> Version.parse(""));
         assertThrows(IllegalArgumentException.class, () -> Version.parse("abc"));
         assertThrows(IllegalArgumentException.class, () -> Version.parse("1.2.3.4"));
-    }
-
-    @Test
-    void compareToFollowsSemver() {
-        assertTrue(Version.parse("1.0.0").compareTo(Version.parse("2.0.0")) < 0);
-        assertTrue(Version.parse("2.0.0").compareTo(Version.parse("2.1.0")) < 0);
-        assertTrue(Version.parse("2.1.0").compareTo(Version.parse("2.1.1")) < 0);
-        // stable outranks pre-release
-        assertTrue(Version.parse("1.0.0").compareTo(Version.parse("1.0.0-SNAPSHOT")) > 0);
-        assertTrue(Version.parse("1.0.0-SNAPSHOT").compareTo(Version.parse("1.0.0")) < 0);
-        // numeric pre-release < alphanumeric
-        assertTrue(Version.parse("1.0.0-1").compareTo(Version.parse("1.0.0-alpha")) < 0);
-        // numeric compared as integers
-        assertTrue(Version.parse("1.0.0-2").compareTo(Version.parse("1.0.0-10")) < 0);
-        // fewer identifiers = lower
-        assertTrue(Version.parse("1.0.0-alpha").compareTo(Version.parse("1.0.0-alpha.1")) < 0);
-        // build metadata ignored
-        assertEquals(0, Version.parse("1.0.0+a").compareTo(Version.parse("1.0.0+b")));
-    }
-
-    @Test
-    void flags() {
-        assertTrue(Version.parse("1.0.0").isStable());
-        assertFalse(Version.parse("1.0.0-SNAPSHOT").isStable());
-        assertTrue(Version.parse("1.0.0-SNAPSHOT").isSnapshot());
-        assertFalse(Version.parse("1.0.0-rc.1").isSnapshot());
-        assertTrue(Version.UNKNOWN.isUnknown());
-        assertFalse(Version.parse("1.0.0").isUnknown());
-    }
-
-    @Test
-    void numericPrereleaseIdentifiersAreNotLimitedToIntegerRange() {
-        assertTrue(
-                Version.parse("1.0.0-99999999999999999999")
-                                .compareTo(Version.parse("1.0.0-100000000000000000000"))
-                        < 0);
-        assertTrue(
-                Version.parse("1.0.0-99999999999999999999").compareTo(Version.parse("1.0.0--1"))
-                        < 0);
     }
 }

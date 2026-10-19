@@ -1,9 +1,6 @@
 package top.focess.veto.builtin.group;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -12,29 +9,20 @@ import java.util.Map;
 import java.util.NoSuchElementException;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.api.plugin.Scope;
-import top.focess.veto.api.plugin.contract.FrontendContribution;
 import top.focess.veto.api.plugin.contract.JsonValue;
 import top.focess.veto.api.plugin.contract.JsonValues;
 import top.focess.veto.api.plugin.contract.PluginFailure;
+import top.focess.veto.builtin.BuiltinJson;
+import top.focess.veto.builtin.BundledFrontend;
 
 /** Bounded wire pages; complete durable history remains readable through text chunks. */
-public final class GroupFrontend implements FrontendContribution {
+public final class GroupFrontend extends BundledFrontend {
     private final @NonNull GroupRuntime runtime;
-    private final @NonNull ObjectMapper mapper = new ObjectMapper().findAndRegisterModules();
 
     /** Creates a frontend backed by the given group runtime. */
     public GroupFrontend(@NonNull GroupRuntime runtime) {
+        super("/frontend/groups.js");
         this.runtime = runtime;
-    }
-
-    /** Serves the bundled groups script and routes its actions to {@link #handle}. */
-    public @NonNull String module() {
-        try (var stream = GroupFrontend.class.getResourceAsStream("/frontend/groups.js")) {
-            if (stream == null) throw new IllegalStateException("Missing group frontend");
-            return new String(stream.readAllBytes(), StandardCharsets.UTF_8);
-        } catch (IOException error) {
-            throw new IllegalStateException(error);
-        }
     }
 
     // The explicit type witness is required for NullnessChecker inference of the mapped row type.
@@ -195,7 +183,7 @@ public final class GroupFrontend implements FrontendContribution {
     }
 
     private @NonNull JsonValue json(@NonNull Object value) {
-        ObjectNode data = mapper.valueToTree(value);
+        ObjectNode data = BuiltinJson.object(value);
         data.put("revision", runtime.registry().revision());
         return JsonValues.from(data);
     }

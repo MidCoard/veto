@@ -9,7 +9,6 @@ import java.io.IOException;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.TimeUnit;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -122,24 +121,14 @@ public final class WebSocketServer extends TextWebSocketHandler {
     }
 
     @PreDestroy
-    void stop() {
+    void stop() throws InterruptedException {
         List<@NonNull WebSocketConnection> closing;
         synchronized (this) {
             stopping = true;
             closing = List.copyOf(connections.values());
         }
         for (var connection : closing) connection.stop(CloseStatus.GOING_AWAY, false);
-        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(12);
-        for (var connection : closing) {
-            long remaining = deadline - System.nanoTime();
-            if (remaining > 0)
-                Threads.awaitTermination(
-                        connection.writer, Math.max(1, TimeUnit.NANOSECONDS.toMillis(remaining)));
-            if (connection.writer.isAlive()) {
-                log.warn("WS: Output did not stop before shutdown deadline");
-                break;
-            }
-        }
+        for (var connection : closing) Threads.awaitTermination(connection.writer, 0);
     }
 
     public int getActiveSessionCount() {

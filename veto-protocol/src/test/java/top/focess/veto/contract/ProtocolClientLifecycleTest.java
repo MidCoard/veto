@@ -11,6 +11,7 @@ import java.util.UUID;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -26,7 +27,8 @@ class ProtocolClientLifecycleTest {
     void interruptedQueryPreservesThePromptWakeSignalWithoutClosingTheConnection()
             throws Exception {
         var peer = new Peer();
-        try (var client = new ProtocolClient(() -> peer)) {
+        try (var client = new ProtocolClient(peer)) {
+            assertInstanceOf(Frame.Welcome.class, client.receive(1, TimeUnit.SECONDS));
             var answer = new CompletableFuture<Frame.@Nullable HintResult>();
             var interrupted = new AtomicBoolean();
             var requester =
@@ -53,7 +55,8 @@ class ProtocolClientLifecycleTest {
     @Test
     void cancellationUsesTheConnectionSequenceAndDoesNotConsumeQueryReplies() throws Exception {
         var peer = new Peer();
-        try (var client = new ProtocolClient(() -> peer)) {
+        try (var client = new ProtocolClient(peer)) {
+            assertInstanceOf(Frame.Welcome.class, client.receive(1, TimeUnit.SECONDS));
             long operation = client.nextSequence();
             client.cancel(operation);
             var cancel = assertInstanceOf(Frame.Cancel.class, peer.sent.poll(1, TimeUnit.SECONDS));
@@ -80,7 +83,8 @@ class ProtocolClientLifecycleTest {
     @Test
     void serverRequestDoesNotConsumeClientExchangeWithTheSameSequence() throws Exception {
         var peer = new Peer();
-        try (var client = new ProtocolClient(() -> peer)) {
+        try (var client = new ProtocolClient(peer)) {
+            assertInstanceOf(Frame.Welcome.class, client.receive(1, TimeUnit.SECONDS));
             var answer = new CompletableFuture<Frame.@Nullable HintResult>();
             var worker =
                     Thread.ofVirtual()
@@ -119,9 +123,10 @@ class ProtocolClientLifecycleTest {
     }
 
     @Test
-    void unregisteredSequencedRepliesRemainVisibleToTheCaller() throws Exception {
+    void unregisteredAndLateSequencedRepliesRemainVisibleToTheCaller() throws Exception {
         var peer = new Peer();
-        try (var client = new ProtocolClient(() -> peer)) {
+        try (var client = new ProtocolClient(peer)) {
+            assertInstanceOf(Frame.Welcome.class, client.receive(1, TimeUnit.SECONDS));
             client.send(new Frame.Hint("command", 909));
             assertTrue(
                     peer.sent.poll(1, TimeUnit.SECONDS) instanceof Frame.Hint hint
@@ -129,14 +134,52 @@ class ProtocolClientLifecycleTest {
             var reply = new Frame.HintResult(new Frame.HintInfo("argument", null), 909);
             assertTrue(peer.incoming.offer(reply));
             assertEquals(reply, client.receive(1, TimeUnit.SECONDS));
+            assertNull(client.hint("expired", 0, TimeUnit.SECONDS));
+            var request = assertInstanceOf(Frame.Hint.class, peer.sent.poll(1, TimeUnit.SECONDS));
+            var late = new Frame.HintResult(Frame.HintInfo.EMPTY, request.seq());
+            assertTrue(peer.incoming.offer(late));
+            assertEquals(late, client.receive(1, TimeUnit.SECONDS));
+            assertFalse(client.isClosed());
+        }
+    }
+
+    @Test
+    void parallelQueriesKeepRepliesAcrossShutdownAndExposeDuplicates() throws Exception {
+        var peer = new Peer();
+        try (var client = new ProtocolClient(peer);
+                var callers = Executors.newVirtualThreadPerTaskExecutor()) {
+            assertInstanceOf(Frame.Welcome.class, client.receive(1, TimeUnit.SECONDS));
+            var hint = callers.submit(() -> client.hint("hint", 5, TimeUnit.SECONDS));
+            var hintRequest =
+                    assertInstanceOf(Frame.Hint.class, peer.sent.poll(1, TimeUnit.SECONDS));
+            var completion = callers.submit(() -> client.complete("complete", 5, TimeUnit.SECONDS));
+            var completeRequest =
+                    assertInstanceOf(Frame.Complete.class, peer.sent.poll(1, TimeUnit.SECONDS));
+            var completeReply =
+                    new Frame.CompleteResult(
+                            List.of(new Frame.Completion("/help", null, null)),
+                            completeRequest.seq());
+            var hintReply =
+                    new Frame.HintResult(new Frame.HintInfo("argument", null), hintRequest.seq());
+            var termination = new Frame.Terminate(null);
+            assertTrue(peer.incoming.offer(completeReply));
+            assertTrue(peer.incoming.offer(hintReply));
+            assertTrue(peer.incoming.offer(hintReply));
+            assertTrue(peer.incoming.offer(termination));
+            assertTrue(peer.closed.await(1, TimeUnit.SECONDS));
+            assertEquals(completeReply, completion.get(1, TimeUnit.SECONDS));
+            assertEquals(hintReply, hint.get(1, TimeUnit.SECONDS));
+            assertEquals(hintReply, client.receive(1, TimeUnit.SECONDS));
+            assertEquals(termination, client.receive(1, TimeUnit.SECONDS));
         }
     }
 
     @Test
     void closeWakesBothStreamReadersAndPendingExchanges() throws Exception {
         var peer = new Peer();
-        var client = new ProtocolClient(() -> peer);
+        var client = new ProtocolClient(peer);
         try {
+            assertInstanceOf(Frame.Welcome.class, client.receive(1, TimeUnit.SECONDS));
             var hint = new CompletableFuture<Frame.@Nullable HintResult>();
             var stream = new CompletableFuture<@Nullable Frame>();
             var requester =
@@ -175,7 +218,8 @@ class ProtocolClientLifecycleTest {
     @Test
     void blockingReceiveDeliversTheNextFrame() throws Exception {
         var peer = new Peer();
-        try (var client = new ProtocolClient(() -> peer)) {
+        try (var client = new ProtocolClient(peer)) {
+            assertInstanceOf(Frame.Welcome.class, client.receive(1, TimeUnit.SECONDS));
             var waiting = new CountDownLatch(1);
             var received = new CompletableFuture<Frame.@Nullable ServerFrame>();
             var consumer =
@@ -203,7 +247,8 @@ class ProtocolClientLifecycleTest {
     void fullOutboxRejectsWorkInsteadOfDroppingIt() throws Exception {
         var peer = new Peer();
         peer.blockSend = true;
-        try (var client = new ProtocolClient(() -> peer)) {
+        try (var client = new ProtocolClient(peer)) {
+            assertInstanceOf(Frame.Welcome.class, client.receive(1, TimeUnit.SECONDS));
             client.send(new Frame.Request(client.nextSequence(), null, null, "in-flight"));
             assertTrue(peer.sending.await(1, TimeUnit.SECONDS));
             for (int i = 0; i < 256; i++)
@@ -214,6 +259,8 @@ class ProtocolClientLifecycleTest {
                             client.send(
                                     new Frame.Request(
                                             client.nextSequence(), null, null, "overflow")));
+            assertNull(client.hint("optional", 1, TimeUnit.SECONDS));
+            assertFalse(client.isClosed());
             peer.release.countDown();
         } finally {
             peer.release.countDown();
@@ -224,7 +271,8 @@ class ProtocolClientLifecycleTest {
     void outboxRejectsExcessBytesBeforeItsFrameCountLimit() throws Exception {
         var peer = new Peer();
         peer.blockSend = true;
-        try (var client = new ProtocolClient(() -> peer)) {
+        try (var client = new ProtocolClient(peer)) {
+            assertInstanceOf(Frame.Welcome.class, client.receive(1, TimeUnit.SECONDS));
             client.send(new Frame.Request(client.nextSequence(), null, null, "in-flight"));
             assertTrue(peer.sending.await(1, TimeUnit.SECONDS));
             var payload = "x".repeat(800 * 1024);
@@ -244,13 +292,17 @@ class ProtocolClientLifecycleTest {
                                             null,
                                             null,
                                             "x".repeat(FrameTransport.MAX_FRAME_BYTES))));
+            assertNull(
+                    client.hint("x".repeat(FrameTransport.MAX_FRAME_BYTES), 1, TimeUnit.SECONDS));
+            assertFalse(client.isClosed());
         }
     }
 
     @Test
     void blockedWriterDoesNotStopRepliesOrStreamDelivery() throws Exception {
         var peer = new Peer();
-        try (var client = new ProtocolClient(() -> peer)) {
+        try (var client = new ProtocolClient(peer)) {
+            assertInstanceOf(Frame.Welcome.class, client.receive(1, TimeUnit.SECONDS));
             var answer = new CompletableFuture<Frame.@Nullable HintResult>();
             Thread.ofVirtual()
                     .start(() -> answer.complete(client.hint("command", 5, TimeUnit.SECONDS)));
@@ -270,25 +322,27 @@ class ProtocolClientLifecycleTest {
     @Test
     void receiveOverflowClosesConnectionAndRetainsAcceptedFrames() throws Exception {
         var peer = new Peer();
-        try (var client = new ProtocolClient(() -> peer)) {
+        try (var client = new ProtocolClient(peer)) {
+            assertInstanceOf(Frame.Welcome.class, client.receive(1, TimeUnit.SECONDS));
             for (int i = 0; i < 257; i++) assertTrue(peer.incoming.offer(Delta.message("event")));
             assertTrue(peer.closed.await(2, TimeUnit.SECONDS));
             assertTrue(client.isClosed());
             for (int i = 0; i < 256; i++) assertTrue(client.receive() instanceof Delta);
-            assertNull(client.receive());
+            assertNull(client.receive(), "Overflow ends the stream after admitted frames drain");
         }
     }
 
     @Test
     void incomingByteBudgetClosesBeforeTheFrameCountLimit() throws Exception {
         var peer = new Peer();
-        try (var client = new ProtocolClient(() -> peer)) {
+        try (var client = new ProtocolClient(peer)) {
+            assertInstanceOf(Frame.Welcome.class, client.receive(1, TimeUnit.SECONDS));
             var frame = Delta.message("x".repeat(800 * 1024));
             for (int i = 0; i < 11; i++) assertTrue(peer.incoming.offer(frame));
             assertTrue(peer.closed.await(2, TimeUnit.SECONDS));
             assertTrue(client.isClosed());
             for (int i = 0; i < 10; i++) assertEquals(frame, client.receive(0, TimeUnit.SECONDS));
-            assertNull(client.receive(0, TimeUnit.SECONDS));
+            assertNull(client.receive());
         }
     }
 
@@ -296,8 +350,9 @@ class ProtocolClientLifecycleTest {
     void closeFailsPendingExchangesBeforeBlockedSendReturnsAndDiscardsUnsentFrames()
             throws Exception {
         var peer = new Peer();
-        var client = new ProtocolClient(() -> peer);
+        var client = new ProtocolClient(peer);
         try {
+            assertInstanceOf(Frame.Welcome.class, client.receive(1, TimeUnit.SECONDS));
             var hint = new CompletableFuture<Frame.@Nullable HintResult>();
             Thread.ofVirtual()
                     .start(() -> hint.complete(client.hint("pending", 30, TimeUnit.SECONDS)));
@@ -312,8 +367,12 @@ class ProtocolClientLifecycleTest {
             Thread.ofVirtual()
                     .start(
                             () -> {
-                                client.close();
-                                closing.complete(null);
+                                try {
+                                    client.close();
+                                    closing.complete(null);
+                                } catch (Throwable failure) {
+                                    closing.completeExceptionally(failure);
+                                }
                             });
             assertNull(
                     hint.get(1, TimeUnit.SECONDS),
@@ -325,6 +384,29 @@ class ProtocolClientLifecycleTest {
         } finally {
             peer.release.countDown();
             client.close();
+        }
+    }
+
+    @Test
+    void serverTerminationClosesWithoutWaitingForTheConsumerOrSocketEof() throws Exception {
+        var peer = new Peer();
+        try (var client = new ProtocolClient(peer)) {
+            assertInstanceOf(Frame.Welcome.class, client.receive(1, TimeUnit.SECONDS));
+            var answer = new CompletableFuture<Frame.@Nullable HintResult>();
+            Thread.ofVirtual()
+                    .start(() -> answer.complete(client.hint("pending", 30, TimeUnit.SECONDS)));
+            assertInstanceOf(Frame.Hint.class, peer.sent.poll(1, TimeUnit.SECONDS));
+            var progress = Delta.message("before termination");
+            var termination = new Frame.Terminate(null);
+            assertTrue(peer.incoming.offer(progress));
+            assertTrue(peer.incoming.offer(termination));
+            assertTrue(peer.closed.await(1, TimeUnit.SECONDS));
+            assertTrue(client.isClosed());
+            assertNull(answer.get(1, TimeUnit.SECONDS));
+            assertEquals(progress, client.receive());
+            assertEquals(termination, client.receive());
+            assertNull(client.receive());
+            assertThrows(IllegalStateException.class, client::nextSequence);
         }
     }
 

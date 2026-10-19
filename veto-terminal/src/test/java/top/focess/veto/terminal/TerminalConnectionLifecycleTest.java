@@ -2,19 +2,31 @@ package top.focess.veto.terminal;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import org.jline.reader.UserInterruptException;
+import org.jline.reader.impl.LineReaderImpl;
+import org.jline.terminal.Size;
+import org.jline.terminal.impl.DumbTerminal;
 import org.jspecify.annotations.NonNull;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import top.focess.veto.api.util.Threads;
 import top.focess.veto.contract.Frame;
 import top.focess.veto.contract.FrameTransport;
 import top.focess.veto.contract.ProtocolClient;
@@ -25,11 +37,142 @@ import top.focess.veto.terminal.client.StyledText;
 
 class TerminalConnectionLifecycleTest {
     @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    @Timeout(10)
+    void inputDuringHandshakeFailureLeavesTerminationFeedbackToConsumer(boolean cancel)
+            throws Exception {
+        var failConnection = new CountDownLatch(1);
+        var terminationQueued = new CountDownLatch(1);
+        var releaseTermination = new CountDownLatch(1);
+        var terminationRendered = new CountDownLatch(1);
+        var inputAttempts = new AtomicInteger();
+        var output = new ByteArrayOutputStream();
+        try (var client =
+                        new ProtocolClient(
+                                new FrameTransport() {
+                                    public void send(@NonNull Frame frame) {}
+
+                                    public @NonNull Frame receive() throws IOException {
+                                        try {
+                                            if (!failConnection.await(3, TimeUnit.SECONDS))
+                                                throw new IOException(
+                                                        "Handshake failure was not released");
+                                        } catch (InterruptedException interrupted) {
+                                            throw new IOException(interrupted);
+                                        }
+                                        throw new IOException("Connection closed during handshake");
+                                    }
+
+                                    public void close() {
+                                        failConnection.countDown();
+                                    }
+                                });
+                var terminal =
+                        new DumbTerminal(
+                                "connection-failure-test",
+                                "xterm",
+                                InputStream.nullInputStream(),
+                                output,
+                                StandardCharsets.UTF_8)) {
+            terminal.setSize(new Size(80, 24));
+            var controller =
+                    new VetoTerminal(MordantTerminal.create(), client) {
+                        @Override
+                        void connectionClosed(@NonNull String reason) {
+                            terminationQueued.countDown();
+                            try {
+                                if (!releaseTermination.await(3, TimeUnit.SECONDS))
+                                    throw new AssertionError("Termination was not released");
+                            } catch (InterruptedException interrupted) {
+                                Thread.currentThread().interrupt();
+                                throw new AssertionError(interrupted);
+                            }
+                            super.connectionClosed(reason);
+                            terminationRendered.countDown();
+                        }
+                    };
+            var reader =
+                    new LineReaderImpl(terminal) {
+                        @Override
+                        public @NonNull String readLine(String prompt, Character mask) {
+                            int attempt = inputAttempts.incrementAndGet();
+                            if (cancel && attempt == 1) return "/help";
+                            try {
+                                if (attempt == (cancel ? 2 : 1)) {
+                                    failConnection.countDown();
+                                    assertTrue(terminationQueued.await(3, TimeUnit.SECONDS));
+                                    if (cancel) throw new UserInterruptException("");
+                                    return "/help";
+                                }
+                                releaseTermination.countDown();
+                                assertTrue(terminationRendered.await(3, TimeUnit.SECONDS));
+                            } catch (InterruptedException interrupted) {
+                                Thread.currentThread().interrupt();
+                            }
+                            throw new UserInterruptException("");
+                        }
+                    };
+            var completed = new CompletableFuture<Void>();
+            var repl =
+                    Thread.ofVirtual()
+                            .start(
+                                    () -> {
+                                        try {
+                                            controller.start(reader);
+                                            completed.complete(null);
+                                        } catch (Throwable failure) {
+                                            completed.completeExceptionally(failure);
+                                        }
+                                    });
+            try {
+                completed.get(5, TimeUnit.SECONDS);
+            } finally {
+                failConnection.countDown();
+                releaseTermination.countDown();
+                Threads.awaitTermination(repl, 2_000);
+            }
+            assertFalse(repl.isAlive());
+            assertEquals(cancel ? 3 : 2, inputAttempts.get());
+            assertEquals(0, terminationRendered.getCount());
+            terminal.flush();
+            assertTrue(
+                    output.toString(StandardCharsets.UTF_8).contains("Backend connection closed."));
+        }
+    }
+
+    @Test
+    @Timeout(10)
+    void interactionFailureStillPropagatesWhileConnectionIsOpen() throws Exception {
+        try (var client = new ProtocolClient(new Peer());
+                var terminal =
+                        new DumbTerminal(
+                                "interaction-failure-test",
+                                "xterm",
+                                InputStream.nullInputStream(),
+                                new ByteArrayOutputStream(),
+                                StandardCharsets.UTF_8)) {
+            terminal.setSize(new Size(80, 24));
+            var expected = new IllegalStateException("Input handling failed");
+            var reader =
+                    new LineReaderImpl(terminal) {
+                        @Override
+                        public @NonNull String readLine(String prompt, Character mask) {
+                            throw expected;
+                        }
+                    };
+            var controller = new VetoTerminal(MordantTerminal.create(), client);
+            assertSame(
+                    expected,
+                    assertThrows(IllegalStateException.class, () -> controller.start(reader)));
+        }
+    }
+
+    @ParameterizedTest
     @ValueSource(booleans = {true, false})
     @Timeout(10)
     void closedConnectionTerminatesVirtualConsumerWithoutInterruption(boolean alreadyClosed)
             throws Exception {
-        var client = new ProtocolClient(Peer::new);
+        var client = new ProtocolClient(new Peer());
         try {
             if (alreadyClosed) client.close();
             var terminal = new VetoTerminal(MordantTerminal.create(), client);

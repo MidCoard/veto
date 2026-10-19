@@ -196,10 +196,10 @@ class FrameCodecTest {
     @ParameterizedTest
     @ValueSource(
             strings = {
-                "{\"type\":\"cancel\"}",
-                "{\"type\":\"cancel\",\"seq\":0}",
-                "{\"type\":\"cancel\",\"seq\":-1}",
-                "{\"type\":\"cancel\",\"seq\":null}",
+                "{\"type\":\"cancel\",\"targetSeq\":1}",
+                "{\"type\":\"cancel\",\"targetSeq\":1,\"seq\":0}",
+                "{\"type\":\"cancel\",\"targetSeq\":1,\"seq\":-1}",
+                "{\"type\":\"cancel\",\"targetSeq\":1,\"seq\":null}",
                 "{\"type\":\"cancel_result\",\"seq\":1}",
                 "{\"type\":\"cancel_result\",\"status\":null,\"seq\":1}",
                 "{\"type\":\"cancel_result\",\"status\":true,\"seq\":1}",

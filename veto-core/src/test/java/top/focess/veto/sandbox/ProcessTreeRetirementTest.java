@@ -108,6 +108,7 @@ class ProcessTreeRetirementTest {
                 assertFalse(ProcessHandle.of(targetId).map(ProcessHandle::isAlive).orElse(false));
             } finally {
                 caller.interrupt();
+                caller.join();
             }
         }
     }

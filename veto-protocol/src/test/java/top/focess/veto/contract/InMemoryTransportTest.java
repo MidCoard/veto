@@ -28,12 +28,16 @@ class InMemoryTransportTest {
 
     private @NonNull InMemoryTransport transport;
     private @NonNull ProtocolClient conn;
+    private Frame.@NonNull Welcome welcome;
     private @NonNull Thread responder;
 
     @BeforeEach
     void setUp() throws Exception {
         transport = new InMemoryTransport();
-        conn = new ProtocolClient(() -> transport);
+        conn = new ProtocolClient(transport);
+        welcome =
+                ContractTestSupport.assertInstanceOf(
+                        Frame.Welcome.class, conn.receive(1, TimeUnit.SECONDS));
         responder =
                 Thread.ofVirtual()
                         .name("inmem-responder")
@@ -49,7 +53,7 @@ class InMemoryTransportTest {
     }
 
     @AfterEach
-    void tearDown() {
+    void tearDown() throws InterruptedException {
         responder.interrupt();
         conn.close();
         Threads.awaitTermination(responder, 1_000);
@@ -78,8 +82,9 @@ class InMemoryTransportTest {
     }
 
     @Test
-    void handshakeNegotiatesVersion() {
-        assertEquals(Frame.PROTOCOL_VERSION, conn.negotiatedVersion());
+    void welcomeReportsTheNegotiatedAndProductVersions() {
+        assertEquals(Frame.PROTOCOL_VERSION, welcome.version());
+        assertEquals(Version.UNKNOWN, welcome.productVersion());
         assertFalse(conn.isClosed());
     }
 

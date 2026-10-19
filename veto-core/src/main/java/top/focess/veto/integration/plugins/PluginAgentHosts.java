@@ -195,7 +195,7 @@ public final class PluginAgentHosts implements PluginAgentHostFactory {
                     identities.saveAndFlush(row);
                 }
                 var security = ExecutionSecurity.open(userId);
-                try {
+                try (security) {
                     agent =
                             service.getObject()
                                     .openPluginAgent(
@@ -205,8 +205,6 @@ public final class PluginAgentHosts implements PluginAgentHostFactory {
                                             namespace,
                                             profile,
                                             history.load(session.getId(), id));
-                } finally {
-                    security.close();
                 }
             }
         }

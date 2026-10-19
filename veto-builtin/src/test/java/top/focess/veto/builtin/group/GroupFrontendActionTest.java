@@ -43,6 +43,7 @@ class GroupFrontendActionTest {
             assertTrue(removed.path("revision").asLong() > first.path("revision").asLong());
 
             var frontend = new GroupFrontend(fixture.runtime);
+            assertTrue(frontend.module().contains("export"));
             var snapshot =
                     (JsonValue.ObjectValue)
                             frontend.handle(

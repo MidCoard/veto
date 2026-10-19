@@ -51,6 +51,7 @@ class QuestionRuntimeTest {
         var host = mock(PluginHost.class);
         var runtime = new QuestionRuntime(host);
         var frontend = new QuestionsFrontend(runtime);
+        assertTrue(frontend.module().contains("export"));
         var first = runtime.register(invocation("agent", "call-b"), List.of(question()));
         var other = runtime.register(invocation("other", "other-call"), List.of(question()));
         var second = runtime.register(invocation("agent", "call-a"), List.of(question()));

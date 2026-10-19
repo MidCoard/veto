@@ -14,7 +14,12 @@ public final class BeforeUserRegisterEvent extends Event implements Cancellable 
     private final Scope.@NonNull GlobalScope scope = new Scope.GlobalScope();
     private boolean cancelled;
 
-    /** Creates the decision for a validated username and host-approved role. */
+    /**
+     * Creates the decision for a validated username and host-approved role.
+     *
+     * @param username validated proposed login name
+     * @param role role admitted by the host
+     */
     public BeforeUserRegisterEvent(@NonNull String username, @NonNull String role) {
         this.username = username;
         this.role = role;
@@ -25,12 +30,20 @@ public final class BeforeUserRegisterEvent extends Event implements Cancellable 
         return scope;
     }
 
-    /** The proposed login name; observing it grants no account authority. */
+    /**
+     * The proposed login name; observing it grants no account authority.
+     *
+     * @return the proposed login name
+     */
     public @NonNull String username() {
         return username;
     }
 
-    /** The role already admitted by the host; listeners cannot change it. */
+    /**
+     * The role already admitted by the host; listeners cannot change it.
+     *
+     * @return the host-approved role
+     */
     public @NonNull String role() {
         return role;
     }

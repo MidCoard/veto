@@ -28,6 +28,7 @@ class TasksFrontendTest {
                 new Scope.AgentScope(
                         invocation.userId(), invocation.sessionId(), invocation.agentId());
         var contribution = new TasksFrontend(tasks);
+        assertTrue(contribution.module().contains("export"));
         var args =
                 new JsonValue.ObjectValue(
                         Map.of(

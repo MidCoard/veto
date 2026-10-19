@@ -71,7 +71,7 @@ public interface ClientView {
      */
     void onError(@NonNull StyledText content);
 
-    /** Server-forced termination, already wrapped in a {@link StyledText}. */
+    /** Connection closure or server termination, already wrapped in a {@link StyledText}. */
     void onTerminate(@NonNull StyledText content);
 
     /** State-transition signal: the session went idle (no in-flight or queued request). */

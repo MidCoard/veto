@@ -5,9 +5,9 @@ import static org.mockito.Mockito.*;
 
 import java.io.IOException;
 import java.net.ServerSocket;
+import java.nio.channels.ServerSocketChannel;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
@@ -28,22 +28,20 @@ import top.focess.veto.session.TestAgentSessions;
 import top.focess.veto.transport.tcp.TcpConnection;
 
 @Timeout(20)
-class TerminalConfigurationTest {
+class IpcServerLifecycleTest {
     @ParameterizedTest
     @NullSource
     @ValueSource(strings = "false")
     void missingOrDisabledTerminalNeedsNeitherAnAddressNorItsDependencies(String enabled) {
         var runner =
                 new ApplicationContextRunner()
-                        .withUserConfiguration(TerminalConfiguration.class, IpcServer.class)
+                        .withUserConfiguration(IpcServer.class)
                         .withBean(EndpointConsumer.class);
         if (enabled != null) runner = runner.withPropertyValues("veto.terminal.enabled=" + enabled);
         runner.run(
                 context -> {
                     assertNull(context.getStartupFailure());
-                    assertFalse(context.containsBean("ipcListener"));
                     assertTrue(context.getBeansOfType(IpcServer.class).isEmpty());
-                    assertTrue(context.getBeansOfType(TerminalConfiguration.class).isEmpty());
                     assertNull(context.getBean(EndpointConsumer.class).servers().getIfAvailable());
                 });
     }
@@ -63,21 +61,25 @@ class TerminalConfigurationTest {
     @Test
     void repeatedColdHandshakesAndSpringShutdownCloseAllWorkers() {
         var acceptor = new AtomicReference<Thread>();
-        var listener = new AtomicReference<ServerSocket>();
+        var listener = new AtomicReference<ServerSocketChannel>();
         runner("tcp://127.0.0.1:0")
                 .run(
                         context -> {
                             assertNull(context.getStartupFailure());
                             assertEquals(1, context.getBeansOfType(IpcServer.class).size());
-                            var socket = context.getBean("ipcListener", ServerSocket.class);
-                            assertFalse(socket.isClosed());
-                            listener.set(socket);
                             var server = context.getBean(IpcServer.class);
+                            var listenerField = IpcServer.class.getDeclaredField("listener");
+                            listenerField.setAccessible(true);
+                            var socket =
+                                    assertInstanceOf(
+                                            ServerSocketChannel.class, listenerField.get(server));
+                            assertTrue(socket.isOpen());
+                            listener.set(socket);
                             var worker = worker(server, "acceptor");
                             assertTrue(worker.isVirtual());
                             assertTrue(worker.isAlive());
                             acceptor.set(worker);
-                            var address = "tcp://127.0.0.1:" + socket.getLocalPort();
+                            var address = "tcp://127.0.0.1:" + socket.socket().getLocalPort();
                             for (int attempt = 0; attempt < 100; attempt++) {
                                 try (var client = TcpConnection.connect(address)) {
                                     client.send(
@@ -115,15 +117,15 @@ class TerminalConfigurationTest {
         var socket = listener.get();
         if (worker == null || socket == null) throw new AssertionError("Missing IPC resources");
         assertFalse(worker.isAlive());
-        assertTrue(socket.isClosed());
+        assertFalse(socket.isOpen());
     }
 
     @Test
-    void dependencyFailureAbortsStartupAndReleasesListener() throws Exception {
+    void dependencyFailureAbortsStartupBeforeBindingTheListener() throws Exception {
         var address = freeAddress();
         var unavailable = new IllegalStateException("command registry unavailable");
         new ApplicationContextRunner()
-                .withUserConfiguration(TerminalConfiguration.class, IpcServer.class)
+                .withUserConfiguration(IpcServer.class)
                 .withPropertyValues(
                         "veto.terminal.enabled=true", "veto.terminal.bind-address=" + address)
                 .withBean(AgentSessions.class, TestAgentSessions::create)
@@ -133,8 +135,7 @@ class TerminalConfigurationTest {
                         CommandRegistry.class,
                         () -> {
                             throw unavailable;
-                        },
-                        definition -> definition.setDependsOn("ipcListener"))
+                        })
                 .run(
                         context -> {
                             var failure =
@@ -144,34 +145,7 @@ class TerminalConfigurationTest {
                             assertSame(unavailable, failure.getMostSpecificCause());
                         });
         try (var replacement = TcpConnection.bind(address)) {
-            assertTrue(replacement.isBound());
-        }
-    }
-
-    @Test
-    void interruptedStopPreservesInterruptAfterJoiningWorkers() throws Exception {
-        try (var listener = TcpConnection.bind("tcp://127.0.0.1:0")) {
-            var server =
-                    new IpcServer(
-                            mock(CommandRegistry.class),
-                            listener,
-                            TestAgentSessions.create(),
-                            mock(SessionService.class),
-                            mock(SessionCommandService.class));
-            server.start();
-            var preserved = new AtomicBoolean();
-            var closer =
-                    Thread.ofVirtual()
-                            .start(
-                                    () -> {
-                                        Thread.currentThread().interrupt();
-                                        server.stop();
-                                        preserved.set(Thread.currentThread().isInterrupted());
-                                    });
-            closer.join();
-            assertTrue(preserved.get());
-            assertFalse(worker(server, "acceptor").isAlive());
-            server.stop();
+            assertTrue(replacement.socket().isBound());
         }
     }
 
@@ -187,7 +161,7 @@ class TerminalConfigurationTest {
 
     private static @NonNull ApplicationContextRunner runner(@NonNull String address) {
         return new ApplicationContextRunner()
-                .withUserConfiguration(TerminalConfiguration.class, IpcServer.class)
+                .withUserConfiguration(IpcServer.class)
                 .withPropertyValues(
                         "veto.terminal.enabled=true", "veto.terminal.bind-address=" + address)
                 .withBean(CommandRegistry.class, () -> mock(CommandRegistry.class))

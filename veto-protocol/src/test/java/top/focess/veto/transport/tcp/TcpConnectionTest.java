@@ -11,6 +11,8 @@ import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.net.SocketTimeoutException;
 import java.net.UnknownHostException;
+import java.nio.channels.NotYetConnectedException;
+import java.nio.channels.SocketChannel;
 import java.nio.charset.StandardCharsets;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
@@ -31,24 +33,12 @@ import top.focess.veto.contract.Version;
 @Timeout(25)
 class TcpConnectionTest {
     @Test
-    void setupFailureClosesTheOwnedSocketAndPreservesBothFailures() {
-        var setupFailure = new IllegalStateException("Socket setup failed");
-        var cleanupFailure = new IOException("Socket close failed");
-        var socket =
-                new Socket() {
-                    @Override
-                    public void setTcpNoDelay(boolean enabled) {
-                        throw setupFailure;
-                    }
-
-                    @Override
-                    public void close() throws IOException {
-                        throw cleanupFailure;
-                    }
-                };
-        var failure = assertThrows(IllegalStateException.class, () -> TcpConnection.accept(socket));
-        assertSame(setupFailure, failure);
-        assertArrayEquals(new Throwable[] {cleanupFailure}, failure.getSuppressed());
+    void unconnectedChannelIsRejectedAndClosedDuringInitialization() throws Exception {
+        try (var channel = SocketChannel.open()) {
+            assertTrue(channel.isOpen());
+            assertThrows(NotYetConnectedException.class, () -> TcpConnection.accept(channel));
+            assertFalse(channel.isOpen());
+        }
     }
 
     @Test
@@ -61,7 +51,7 @@ class TcpConnectionTest {
     @Test
     void roundTripPreservesBothDirectionsAcrossRepeatedConnections() throws Exception {
         try (var listener = TcpConnection.bind("tcp://127.0.0.1:0")) {
-            String address = "tcp://127.0.0.1:" + listener.getLocalPort();
+            String address = "tcp://127.0.0.1:" + listener.socket().getLocalPort();
             for (int sequence = 1; sequence <= 100; sequence++) {
                 try (var client = TcpConnection.connect(address);
                         var server = TcpConnection.accept(listener.accept())) {
@@ -134,6 +124,10 @@ class TcpConnectionTest {
             var failure =
                     assertThrows(ExecutionException.class, () -> incoming.get(2, TimeUnit.SECONDS));
             assertInstanceOf(IOException.class, failure.getCause());
+            assertTrue(
+                    pair.accepted().isOpen(), "Frame validation does not close an owned channel");
+            pair.connection().close();
+            assertFalse(pair.accepted().isOpen());
         }
     }
 
@@ -145,6 +139,9 @@ class TcpConnectionTest {
             pair.peer().getOutputStream().write(bytes, 0, bytesToSend);
             pair.peer().shutdownOutput();
             assertThrows(EOFException.class, pair.connection()::receive);
+            assertTrue(pair.accepted().isOpen(), "Peer EOF does not release local resources");
+            pair.connection().close();
+            assertFalse(pair.accepted().isOpen());
         }
     }
 
@@ -158,6 +155,9 @@ class TcpConnectionTest {
             output.write(payload);
             output.flush();
             assertThrows(IOException.class, pair.connection()::receive);
+            assertTrue(pair.accepted().isOpen(), "The owner handles a malformed frame");
+            pair.connection().close();
+            assertFalse(pair.accepted().isOpen());
         }
     }
 
@@ -176,18 +176,27 @@ class TcpConnectionTest {
     }
 
     @Test
-    void concurrentIdempotentCloseReleasesBlockedReader() throws Exception {
+    void concurrentIdempotentCloseReleasesBlockedReaderAndWriter() throws Exception {
         try (var workers = Executors.newVirtualThreadPerTaskExecutor();
                 var pair = SocketPair.open()) {
-            var reading = new CountDownLatch(1);
+            pair.accepted().socket().setSendBufferSize(1_024);
+            var startedIo = new CountDownLatch(2);
             var incoming =
                     workers.submit(
                             () -> {
-                                reading.countDown();
+                                startedIo.countDown();
                                 return pair.connection().receive();
                             });
-            assertTrue(reading.await(2, TimeUnit.SECONDS));
+            var outgoing =
+                    workers.submit(
+                            () -> {
+                                startedIo.countDown();
+                                pair.connection().send(new byte[FrameTransport.MAX_FRAME_BYTES]);
+                                return null;
+                            });
+            assertTrue(startedIo.await(2, TimeUnit.SECONDS));
             assertThrows(TimeoutException.class, () -> incoming.get(100, TimeUnit.MILLISECONDS));
+            assertThrows(TimeoutException.class, () -> outgoing.get(100, TimeUnit.MILLISECONDS));
             var firstClose = workers.submit(pair.connection()::close);
             var secondClose = workers.submit(pair.connection()::close);
             firstClose.get(2, TimeUnit.SECONDS);
@@ -195,8 +204,14 @@ class TcpConnectionTest {
             var failure =
                     assertThrows(ExecutionException.class, () -> incoming.get(2, TimeUnit.SECONDS));
             assertInstanceOf(IOException.class, failure.getCause());
+            var writeFailure =
+                    assertThrows(ExecutionException.class, () -> outgoing.get(2, TimeUnit.SECONDS));
+            assertInstanceOf(IOException.class, writeFailure.getCause());
+            assertFalse(pair.accepted().isOpen());
             pair.peer().setSoTimeout(2_000);
-            assertEquals(-1, pair.peer().getInputStream().read());
+            assertTrue(
+                    pair.peer().getInputStream().readAllBytes().length
+                            < FrameTransport.MAX_FRAME_BYTES + Integer.BYTES);
         }
     }
 
@@ -224,14 +239,18 @@ class TcpConnectionTest {
                     assertThrows(ExecutionException.class, () -> incoming.get(7, TimeUnit.SECONDS));
             assertInstanceOf(SocketTimeoutException.class, failure.getCause());
             assertTrue(System.nanoTime() - started >= TimeUnit.SECONDS.toNanos(9));
+            assertTrue(
+                    pair.accepted().isOpen(), "A deadline reports failure without owning shutdown");
+            pair.connection().close();
+            assertFalse(pair.accepted().isOpen());
         }
     }
 
     @Test
-    void stalledWriteAllowsReadsAndClosesAtItsWriteDeadline() throws Exception {
+    void stalledWriteAllowsReadsAndReportsItsWriteDeadline() throws Exception {
         try (var workers = Executors.newVirtualThreadPerTaskExecutor();
                 var pair = SocketPair.open()) {
-            pair.accepted().setSendBufferSize(1_024);
+            pair.accepted().socket().setSendBufferSize(1_024);
             var writing = new CountDownLatch(1);
             long started = System.nanoTime();
             var outgoing =
@@ -253,8 +272,11 @@ class TcpConnectionTest {
             var failure =
                     assertThrows(
                             ExecutionException.class, () -> outgoing.get(15, TimeUnit.SECONDS));
-            assertInstanceOf(IOException.class, failure.getCause());
+            assertInstanceOf(SocketTimeoutException.class, failure.getCause());
             assertTrue(System.nanoTime() - started >= TimeUnit.SECONDS.toNanos(9));
+            assertTrue(pair.accepted().isOpen(), "A write timeout must be handled by the owner");
+            pair.connection().close();
+            assertFalse(pair.accepted().isOpen());
             assertThrows(IOException.class, pair.connection()::receive);
         }
     }
@@ -264,7 +286,9 @@ class TcpConnectionTest {
         try (var listener = TcpConnection.bind("tcp://127.0.0.1:0")) {
             assertThrows(
                     IOException.class,
-                    () -> TcpConnection.bind("tcp://127.0.0.1:" + listener.getLocalPort()));
+                    () ->
+                            TcpConnection.bind(
+                                    "tcp://127.0.0.1:" + listener.socket().getLocalPort()));
         }
     }
 
@@ -311,7 +335,9 @@ class TcpConnectionTest {
     }
 
     private record SocketPair(
-            @NonNull Socket peer, @NonNull Socket accepted, @NonNull TcpConnection connection)
+            @NonNull Socket peer,
+            @NonNull SocketChannel accepted,
+            @NonNull TcpConnection connection)
             implements AutoCloseable {
         static @NonNull SocketPair open() throws IOException {
             try (var listener = TcpConnection.bind("tcp://127.0.0.1:0")) {
@@ -321,7 +347,8 @@ class TcpConnectionTest {
                     peer.setTcpNoDelay(true);
                     peer.setSoTimeout(2_000);
                     peer.connect(
-                            new InetSocketAddress("127.0.0.1", listener.getLocalPort()), 2_000);
+                            new InetSocketAddress("127.0.0.1", listener.socket().getLocalPort()),
+                            2_000);
                     var accepted = listener.accept();
                     return new SocketPair(peer, accepted, TcpConnection.accept(accepted));
                 } catch (Throwable failure) {

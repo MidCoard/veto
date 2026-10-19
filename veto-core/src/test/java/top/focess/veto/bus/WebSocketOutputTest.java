@@ -49,7 +49,7 @@ class WebSocketOutputTest {
     private final @NonNull CountDownLatch release = new CountDownLatch(1);
 
     @AfterEach
-    void stopServers() {
+    void stopServers() throws InterruptedException {
         release.countDown();
         for (var server : servers) server.stop();
     }
@@ -237,7 +237,12 @@ class WebSocketOutputTest {
         assertEquals(0, fixture.server().getActiveSessionCount());
         assertEquals(1, connections(fixture.server()).size());
         try (var workers = Executors.newVirtualThreadPerTaskExecutor()) {
-            var shutdown = workers.submit(() -> fixture.server().stop());
+            var shutdown =
+                    workers.submit(
+                            () -> {
+                                fixture.server().stop();
+                                return null;
+                            });
             assertThrows(TimeoutException.class, () -> shutdown.get(100, TimeUnit.MILLISECONDS));
             release.countDown();
             shutdown.get(2, TimeUnit.SECONDS);

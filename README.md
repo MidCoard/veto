@@ -452,21 +452,31 @@ is generated output and must not be committed.
   connection code live in `veto-protocol`; terminal interaction, rendering and logging live in
   `veto-terminal`. `ProtocolClient` runs the terminal handshake, IO, heartbeat and correlation
   over `TcpConnection`. This client uses separate virtual readers and writers,
-  with bounded queues and private request futures. TCP frames contain a four-byte big-endian
+  with bounded queues and monitor-protected request correlation. TCP frames contain a four-byte big-endian
   payload length followed by UTF-8 JSON; payloads are limited to 1 MiB. Terminal and backend
   must be updated together; the previous terminal transport is removed, with no fallback.
-  Closing wakes readers and pending exchanges immediately and discards unsent application frames.
+  Closing releases IO, wakes readers and pending exchanges and discards unsent application frames.
+  A received Terminate closes the client immediately and remains available to its consumer.
+  Client close is the only public shutdown operation: it releases IO and joins both owned workers.
+  The same private protocol monitor protects state and once-only transport release; worker joins
+  happen outside it. Holding the public client monitor cannot block closure.
+  Final cleanup ignores interruption and continues waiting for all workers without restoring the
+  interrupt flag. The terminal closes the client before joining its consumer.
   `ProtocolClient.receive()` blocks until a frame arrives or the closed stream drains; its timed
   overload is available for callers that need a deadline. Terminal consumption does not poll.
-On the backend, `TerminalConfiguration` initializes the IPC resource beans before starting `IpcServer`.
+On the backend, the conditional `IpcServer` Spring component binds its listener after dependency injection.
 When terminal IPC is enabled, initialization failures abort Spring startup and Spring closes the resources already created.
 IPC beans require `veto.terminal.enabled=true`; the shipped configuration sets it explicitly. A missing or false
-property disables registration. On shutdown, Spring stops the server before closing its resources.
-  Spring owns the bound `ServerSocket`. The conditional `IpcServer` component receives this listener
-  through constructor injection and owns its virtual acceptor and connection task executor.
+property disables registration. On shutdown, Spring calls the server's stop method, which releases its resources.
+  `IpcServer` owns the bound `ServerSocketChannel` and closes it once during shutdown to wake accept.
+  It also owns its virtual acceptor and connection task executor.
   The acceptor closes registered clients on exit; server shutdown joins it before closing the executor.
   Each connection has one receive task; output tasks run only while its bounded queue has work. Connections
   hold no thread handles. Each queue admits at most 256 frames and 8 MiB of payload.
+  `ByteBoundedQueue` owns FIFO admission and both count/byte budgets for client IO, IPC/WebSocket
+  output and approved background stdin. Callers retain their existing state/wakeup locks; polling
+  and clearing release budgets inside the queue. Background output and input-failure histories use
+  `RecentHistory` to retain their latest entries.
   Closing the socket unblocks both directions; slow clients cannot block other connections.
   Both terminal IPC and browser WebSocket frames enter the same concrete `ProtocolConnection`,
   then an owned `AgentSession`, then the existing virtual-thread `AgentRunner`. `AgentSessions`
@@ -507,6 +517,7 @@ property disables registration. On shutdown, Spring stops the server before clos
   wait for socket writes; slow peers exceeding the buffer limit are disconnected. The native write
   deadline is 10 seconds, and queued sends recheck authentication. Closing a connection discards
   pending output; protocol rejection replies drain before orderly close.
+  Server shutdown stops all connections and joins their writers before returning.
   Each `VetoAgent` already uses one virtual execution thread, parked on its action queue when idle.
   Virtual threads reduce the cost of waiting; they do not remove CPU, model-provider or memory limits.
   Advance the protocol number only for major protocol revisions; individual frame changes share the development baseline.
@@ -516,11 +527,27 @@ property disables registration. On shutdown, Spring stops the server before clos
   after the previous acknowledgement. The server uses Tomcat's 90-second WebSocket read-idle timeout
   to remove silent clients; outgoing events do not reset that timeout. TCP reads allow 90 seconds
   of idle time and at most 10 seconds to finish a started frame. TCP writes have an independent
-  10-second deadline that closes a stalled socket. The terminal waits up to 10 seconds for connection
-  setup and Welcome. Its existing writer manages the 30-second heartbeat interval and 10-second
-  acknowledgement wait, checking expiry between sends; an in-progress send can delay that check
-  until its bounded write finishes. The reader rejects late acknowledgements. No protocol scheduler
+  10-second deadline; a failure is reported to the connection owner, which closes the transport.
+  `TcpConnection` uses nonblocking `SocketChannel`
+  IO with separate read/write selectors. The existing IO workers wait for readiness with the
+  remaining deadline and finish partial transfers; no transport timer executor or IO worker is
+  created. `ProtocolClient` starts both virtual IO workers at construction.
+  The caller establishes the TCP transport first, so connect failures propagate synchronously.
+  `ProtocolClient` takes that transport as a final owned field and starts the handshake workers.
+  Its writer sends Hello, then allows 10 seconds for Welcome from client initialization.
+  Constructor success does not imply completed version negotiation. Requests can queue while
+  awaiting Welcome and are sent afterward. Optional hint/completion queries wait on the client's
+  existing monitor; replies, timeouts and closure wake their callers without separate futures.
+  Duplicate and late replies remain on the receive stream. The terminal
+  displays the connected version from that received frame. The writer also manages the 30-second
+  heartbeat interval and 10-second acknowledgement wait, checking expiry between sends; an
+  in-progress send can delay that check until its bounded write finishes. The reader rejects late
+  Welcome and acknowledgement frames. No protocol scheduler
   is needed. There are no topic subscriptions.
+  Local IO or protocol failures are logged and end the receive stream after admitted frames drain;
+  they never become synthetic server frames. Actual server Terminate and handshake Error frames
+  use the same bounded inbox admission as application output. Inbox overflow fails the connection.
+  The terminal handles local stream closure directly and clears pending interactions and commands.
   Thread safety: `ProtocolClient` supports concurrent callers, and `FrameCodec` supports concurrent
   calls with stable inputs. `Version` and immutable frame values may be shared freely. `Frame.Veto`
   arguments, `Frame.PluginAction` data and `Delta.ToolCall` arguments retain mutable payloads;

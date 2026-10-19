@@ -105,8 +105,8 @@ class VetoWebSocketSecurityTest {
     }
 
     @AfterEach
-    void stopWriters() {
-        handlers.forEach(WebSocketServer::stop);
+    void stopWriters() throws InterruptedException {
+        for (var handler : handlers) handler.stop();
     }
 
     @Test

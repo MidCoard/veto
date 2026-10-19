@@ -88,15 +88,13 @@ public class PluginHostConfiguration {
                             @NonNull UUID userId, @NonNull String session, @NonNull String agent) {
                         if (!vault.getObject().isUnlocked(userId)) return;
                         var security = ExecutionSecurity.open(userId);
-                        try {
+                        try (security) {
                             var id = UUID.fromString(session);
                             if (!sessions.getObject().activateForObservation(id, userId, agent))
                                 return;
                             agents.getObject().agents(id).stream()
                                     .filter(entry -> entry.agent().id().equals(agent))
                                     .forEach(entry -> entry.agent().signalWork());
-                        } finally {
-                            security.close();
                         }
                     }
                 };
