@@ -67,8 +67,7 @@ public class WebSecurityConfig {
                                                 "/api/auth/users",
                                                 "/api/plugins",
                                                 "/api/plugins/**",
-                                                "/api/mcp/servers/**",
-                                                "/api/v1/training/**")
+                                                "/api/mcp/servers/**")
                                         .hasRole("ADMIN")
                                         .requestMatchers("/api/**", "/ws/veto/bus")
                                         .authenticated()

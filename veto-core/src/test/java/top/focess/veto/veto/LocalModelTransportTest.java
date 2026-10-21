@@ -13,6 +13,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
@@ -28,6 +29,27 @@ import org.mockito.MockedConstruction;
 import org.springframework.test.util.ReflectionTestUtils;
 
 class LocalModelTransportTest {
+    @Test
+    void dedicatedPluginArtifactDoesNotFallBackToOrReconfigureSharedModel(
+            @TempDir @NonNull Path root) {
+        var config = new SlmConfiguration();
+        config.setEnabled(false);
+        config.setPluginModelPaths(Map.of("test.secret", root.resolve("missing.gguf").toString()));
+        var shared = new LlamaCppBridge(config, new GBNFGrammarEngine(config));
+        try {
+            var dedicated = shared.forPlugin("test.secret");
+            assertNotSame(shared, dedicated);
+            assertSame(dedicated, shared.forPlugin("test.secret"));
+            assertSame(shared, shared.forPlugin("other.plugin"));
+            assertFalse(dedicated.isAvailable());
+            assertEquals("./models/veto-slm.gguf", config.getModelPath());
+            assertTrue(config.forModel("other.gguf").getPluginModelPaths().isEmpty());
+
+        } finally {
+            shared.stop();
+        }
+    }
+
     @Test
     void interruptedReadinessClosesTheStartedProcessAndRetainsTheSignal(@TempDir @NonNull Path root)
             throws Exception {
@@ -161,22 +183,6 @@ class LocalModelTransportTest {
             var failure =
                     assertThrows(ExecutionException.class, () -> result.get(1, TimeUnit.SECONDS));
             assertTrue(failure.getCause() == callbackFailure);
-        }
-    }
-
-    @Test
-    void interruptedModelRestartDoesNotLaunchAReplacement() {
-        var bridge =
-                spy(
-                        new LlamaCppBridge(
-                                mock(SlmConfiguration.class), mock(GBNFGrammarEngine.class)));
-        Thread.currentThread().interrupt();
-        try {
-            assertFalse(bridge.restartWithModel("replacement.gguf"));
-            verify(bridge, never()).start();
-            assertTrue(Thread.currentThread().isInterrupted());
-        } finally {
-            assertTrue(Thread.interrupted(), "test must clear its retained cancellation signal");
         }
     }
 }

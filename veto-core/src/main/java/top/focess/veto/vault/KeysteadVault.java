@@ -369,7 +369,7 @@ public class KeysteadVault {
             }
             throw new VaultLockedException("Vault is locked for user: " + user);
         }
-        if (handles.size() == 1) {
+        if (handles.size() == 1) { // todo the security problem here
             return handles.values().iterator().next();
         }
         throw new VaultLockedException("Vault is locked - authenticate first");

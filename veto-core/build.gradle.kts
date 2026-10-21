@@ -242,3 +242,18 @@ val zeroPluginTest by tasks.registering(Test::class) {
     shouldRunAfter(tasks.test)
 }
 tasks.check { dependsOn(zeroPluginTest) }
+
+// Offline tooling only; never included in runtimeClasspath or a plugin package.
+val modelTraining by configurations.creating
+dependencies { add(modelTraining.name, project(":veto-training")) }
+tasks.register<JavaExec>("trainModel") {
+    group = "model preparation"
+    description = "Train and export the veto-core model through the shared Java API."
+    classpath = modelTraining
+    mainClass.set("top.focess.veto.training.TrainingCli")
+    workingDir(rootProject.projectDir)
+    doFirst {
+        args(rootProject.projectDir.absolutePath,
+            providers.gradleProperty("trainingConfig").getOrElse("veto-core/training/screening.properties"))
+    }
+}

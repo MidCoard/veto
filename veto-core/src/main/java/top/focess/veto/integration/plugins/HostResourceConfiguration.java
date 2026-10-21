@@ -27,7 +27,9 @@ public class HostResourceConfiguration {
         LlamaCppBridge bridge = bridgeProvider.getIfAvailable();
         if (bridge != null) {
             PluginLocalModelFactory factory =
-                    plugin -> new BoundLocalModelCompletion(plugin, bridge);
+                    plugin ->
+                            new BoundLocalModelCompletion(
+                                    plugin, bridge.forPlugin(plugin.identity().id()));
             services.put(PluginLocalModelFactory.class, factory);
         }
         return new PluginHostServices(services);

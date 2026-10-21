@@ -25,6 +25,7 @@
     "veto-core/training/data/*.jsonl",
     "veto-core/training/.venv/",
     "veto-core/training/models/",
+    "veto-secret-protection/training/models/",
     "veto-core/training/*.jsonl",
     "veto-core/models/",
     "veto-core/benchmarks/agentdojo/.venv/",
@@ -33,7 +34,9 @@
     "/AGENTS.md",
     "scripts/",
     "ARCHITECTURE.md",
-    ".veto_history"
+    ".veto_history",
+    "veto-training/models/",
+    "veto-training/.venv/"
   ],
   "addons": {}
 }

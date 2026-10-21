@@ -106,17 +106,6 @@ veto:
     audit-log-path: ${VETO_AUDIT_DIR}
     encryption-enabled: true
 
-  training:
-    python-path: python
-    training-dir: ./training
-    model-output-dir: ./models
-    base-model: Qwen/Qwen2.5-1.5B-Instruct
-    default-gguf-name: veto-slm.gguf
-    max-training-hours: 4
-    auto-deploy-on-completion: true
-    venv-path: ./training/.venv
-    restart-bridge-on-deploy: true
-    quality-filter-enabled: true
 
 logging:
   level:

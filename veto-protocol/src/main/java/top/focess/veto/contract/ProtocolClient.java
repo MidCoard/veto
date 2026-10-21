@@ -53,9 +53,10 @@ public final class ProtocolClient implements AutoCloseable {
     private final long heartbeatNanos;
     private @NonNull ProtocolClientState state = ProtocolClientState.AWAITING_WELCOME;
     private final @NonNull FrameTransport transport;
-    // Welcome deadline when AWAITING_WELCOME, next heartbeat when OPEN, then acknowledgement
-    // deadline.
+    // Welcome deadline when AWAITING_WELCOME; next heartbeat send time when OPEN.
     private long deadlineNanos;
+    // Null when no heartbeat is awaiting confirmation; the connection stays OPEN while waiting.
+    private Long heartbeatAckDeadlineNanos;
     private long sequence = 2; // Hello owns sequence 1.
 
     public ProtocolClient(@NonNull FrameTransport transport) {
@@ -185,8 +186,7 @@ public final class ProtocolClient implements AutoCloseable {
     private <R extends Frame.SeqRequest & Frame.ClientFrame> Frame.SeqResponse exchange(
             @NonNull LongFunction<@NonNull R> request, long timeout, @NonNull TimeUnit unit) {
         synchronized (lock) {
-            if (state == ProtocolClientState.AWAITING_WELCOME
-                    || state == ProtocolClientState.CLOSED) return null;
+            if (state != ProtocolClientState.OPEN) return null;
             long seq = nextSequence();
             var frame = request.apply(seq);
             int bytes = FrameCodec.encode(frame).length;
@@ -217,17 +217,18 @@ public final class ProtocolClient implements AutoCloseable {
     private Frame.ClientFrame nextOutgoing() throws InterruptedException, TimeoutException {
         synchronized (lock) {
             while (state != ProtocolClientState.CLOSED) {
-                long remaining = deadlineNanos - System.nanoTime();
+                var ackDeadline = heartbeatAckDeadlineNanos;
+                long remaining =
+                        (ackDeadline == null ? deadlineNanos : ackDeadline) - System.nanoTime();
                 if (state == ProtocolClientState.AWAITING_WELCOME) {
                     if (remaining <= 0) throw new TimeoutException("Protocol handshake timed out");
                     TimeUnit.NANOSECONDS.timedWait(lock, remaining);
                     continue;
                 }
                 if (remaining <= 0) {
-                    if (state == ProtocolClientState.AWAITING_HEARTBEAT_ACK)
+                    if (ackDeadline != null)
                         throw new TimeoutException("Heartbeat acknowledgement timed out");
-                    state = ProtocolClientState.AWAITING_HEARTBEAT_ACK;
-                    deadlineNanos = System.nanoTime() + REPLY_TIMEOUT_NANOS;
+                    heartbeatAckDeadlineNanos = System.nanoTime() + REPLY_TIMEOUT_NANOS;
                     return new Frame.Heartbeat();
                 }
                 var next = outgoing.poll();
@@ -263,10 +264,11 @@ public final class ProtocolClient implements AutoCloseable {
                 return true;
             }
             if (frame instanceof Frame.HeartbeatAck) {
-                if (state != ProtocolClientState.AWAITING_HEARTBEAT_ACK) return true;
-                if (deadlineNanos - System.nanoTime() <= 0)
+                var ackDeadline = heartbeatAckDeadlineNanos;
+                if (ackDeadline == null) return true;
+                if (ackDeadline - System.nanoTime() <= 0)
                     throw new TimeoutException("Heartbeat acknowledgement timed out");
-                state = ProtocolClientState.OPEN;
+                heartbeatAckDeadlineNanos = null;
                 deadlineNanos = System.nanoTime() + heartbeatNanos;
                 lock.notifyAll();
                 return true;
@@ -319,6 +321,7 @@ public final class ProtocolClient implements AutoCloseable {
         synchronized (lock) {
             if (state == ProtocolClientState.CLOSED) return;
             state = ProtocolClientState.CLOSED;
+            heartbeatAckDeadlineNanos = null;
             outgoing.clear();
             lock.notifyAll();
             // Transport close releases IO resources; only the owner joins protocol workers.
@@ -341,7 +344,6 @@ public final class ProtocolClient implements AutoCloseable {
     private enum ProtocolClientState {
         AWAITING_WELCOME,
         OPEN,
-        AWAITING_HEARTBEAT_ACK,
         CLOSED
     }
 }

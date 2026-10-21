@@ -135,6 +135,7 @@ veto-core/training/data/*.json
 veto-core/training/data/*.jsonl
 veto-core/training/.venv/
 veto-core/training/models/
+veto-secret-protection/training/models/
 veto-core/training/*.jsonl
 veto-core/models/
 veto-core/benchmarks/agentdojo/.venv/
@@ -144,3 +145,5 @@ plans/
 scripts/
 ARCHITECTURE.md
 .veto_history
+veto-training/models/
+veto-training/.venv/

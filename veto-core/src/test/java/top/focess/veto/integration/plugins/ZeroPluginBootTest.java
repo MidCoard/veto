@@ -72,6 +72,7 @@ class ZeroPluginBootTest {
                 () -> Class.forName("top.focess.veto.secret.SecretProtectionPlugin"));
         for (String removed :
                 List.of(
+                        "top.focess.veto.training.TrainingController",
                         "top.focess.veto.agent.tool.builtin.UserQuestionRegistry",
                         "top.focess.veto.controller.UserQuestionController",
                         "top.focess.veto.api.agent.capability.UserInteractionCapability",
@@ -83,6 +84,10 @@ class ZeroPluginBootTest {
         }
         assertFalse(environment.containsProperty("veto.plan.max-steps"));
         assertFalse(environment.containsProperty("veto.skills.project-dir"));
+        assertFalse(environment.containsProperty("veto.training.base-model"));
+        assertThrows(
+                ClassNotFoundException.class,
+                () -> Class.forName("top.focess.veto.training.ModelTrainer"));
         assertTrue(plugins.registry().plugins().isEmpty());
         assertTrue(plugins.registry().entries(StandardContributionPoints.TOOLS).isEmpty());
         assertTrue(plugins.registry().entries(StandardContributionPoints.FRONTEND).isEmpty());

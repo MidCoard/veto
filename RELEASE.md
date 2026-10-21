@@ -1,8 +1,9 @@
 # Veto @VETO_VERSION@ — local release
 
 This guide is for the assembled local release bundle. You need JDK 25 and a running
-PostgreSQL database. The bundle does not include a JDK, database, web UI or local
-screening model. Veto is under active development; this bundle is not a certification
+PostgreSQL database. For local secret detection, provide a compatible llama.cpp
+`llama-server` on `PATH`. The bundle includes the secret-detection model and plugin;
+it does not include a JDK, database, web UI or the separate advisory screening model. Veto is under active development; this bundle is not a certification
 of hostile-code isolation on your operating system.
 
 ## Contents
@@ -10,12 +11,15 @@ of hostile-code isolation on your operating system.
 - `core/veto-core.jar`: backend server.
 - `terminal/veto-terminal-@VETO_VERSION@.zip`: terminal client distribution.
 - `start-core.bat` and `start-core.sh`: backend launchers using Java from `PATH`.
+- `models/veto-secret-slm.gguf`: ready-to-use local secret-detection model.
+- `plugins/top.focess.secret-protection/`: secret-protection plugin and libraries.
+- `config/application.yml`: bundled model routing.
 - `VERSION` and `LICENSE`: version and licensing information.
 
-The core bundle has no plugins. Optional installable directories can be built
-separately with `localPluginPackages`; copy only chosen packages into a
-`plugins/` directory beside the launcher before starting the backend. Each
-package contains `plugin.json`, `plugin.jar`, and private libraries under `lib/`.
+Secret protection is included. Additional optional plugin packages can be installed
+under `plugins/` before starting the backend. No Python environment, model setup
+or model download is needed for the included secret model. Local inference starts
+when the plugin receives its local-model service; check startup logs for availability.
 
 ## Start the backend
 
@@ -82,11 +86,10 @@ Without it, deterministic screening remains active. Do not assume semantic
 screening is active merely because a model path is configured.
 
 Installed Java and JavaScript plugins run as trusted server-user code. Plugin
-packages are separate from the core bundle. Administrators can use
+packages remain isolated from the core server JAR. Administrators can use
 `POST /api/plugins/{id}/disable` and `POST /api/plugins/{id}/enable` to toggle an
 installed package without restarting; the startup-disabled configuration takes
-effect again after restart. The obsolete pre-plugin group, monitor, and skill
-tables are removed; the running backend has no importer for those formats.
+effect again after restart.
 
 Keep audit/vault data and database credentials private. See `LICENSE` for the
 GNU Affero General Public License v3.0-only terms.

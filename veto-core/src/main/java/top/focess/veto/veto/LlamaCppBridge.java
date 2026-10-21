@@ -11,6 +11,8 @@ import java.net.http.HttpResponse;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
@@ -40,6 +42,25 @@ public class LlamaCppBridge {
 
     private volatile Process llamaProcess;
     private volatile int serverPort = -1;
+    private final @NonNull Map<@NonNull String, @NonNull LlamaCppBridge> pluginBridges =
+            new HashMap<>();
+
+    /**
+     * Resolve only host-configured plugin routes. An unavailable dedicated model stays unavailable.
+     */
+    public synchronized @NonNull LlamaCppBridge forPlugin(@NonNull String pluginId) {
+        String path = config.getPluginModelPaths().get(pluginId);
+        if (path == null) return this;
+        var existing = pluginBridges.get(pluginId);
+        if (existing != null) return existing;
+        var settings = config.forModel(path);
+        var dedicated = new LlamaCppBridge(settings, new GBNFGrammarEngine(settings));
+        pluginBridges.put(pluginId, dedicated);
+        if (!dedicated.start())
+            log.warn("Dedicated local model unavailable for plugin '{}'", pluginId);
+        return dedicated;
+    }
+
     private final @NonNull HttpClient httpClient =
             HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
 
@@ -59,7 +80,7 @@ public class LlamaCppBridge {
         if (isAvailable()) {
             return true;
         }
-        if (llamaProcess != null) stop();
+        if (llamaProcess != null) stopMain();
 
         if (!config.isEnabled()) {
             log.info("Local SLM is disabled by veto.slm.enabled");
@@ -111,7 +132,7 @@ public class LlamaCppBridge {
                 log.info("gateway LlamaCpp: Startup interrupted");
             } else
                 log.error("gateway LlamaCpp: Failed to start llama.cpp. Is it installed?", failure);
-            stop();
+            stopMain();
             return false;
         }
     }
@@ -243,6 +264,12 @@ public class LlamaCppBridge {
     /** Gracefully stop the llama.cpp subprocess. */
     @PreDestroy
     public synchronized void stop() {
+        pluginBridges.values().forEach(LlamaCppBridge::stop);
+        pluginBridges.clear();
+        stopMain();
+    }
+
+    private void stopMain() {
         serverPort = -1;
         Process process = llamaProcess;
         llamaProcess = null;
@@ -259,31 +286,6 @@ public class LlamaCppBridge {
             }
         }
         log.info("gateway LlamaCpp: Stopped");
-    }
-
-    /**
-     * Restart the llama.cpp subprocess with a different model. Used by TrainingManager after a new
-     * model is trained and deployed.
-     *
-     * @param newModelPath path to the new GGUF model file
-     * @return true if the restart succeeded
-     */
-    public synchronized boolean restartWithModel(@NonNull String newModelPath) {
-        log.info("gateway LlamaCpp: Restarting with new model '{}'", newModelPath);
-        stop();
-
-        // Update the config model path
-        this.config.setModelPath(newModelPath);
-
-        // Small delay to let ports release
-        try {
-            Thread.sleep(2000);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            return false;
-        }
-
-        return start();
     }
 
     public boolean isAvailable() {

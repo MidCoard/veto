@@ -1,5 +1,6 @@
 import java.io.File
 import java.nio.file.Files
+import java.security.MessageDigest
 import org.checkerframework.plugin.gradle.CheckerFrameworkExtension
 
 plugins {
@@ -77,9 +78,8 @@ subprojects {
 
 // ── Local release packaging ──────────────────────────────────────────────────
 // Assembles ONE versioned, self-contained bundle under release/veto-<version>/
-// from the three modules: the executable Spring Boot core jar, the terminal
-// distribution zip (application-plugin dist with bin/ launchers), launcher
-// scripts for the core jar, and VERSION/README. Idempotent: wipes and
+// with the executable core, terminal, secret-protection plugin and prepared model.
+// Model preparation stays outside the runtime and release. Idempotent: wipes and
 // rebuilds its own version directory, never touches other versions. release/
 // is a local artifact (gitignored).
 val releaseReadme = layout.buildDirectory.file("release-docs/README.md")
@@ -103,6 +103,7 @@ val localRelease by tasks.registering {
     description = "Assembles the versioned local release bundle under release/."
     dependsOn(":veto-core:bootJar", ":veto-terminal:distZip", ":veto-protocol:jar")
     dependsOn(generateReleaseReadme)
+    dependsOn("localPluginPackages")
     val versionStr = project.version.toString()
     val outDir = layout.projectDirectory.dir("release/veto-$versionStr")
     val workspace = rootProject.projectDir.canonicalFile
@@ -118,11 +119,50 @@ val localRelease by tasks.registering {
                     .buildDirectory
                     .file("distributions/veto-terminal-$versionStr.zip")
     val license = layout.projectDirectory.file("LICENSE")
+    val model = layout.projectDirectory.file("models/veto-secret-slm.gguf")
+    val modelChecksum = layout.projectDirectory.file("config/secret-model.sha256")
+    val modelRouting = layout.projectDirectory.file("config/application.yml")
+    val secretPackage =
+            layout.projectDirectory.dir("release/plugin-packages/$versionStr/top.focess.secret-protection")
     doLast {
+        val modelFile = model.asFile
+        require(modelFile.isFile && modelFile.length() == 986_048_000L) {
+            "The approved secret-protection model is required to assemble a release."
+        }
+        val digest = MessageDigest.getInstance("SHA-256")
+        modelFile.inputStream().buffered().use { input ->
+            val buffer = ByteArray(65_536)
+            while (true) {
+                val count = input.read(buffer)
+                if (count < 0) break
+                digest.update(buffer, 0, count)
+            }
+        }
+        val actualChecksum = digest.digest().joinToString("") { "%02x".format(it) }
+        require(actualChecksum == modelChecksum.asFile.readText().substringBefore(' ').trim()) {
+            "Secret-protection model checksum mismatch; release assembly stopped."
+        }
+        val pluginRoot = secretPackage.asFile.canonicalFile
+        require(pluginRoot.path.startsWith(releaseRoot.path + File.separator))
+        require(File(pluginRoot, "lib").canonicalFile.parentFile == pluginRoot)
+        val pluginFiles = listOf(File(pluginRoot, "plugin.json"), File(pluginRoot, "plugin.jar")) +
+                File(pluginRoot, "lib").listFiles().orEmpty().filter { it.extension == "jar" }
+        require(pluginFiles.all { it.isFile && !Files.isSymbolicLink(it.toPath()) })
+        val packageBytes = modelFile.length() + bootJar.get().asFile.length() +
+                distZip.get().asFile.length() + pluginFiles.sumOf { it.length() } +
+                modelRouting.asFile.length() + 1_000_000L
+        require(packageBytes <= 2_000_000_000L) { "Release exceeds its 2 GB package size limit." }
+        require(workspace.usableSpace >= packageBytes + 3_221_225_472L) {
+            "Insufficient disk space for release assembly and reserve."
+        }
         val out = outDir.asFile.canonicalFile
         require(releaseRoot.path.startsWith(workspace.path + File.separator))
         require(out.parentFile == releaseRoot)
         require(!Files.isSymbolicLink(outDir.asFile.toPath()))
+        if (out.exists()) require(out.walkTopDown().none {
+            Files.isSymbolicLink(it.toPath()) ||
+                    !it.canonicalFile.toPath().startsWith(out.toPath())
+        })
         out.deleteRecursively()
         val coreDir = File(out, "core").apply { mkdirs() }
         val terminalDir = File(out, "terminal").apply { mkdirs() }
@@ -130,31 +170,40 @@ val localRelease by tasks.registering {
         val terminalZip = distZip.get().asFile
         terminalZip.copyTo(File(terminalDir, terminalZip.name))
         license.asFile.copyTo(File(out, "LICENSE"))
+        val modelsDir = File(out, "models").apply { mkdirs() }
+        modelFile.copyTo(File(modelsDir, "veto-secret-slm.gguf"))
+        for (notice in listOf("secret-model-LICENSE.txt", "secret-model-NOTICE.txt")) {
+            rootProject.file("config/$notice").copyTo(File(modelsDir, notice))
+        }
+        val configDir = File(out, "config").apply { mkdirs() }
+        modelRouting.asFile.copyTo(File(configDir, "application.yml"))
+        val pluginDir = File(out, "plugins/top.focess.secret-protection").apply { mkdirs() }
+        for (file in pluginFiles) {
+            val destination = File(pluginDir, file.relativeTo(pluginRoot).path)
+            destination.parentFile.mkdirs()
+            file.copyTo(destination)
+        }
         val dollar = "$"
         File(out, "start-core.bat")
                 .writeText(
                         "@echo off\r\n" +
                                 "rem Starts the veto-core server (visible console).\r\n" +
+                                "cd /d \"%~dp0\"\r\n" +
                                 "java --enable-native-access=ALL-UNNAMED -jar \"%~dp0core\\veto-core.jar\" %*\r\n")
         File(out, "start-core.sh")
                 .writeText(
                         "#!/bin/sh\n" +
                                 "# Starts the veto-core server.\n" +
-                                "exec java --enable-native-access=ALL-UNNAMED -jar \"" +
-                                dollar +
-                                "(dirname \"" +
-                                dollar +
-                                "0\")/core/veto-core.jar\" \"" +
-                                dollar +
-                                "@\"\n")
+                                "cd -- \"${dollar}(dirname -- \"${dollar}0\")\" || exit 1\n" +
+                                "exec java --enable-native-access=ALL-UNNAMED -jar \"./core/veto-core.jar\" \"${dollar}@\"\n")
         File(out, "VERSION").writeText("component=veto\nversion=$versionStr\n")
         releaseReadme.get().asFile.copyTo(File(out, "README.md"))
         println("Local release assembled: ${out.absolutePath}")
     }
 }
 
-// Optional plugin artifacts are built separately from the core release. Operators install only
-// the packages they choose under the backend's plugins/ directory.
+// Plugin artifacts remain separate from the core JAR. The release includes secret protection;
+// operators can install additional packages under the backend's plugins/ directory.
 val localPluginPackages by tasks.registering {
     group = "release"
     description = "Builds optional installable plugin directories under release/plugin-packages/."

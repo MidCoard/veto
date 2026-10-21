@@ -15,12 +15,12 @@ The web client lives in the separate [veto-ui](https://github.com/MidCoard/veto-
 Veto is under active development. The following paths are implemented in this repository:
 
 - autonomous execution and plugin-owned plans;
-- native file, search, command, background-task, web, memory, skill, and group tools;
+- installed plugins for file, search, command, web, memory, skill, and group tools;
 - deterministic tool screening, local-SLM advisory screening, permission grants, and HITL vetoes;
-- session history, long-term memory backends, model-tier profiles, and per-user vault storage;
+- session history, model-tier profiles, and per-user vault storage;
 - REST, WebSocket, gRPC, and local TCP transport surfaces;
 - an interactive terminal client;
-- a local SLM preparation, training, evaluation, GGUF conversion, and deployment pipeline;
+- local release packaging of the secret-protection plugin and its detection model;
 - an official AgentDojo bridge for security and utility evaluation.
 
 Some larger architectural goals are only partial or experimental. In particular, the local
@@ -69,13 +69,14 @@ the deterministic danger result remains active.
 veto/
 |-- veto-protocol/   Frame contracts, codecs, and protocol transports
 |-- veto-nullness-checker/ Build-only Checker Framework extension for non-null Java class literals
-|-- veto-core/       Spring Boot backend, agent runtime, security gateway, persistence, and tools
+|-- veto-core/       Spring Boot backend, agent runtime, security gateway and host services
 |-- veto-terminal/   JLine/Mordant application, client interaction state, themes and logging
 |-- veto-api/        Shared authoring contract: tool/capability annotations, contribution registration model, standard contract interfaces, and the experimental Java plugin lifecycle
 |-- veto-builtin/    Workspace tools and create_group, registered through veto-api
 |-- veto-llm-providers/  Cloud LLM SDK adapters, registered through veto-api
 |-- veto-plugin-runtime/ Operator-configured script workers and example package
-|-- veto-secret-protection/ Optional secret-protection plugin package
+|-- veto-secret-protection/ Secret-protection plugin package
+|-- veto-training/   Offline Java training API and shared Python training engine
 |-- RELEASE.md      Release-user guide template
 |-- gradle/          Gradle wrapper support
 |-- qodana.yaml      Qodana inspection configuration
@@ -92,27 +93,17 @@ Important `veto-core` packages:
 | `agent.loop` | Prompt compilation, context management, and host response enforcement |
 | `agent.intercept` | Gateway results, HITL decisions, permission grants, drift, and ingress handling |
 | `agent.screening` | Deterministic and SLM-assisted relevance/danger computation |
-| `agent.tool` | Unified tool contracts, schemas, engine, validation, and built-in tools |
+| `agent.tool` | Tool engine, validation and host-side execution |
 | `agent.mcp` | External MCP protocol and transport adapters |
 | `agent.workspace` | Workspace roots, path resolution, and workspace policy inputs |
 | `sandbox` | Process execution, background-task lifecycle, file operations, and kernel-wall adapters |
 | `session` | Session creation, activation, ownership, and history loading |
-| `memory` | In-memory, JPA, vector, and pgvector memory implementations |
-| `group` | Leader/mate groups, DAG coordination, and blackboard state |
 | `vault` | Authentication lifecycle and encrypted per-user notes/credentials |
 | `veto` | llama.cpp bridge, grammar enforcement, the outbound veto gateway, and gateway-level model services |
-| `training` | Training lifecycle and REST endpoints |
 | `controller` | REST API controllers used by veto-ui and benchmark bridges |
 | `terminal` | Backend side of the TCP terminal protocol |
 | `bus` | WebSocket/gRPC event and routing infrastructure |
 | `observability` | Audit chain and runtime events |
-
-Type names describe responsibilities. Independent components such as `ProtocolConnection`,
-`ModelFlowExecution`, `EventHandlerCompiler` and `TerminalView` have their own files and explicit
-dependencies. Built-in tools such as `CreateGroupTool` and `RecallMemoryTool` are individual classes.
-Implementation details stay nested under their owner, with descriptive names such as
-`ProtocolOperation` and `IpcOutboundFrame`. Each owner retains its synchronization and resource
-lifecycle. Contract families such as `Frame` variants and tool `Args`/`Result` schemas stay grouped.
 
 ## Requirements
 
@@ -120,8 +111,6 @@ lifecycle. Contract families such as `Frame` variants and tool `Args`/`Result` s
 - the included Gradle 9.1 wrapper; a system Gradle installation is not required
 - PostgreSQL for the default `jpa` memory and session persistence configuration
 - optional: a llama.cpp `llama-server` executable and a compatible GGUF model for local screening
-- optional: Python and the dependencies under `veto-core/training/python/` for model training and
-  evaluation
 
 Veto is developed on Windows and uses platform-specific launchers where appropriate. The Gradle
 build also supports Unix-like hosts, but kernel sandbox behavior differs by operating system.
@@ -302,7 +291,6 @@ The backend currently exposes these primary REST groups:
 - `/api/mcp/servers` — administrator-only external MCP server discovery;
 - `/api/fs` — filesystem browsing used by the UI;
 - `/api/veto` — gateway status and payload checks;
-- `/api/v1/training` — administrator-only local training, quality, progress, evaluation, and deployment.
 
 These are application APIs under active development, not a frozen public compatibility contract.
 
@@ -382,7 +370,7 @@ with `PluginDeclinedException`; the administrator catalog reports `DECLINED`
 and its public reason. Unexpected initialization or startup failures still
 fail backend startup.
 
-The core release contains no plugin implementation JARs. Build optional
+The core JAR contains no plugin implementation JARs; the local release bundle installs secret protection separately. Build optional
 installable packages with `localPluginPackages`, then copy chosen directories
 from `release/plugin-packages/<version>/` into the backend's `plugins/` directory.
 The backend discovers Java and script plugins only from installed `plugin.json` packages;
@@ -394,8 +382,7 @@ Gateway approval and role restrictions. `GET /api/plugins` provides administrato
 status information.
 
 Scripts are trusted local code running as the server user, not sandboxed plugins.
-Activation requires explicit operator configuration; Node and plugin packages are not
-bundled. Live package reload and cross-client adapters remain unavailable.
+Script activation requires an installed package and a Node executable; Node is not bundled. Live package reload and cross-client adapters remain unavailable.
 
 - [Script plugin README](veto-plugin-runtime/README.md): configuration, executable example,
   protocol, trust boundaries and tests.
@@ -430,147 +417,18 @@ Build a versioned local distribution under the ignored `release/` directory:
 .\gradlew.bat localRelease
 ```
 
-The bundle contains the executable core JAR, terminal distribution, launch scripts, license, and
-version metadata. Its `README.md` is rendered from [the release guide](RELEASE.md), which
+The local bundle contains the core JAR, terminal distribution, secret-protection plugin and
+model, model routing, launch scripts, licenses and version metadata. Packaging verifies the
+local model against `config/secret-model.sha256`. The standalone training module is excluded.
+The bundle README is rendered from [the release guide](RELEASE.md), which
 contains bundle-specific startup instructions rather than source-build commands. `release/`
 is generated output and must not be committed.
 
 ## Development rules
 
-- Use `ignorekit.json` as the source of truth for ignore rules, then regenerate `.gitignore` with
-  IgnoreKit.
-- Keep generated releases, models, benchmark runs, training caches, and local audit/vault data out
-  of version control.
-- Preserve the explicit-nullness contract: reference returns and parameters are nullable unless
-  they carry `@NonNull`; primitive types are outside that contract.
-- Run focused tests while iterating and the complete `check` task before a release.
-- Keep shared message contracts and format codecs in `veto-protocol`; feature-specific data stays with its owner (for example, group models in the builtin plugin). IPC and WebSocket use
-  its public `FrameCodec` for UTF-8 bytes and JSON text, with strict parsing in that same codec.
-  Authentication, backend dispatch and
-  recipient routing belong to the application. Both transports use the same `Frame` hierarchy
-  and `type` discriminator, including `Delta` for streaming events. TCP transport and
-  connection code live in `veto-protocol`; terminal interaction, rendering and logging live in
-  `veto-terminal`. `ProtocolClient` runs the terminal handshake, IO, heartbeat and correlation
-  over `TcpConnection`. This client uses separate virtual readers and writers,
-  with bounded queues and monitor-protected request correlation. TCP frames contain a four-byte big-endian
-  payload length followed by UTF-8 JSON; payloads are limited to 1 MiB. Terminal and backend
-  must be updated together; the previous terminal transport is removed, with no fallback.
-  Closing releases IO, wakes readers and pending exchanges and discards unsent application frames.
-  A received Terminate closes the client immediately and remains available to its consumer.
-  Client close is the only public shutdown operation: it releases IO and joins both owned workers.
-  The same private protocol monitor protects state and once-only transport release; worker joins
-  happen outside it. Holding the public client monitor cannot block closure.
-  Final cleanup ignores interruption and continues waiting for all workers without restoring the
-  interrupt flag. The terminal closes the client before joining its consumer.
-  `ProtocolClient.receive()` blocks until a frame arrives or the closed stream drains; its timed
-  overload is available for callers that need a deadline. Terminal consumption does not poll.
-On the backend, the conditional `IpcServer` Spring component binds its listener after dependency injection.
-When terminal IPC is enabled, initialization failures abort Spring startup and Spring closes the resources already created.
-IPC beans require `veto.terminal.enabled=true`; the shipped configuration sets it explicitly. A missing or false
-property disables registration. On shutdown, Spring calls the server's stop method, which releases its resources.
-  `IpcServer` owns the bound `ServerSocketChannel` and closes it once during shutdown to wake accept.
-  It also owns its virtual acceptor and connection task executor.
-  The acceptor closes registered clients on exit; server shutdown joins it before closing the executor.
-  Each connection has one receive task; output tasks run only while its bounded queue has work. Connections
-  hold no thread handles. Each queue admits at most 256 frames and 8 MiB of payload.
-  `ByteBoundedQueue` owns FIFO admission and both count/byte budgets for client IO, IPC/WebSocket
-  output and approved background stdin. Callers retain their existing state/wakeup locks; polling
-  and clearing release budgets inside the queue. Background output and input-failure histories use
-  `RecentHistory` to retain their latest entries.
-  Closing the socket unblocks both directions; slow clients cannot block other connections.
-  Both terminal IPC and browser WebSocket frames enter the same concrete `ProtocolConnection`,
-  then an owned `AgentSession`, then the existing virtual-thread `AgentRunner`. `AgentSessions`
-  owns attachments under one lock: one selected session per terminal and all owned sessions per
-  browser connection, including sessions created later. `VetoCommandSender` adapts only terminal
-  commands. Browser primary and child prompts use WebSocket; HTTP remains for management and
-  authoritative snapshots, with no prompt or approval-mutation HTTP fallback.
-  The three connection types have distinct owners: `ProtocolClient` is the terminal-side endpoint;
-  `ProtocolConnection` is the backend application endpoint shared by IPC and WebSocket;
-  `TcpConnection` is only the socket/framing transport used on both ends of terminal TCP.
-  `IpcConnection` and `WebSocketConnection` own the corresponding connection's transport and output
-  state, with their dependencies supplied explicitly. Their servers own admission, registration and
-  shutdown. Both delegate application work to `ProtocolConnection`; `ProtocolOutput` admits its
-  replies to the transport queue. Browser traffic uses Spring WebSocket callbacks and neither Java
-  `ProtocolClient` nor `TcpConnection`. Operation state, authentication snapshots, client lifecycle
-  state and queue entries are private nested types of the connection that manages them.
-  `Request` carries a positive connection-local sequence and optional session/agent target;
-  browser requests require the exact session UUID. `RequestAccepted` confirms admission before a
-  draft is cleared. Final `Done`/`Error` echo that sequence only after result and execution settlement.
-  Session-wide observations use sequence zero. Episode IDs remain distinct from operation sequences.
-  `Cancel(cancelSeq, targetSeq)` addresses one operation and `CancelResult` reports ACCEPTED,
-  REJECTED or NO_ACTIVE_REQUEST immediately; the final reply follows settlement. Exact `VetoResult`
-  refuses or approves one offered call. `DeclineVetoes` refuses all pending approvals in an owned
-  session and returns a correlated scoped Done; it does not cancel arbitrary running execution.
-  Agent output follows `AgentSession -> ProtocolConnection -> IpcConnection / WebSocketConnection`.
-  AgentSession numbers deltas and supplies scope-checked agent sinks. Existing domain values such
-  as VetoPrompt become frames at the connection; the transport encodes and writes them. Queue
-  delivery rechecks authority and attachment identity after switches, logout and deletion.
-  Terminal commands remain serial; agent execution uses callbacks rather than a waiting command
-  worker. Database/session preparation and protected-input capture finish before the short guarded
-  runner enqueue. Revocation cannot cross that admission boundary. Connection pending work and
-  control admission are bounded; 65,536 unique exchange sequences require a fresh connection.
-  Sequences may arrive out of order, but duplicates close the connection without replay. Browser
-  reconnect discards unconfirmed exchanges, keeps drafts and refreshes authoritative snapshots.
-  `WebSocketServer` owns one internal client per socket, including its protocol connection,
-  virtual writer and bounded outbox: at most 256 queued messages
-  and 1 MiB of queued UTF-8 payload, plus one in-flight message of at most 1 MiB. Publishers do not
-  wait for socket writes; slow peers exceeding the buffer limit are disconnected. The native write
-  deadline is 10 seconds, and queued sends recheck authentication. Closing a connection discards
-  pending output; protocol rejection replies drain before orderly close.
-  Server shutdown stops all connections and joins their writers before returning.
-  Each `VetoAgent` already uses one virtual execution thread, parked on its action queue when idle.
-  Virtual threads reduce the cost of waiting; they do not remove CPU, model-provider or memory limits.
-  Advance the protocol number only for major protocol revisions; individual frame changes share the development baseline.
-  Protocol v5 requires clients to send Hello before application traffic; Welcome echoes its sequence.
-  Heartbeat and HeartbeatAck carry no sequence; the browser allows one outstanding heartbeat and
-  reconnects if its acknowledgement does not arrive within 10 seconds. Heartbeats are sent 30 seconds
-  after the previous acknowledgement. The server uses Tomcat's 90-second WebSocket read-idle timeout
-  to remove silent clients; outgoing events do not reset that timeout. TCP reads allow 90 seconds
-  of idle time and at most 10 seconds to finish a started frame. TCP writes have an independent
-  10-second deadline; a failure is reported to the connection owner, which closes the transport.
-  `TcpConnection` uses nonblocking `SocketChannel`
-  IO with separate read/write selectors. The existing IO workers wait for readiness with the
-  remaining deadline and finish partial transfers; no transport timer executor or IO worker is
-  created. `ProtocolClient` starts both virtual IO workers at construction.
-  The caller establishes the TCP transport first, so connect failures propagate synchronously.
-  `ProtocolClient` takes that transport as a final owned field and starts the handshake workers.
-  Its writer sends Hello, then allows 10 seconds for Welcome from client initialization.
-  Constructor success does not imply completed version negotiation. Requests can queue while
-  awaiting Welcome and are sent afterward. Optional hint/completion queries wait on the client's
-  existing monitor; replies, timeouts and closure wake their callers without separate futures.
-  Duplicate and late replies remain on the receive stream. The terminal
-  displays the connected version from that received frame. The writer also manages the 30-second
-  heartbeat interval and 10-second acknowledgement wait, checking expiry between sends; an
-  in-progress send can delay that check until its bounded write finishes. The reader rejects late
-  Welcome and acknowledgement frames. No protocol scheduler
-  is needed. There are no topic subscriptions.
-  Local IO or protocol failures are logged and end the receive stream after admitted frames drain;
-  they never become synthetic server frames. Actual server Terminate and handshake Error frames
-  use the same bounded inbox admission as application output. Inbox overflow fails the connection.
-  The terminal handles local stream closure directly and clears pending interactions and commands.
-  Thread safety: `ProtocolClient` supports concurrent callers, and `FrameCodec` supports concurrent
-  calls with stable inputs. `Version` and immutable frame values may be shared freely. `Frame.Veto`
-  arguments, `Frame.PluginAction` data and `Delta.ToolCall` arguments retain mutable payloads;
-  finish building them before enqueueing and leave them read-only afterward. `FrameTransport`
-  permits one reader and one writer concurrently; close is thread-safe and unblocks pending IO.
-  Prompt/Input is terminal-only text interaction. Veto/VetoResult carries human approvals on both
-  transports, while gateway enforcement remains backend-owned. Approval
-  frames originate in the agent and pass through the owning runtime session; pending
-  approval snapshots remain available for reconnect recovery. Delta carries a typed nested payload
-  (thought, message, tool call/result, notice or resource update); Done ends a completed request,
-  while Error ends a failed request. Application output carries the same Scope used by plugin
-  operations: GlobalScope for connection-local output, SessionScope for session resources, AgentScope
-  for an agent (including its owning account and session). Terminal deltas also render while idle.
-  Compaction feedback uses the generic Notice renderer. PluginAction transports custom plugin
-  data consumed by the owning plugin frontend. Core Action refreshes core resources; plugin
-  controllers supply initial state, recovery and bounded detail pages. Client-triggered gateway
-  processing is not part of the wire protocol.
-  There is no outbound Java cloud bus or remote task executor.
-  Browser message types, JSON validation, schema and wire fixtures belong to
-  `veto-ui/src/protocol` and are bundled with the UI. Update them alongside Java wire-contract
-  changes; frontend tests cover validation and wire fixtures. `veto-terminal` must not depend on `veto-core`.
-- Development/beta migrations replace obsolete implementations completely; do not retain
-  compatibility aliases or fallback implementations.
+- Generate `.gitignore` from `ignorekit.json`; keep models, caches and local data out of Git.
+- Keep feature implementations in their owning module and shared contracts in `veto-api` or `veto-protocol`.
+- Before delivery, run `spotlessCheck test :veto-core:bootJar`; update affected callers and documentation together.
 
 ## License
 
@@ -587,7 +445,4 @@ remain in core.
 model-provider or secret-protection implementation. Install each optional
 package separately under `plugins/`. External model adapters must be installed
 to call their providers. `:veto-core:zeroPluginTest` exercises the core loop
-without plugin classes, using a deterministic model transport. Historical
-The retired pre-plugin group, monitor, and skill tables have been removed in
-the development database. A future offline importer can use an external backup;
-the running backend does not parse those retired formats.
+without plugin classes, using a deterministic model transport.

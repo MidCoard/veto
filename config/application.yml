@@ -1,0 +1,6 @@
+# Repository deployment configuration. Core itself has no concrete plugin model binding.
+# For a packaged deployment, place this binding in its external config/application.yml.
+veto:
+  slm:
+    plugin-model-paths:
+      "[top.focess.secret-protection]": ./models/veto-secret-slm.gguf

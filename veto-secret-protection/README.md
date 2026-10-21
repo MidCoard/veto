@@ -66,3 +66,10 @@ through the scope-checked reveal and the authorized import writer.
 ```sh
 ./gradlew :veto-secret-protection:test
 ```
+
+## Bundled local model
+
+The `localRelease` bundle includes the secret-detection model, this plugin and its model routing.
+Use a compatible `llama-server` on the backend's `PATH`. The model runs locally;
+no Python environment or model preparation is needed. If local inference is
+unavailable, the deterministic protection described above remains active.

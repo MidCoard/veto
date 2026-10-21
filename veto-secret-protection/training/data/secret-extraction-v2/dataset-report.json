@@ -1,0 +1,20 @@
+{
+  "syntheticOnly": true,
+  "splits": {
+    "train": {
+      "samples": 768,
+      "scenarioGroups": 32,
+      "sha256": "15468b6405b1d9d30210e7d26727ba594437b5015230fecdf512ade7af1ca8a1"
+    },
+    "validation": {
+      "samples": 96,
+      "scenarioGroups": 6,
+      "sha256": "d4d3f339f391d50556aaac56152ef018cd9c4c8871c565ed4b6ab6ccb5f92b80"
+    },
+    "test": {
+      "samples": 192,
+      "scenarioGroups": 12,
+      "sha256": "19dbf7ab91676a9d907759f9b4d94abd3b73b7239504b1f80c936fd22d5b2479"
+    }
+  }
+}

@@ -299,10 +299,11 @@ class ProtocolClientLifecycleTest {
     }
 
     @Test
-    void blockedWriterDoesNotStopRepliesOrStreamDelivery() throws Exception {
+    void pendingHeartbeatAndBlockedWriterDoNotStopRepliesOrStreamDelivery() throws Exception {
         var peer = new Peer();
-        try (var client = new ProtocolClient(peer)) {
+        try (var client = new ProtocolClient(peer, Version.UNKNOWN, "", 20)) {
             assertInstanceOf(Frame.Welcome.class, client.receive(1, TimeUnit.SECONDS));
+            assertInstanceOf(Frame.Heartbeat.class, peer.sent.poll(1, TimeUnit.SECONDS));
             var answer = new CompletableFuture<Frame.@Nullable HintResult>();
             Thread.ofVirtual()
                     .start(() -> answer.complete(client.hint("command", 5, TimeUnit.SECONDS)));

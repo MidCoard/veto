@@ -12,6 +12,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import org.jspecify.annotations.NonNull;
@@ -134,40 +135,45 @@ class ProcessTreeRetirementTest {
         var handle =
                 substrate.provision(
                         new SandboxProfile(workspace, 512, 100, 8, Duration.ofSeconds(30)));
-        var start =
-                CompletableFuture.supplyAsync(
+        try (var workers = Executors.newFixedThreadPool(2)) {
+            var start =
+                    CompletableFuture.supplyAsync(
+                            () ->
+                                    substrate.startBackground(
+                                            handle,
+                                            new Command(
+                                                    "cmd.exe", List.of("/c", "echo", "admitted")),
+                                            workspace),
+                            workers);
+            try {
+                assertTrue(attachmentEntered.await(20, TimeUnit.SECONDS));
+                var retirementStarted = new CountDownLatch(1);
+                var retired =
+                        CompletableFuture.runAsync(
+                                () -> {
+                                    retirementStarted.countDown();
+                                    substrate.deprovision(handle);
+                                },
+                                workers);
+                assertTrue(retirementStarted.await(5, TimeUnit.SECONDS));
+                assertThrows(TimeoutException.class, () -> retired.get(200, TimeUnit.MILLISECONDS));
+                verify(kernel, never()).deprovisionWorkspace(any());
+                assertThrows(
+                        IllegalStateException.class,
                         () ->
                                 substrate.startBackground(
                                         handle,
-                                        new Command("cmd.exe", List.of("/c", "echo", "admitted")),
+                                        new Command("cmd.exe", List.of("/c", "echo", "too-late")),
                                         workspace));
-        try {
-            assertTrue(attachmentEntered.await(20, TimeUnit.SECONDS));
-            var retirementStarted = new CountDownLatch(1);
-            var retired =
-                    CompletableFuture.runAsync(
-                            () -> {
-                                retirementStarted.countDown();
-                                substrate.deprovision(handle);
-                            });
-            assertTrue(retirementStarted.await(5, TimeUnit.SECONDS));
-            assertThrows(TimeoutException.class, () -> retired.get(200, TimeUnit.MILLISECONDS));
-            verify(kernel, never()).deprovisionWorkspace(any());
-            assertThrows(
-                    IllegalStateException.class,
-                    () ->
-                            substrate.startBackground(
-                                    handle,
-                                    new Command("cmd.exe", List.of("/c", "echo", "too-late")),
-                                    workspace));
-            releaseAttachment.countDown();
-            var process = start.get(30, TimeUnit.SECONDS);
-            retired.get(30, TimeUnit.SECONDS);
-            assertFalse(process.isAlive());
-            verify(kernel).deprovisionWorkspace(handle.profile());
-        } finally {
-            releaseAttachment.countDown();
-            start.thenAccept(Process::destroyForcibly);
+                releaseAttachment.countDown();
+                var process = start.get(30, TimeUnit.SECONDS);
+                retired.get(30, TimeUnit.SECONDS);
+                assertFalse(process.isAlive());
+                verify(kernel).deprovisionWorkspace(handle.profile());
+            } finally {
+                releaseAttachment.countDown();
+                start.thenAccept(Process::destroyForcibly);
+            }
         }
     }
 

@@ -348,6 +348,9 @@ class VetoApplicationTests {
                         .get(5, TimeUnit.SECONDS);
                 assertInstanceOf(Frame.Welcome.class, nextWebSocketFrame(messages));
                 var session = nativeWebSocket(token);
+                var worker = ReflectionTestUtils.getField(webSocketConnection(token), "writer");
+                if (!(worker instanceof Thread writer))
+                    throw new AssertionError("Missing WebSocket writer");
                 assertEquals(90_000L, session.getUserProperties().get(READ_IDLE_TIMEOUT_MS));
                 assertEquals(
                         10_000L, session.getUserProperties().get(BLOCKING_SEND_TIMEOUT_PROPERTY));
@@ -371,6 +374,9 @@ class VetoApplicationTests {
                 assertNull(ReflectionTestUtils.invokeMethod(session, "checkExpiration"));
                 assertEquals(1001, closed.get(5, TimeUnit.SECONDS));
                 assertFalse(session.isOpen());
+                // Client close notification precedes the server writer's registry cleanup.
+                writer.join(5000);
+                assertFalse(writer.isAlive());
                 assertThrows(AssertionError.class, () -> nativeWebSocket(token));
             } finally {
                 socket.abort();
@@ -386,6 +392,13 @@ class VetoApplicationTests {
     }
 
     private @NonNull WsSession nativeWebSocket(@NonNull String token) {
+        var candidate = ReflectionTestUtils.getField(webSocketConnection(token), "socket");
+        if (candidate instanceof NativeWebSocketSession nativeSocket
+                && nativeSocket.getNativeSession() instanceof WsSession session) return session;
+        throw new AssertionError("Missing native Tomcat session");
+    }
+
+    private @NonNull Object webSocketConnection(@NonNull String token) {
         var value =
                 ReflectionTestUtils.getField(context.getBean(WebSocketServer.class), "connections");
         if (!(value instanceof Map<?, ?> connections))
@@ -397,9 +410,7 @@ class VetoApplicationTests {
                     && token.equals(
                             socket.getAttributes()
                                     .get(VetoWebSocketAuthInterceptor.LOGIN_TOKEN_ATTRIBUTE))) {
-                if (socket instanceof NativeWebSocketSession nativeSocket
-                        && nativeSocket.getNativeSession() instanceof WsSession session)
-                    return session;
+                return connection;
             }
         }
         throw new AssertionError("Missing authenticated Tomcat session");

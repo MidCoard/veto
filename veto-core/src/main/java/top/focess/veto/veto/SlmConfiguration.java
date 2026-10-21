@@ -2,6 +2,7 @@ package top.focess.veto.veto;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Map;
 import org.jspecify.annotations.NonNull;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.context.annotation.Configuration;
@@ -18,6 +19,31 @@ public class SlmConfiguration {
     private int nGpuLayers = 99;
     private double temperature = 0.0;
     private @NonNull String gbnfGrammarPath = "./grammars/veto-output.gbnf";
+    private @NonNull Map<@NonNull String, @NonNull String> pluginModelPaths = Map.of();
+
+    /** Host-selected artifacts keyed by trusted plugin identity, never request-supplied paths. */
+    public @NonNull Map<@NonNull String, @NonNull String> getPluginModelPaths() {
+        return pluginModelPaths;
+    }
+
+    public void setPluginModelPaths(@NonNull Map<@NonNull String, @NonNull String> paths) {
+        pluginModelPaths = Map.copyOf(paths);
+    }
+
+    /**
+     * Independent process settings for a dedicated model; nested routing is intentionally absent.
+     */
+    public @NonNull SlmConfiguration forModel(@NonNull String path) {
+        var dedicated = new SlmConfiguration();
+        dedicated.setEnabled(enabled);
+        dedicated.setExecutablePath(executablePath);
+        dedicated.setModelPath(path);
+        dedicated.setNCtx(nCtx);
+        dedicated.setNGpuLayers(nGpuLayers);
+        dedicated.setTemperature(temperature);
+        dedicated.setGbnfGrammarPath(gbnfGrammarPath);
+        return dedicated;
+    }
 
     public boolean isEnabled() {
         return enabled;

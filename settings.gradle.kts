@@ -9,6 +9,7 @@ include(
     "veto-plugin-runtime",
     "veto-core",
     "veto-terminal",
+    "veto-training",
 )
 
 include("veto-llm-providers")

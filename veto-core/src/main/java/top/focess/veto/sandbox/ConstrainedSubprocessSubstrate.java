@@ -25,6 +25,7 @@ import org.springframework.stereotype.Component;
 import top.focess.veto.api.process.ChainMode;
 import top.focess.veto.api.process.Command;
 import top.focess.veto.api.process.CommandResult;
+import top.focess.veto.api.util.Threads;
 
 /**
  * The Veto-orchestrated local-default substrate.
@@ -491,11 +492,11 @@ public final class ConstrainedSubprocessSubstrate implements SandboxSubstrate {
         BoundedByteBuffer out = new BoundedByteBuffer(MAX_CAPTURE_BYTES_PER_STREAM);
         Process last = processes.getLast();
         List<BoundedByteBuffer> errors = new ArrayList<>();
-        List<Thread> drains = new ArrayList<>();
-        Thread outDrain =
+        List<@NonNull Thread> drains = new ArrayList<>();
+        drains.add(
                 Thread.ofVirtual()
                         .name("sandbox-drain-out")
-                        .start(() -> drain(last.getInputStream(), out));
+                        .start(() -> drain(last.getInputStream(), out)));
         for (Process process : processes) {
             var err = new BoundedByteBuffer(MAX_CAPTURE_BYTES_PER_STREAM);
             errors.add(err);
@@ -517,16 +518,23 @@ public final class ConstrainedSubprocessSubstrate implements SandboxSubstrate {
                     break;
                 }
             }
+            if (!finished) {
+                processes.forEach(Process::destroyForcibly);
+                for (Process process : processes) process.waitFor();
+            }
+            Threads.joinAll(drains);
         } catch (InterruptedException interrupted) {
             processes.forEach(Process::destroyForcibly);
+            while (true) {
+                try {
+                    Threads.joinAll(drains);
+                    break;
+                } catch (InterruptedException repeated) {
+                    interrupted.addSuppressed(repeated);
+                }
+            }
             throw interrupted;
         }
-        if (!finished) {
-            processes.forEach(Process::destroyForcibly);
-            for (Process process : processes) process.waitFor();
-        }
-        outDrain.join();
-        for (Thread thread : drains) thread.join();
         // Strip ANSI/VT escapes at the decode seam: the agent's context, the persisted history,
         // and the UI ledger all consume this same string, and escape bytes are noise to all three.
         String stdout = AnsiEscapes.strip(SubprocessOutput.decode(out.toByteArray()));
