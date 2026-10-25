@@ -32,7 +32,7 @@ import top.focess.veto.model.AgentInstanceRepository;
 import top.focess.veto.model.AgentPatternRepository;
 import top.focess.veto.model.SessionRepository;
 import top.focess.veto.security.SignupPolicy;
-import top.focess.veto.terminal.IpcServer;
+import top.focess.veto.terminal.TcpServer;
 
 /**
  * Exercises real encrypted files and Spring commit/rollback callbacks with an isolated row store.
@@ -341,7 +341,7 @@ class AccountLifecycleTransactionsTest {
                             mock(PromptHandler.class),
                             events,
                             logins,
-                            new StaticListableBeanFactory().getBeanProvider(IpcServer.class));
+                            new StaticListableBeanFactory().getBeanProvider(TcpServer.class));
             accounts =
                     new UserAdminService(
                             users,

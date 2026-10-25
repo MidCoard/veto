@@ -8,8 +8,12 @@ import java.io.IOException;
 import java.time.Instant;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicReference;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
@@ -53,29 +57,28 @@ class ProtocolClientStartupTest {
 
     @Test
     @Timeout(5)
-    void queuedRequestsRemainBoundedWhileAwaitingWelcome() throws Exception {
+    void initializedQueueWaitsForCapacityAndCloseWakesItsProducer() throws Exception {
         var transport = new HandshakeTransport();
-        try (var client = new ProtocolClient(transport)) {
-            assertInstanceOf(Frame.Hello.class, transport.sent.poll(1, TimeUnit.SECONDS));
-            for (int i = 0; i < 256; i++)
-                client.send(new Frame.Request(client.nextSequence(), null, null, "queued"));
-            assertThrows(
-                    IllegalStateException.class,
-                    () ->
-                            client.send(
-                                    new Frame.Request(
-                                            client.nextSequence(), null, null, "overflow")));
-            assertThrows(
-                    IllegalArgumentException.class,
-                    () ->
-                            client.send(
-                                    new Frame.Request(
-                                            client.nextSequence(),
-                                            null,
-                                            null,
-                                            "x".repeat(FrameTransport.MAX_FRAME_BYTES))));
-            assertTrue(transport.sent.isEmpty());
-            assertFalse(client.isClosed(), "Admission rejection must not abort the connection");
+        try (var workers = Executors.newVirtualThreadPerTaskExecutor()) {
+            Future<?> pending;
+            try (var client = new ProtocolClient(transport)) {
+                assertInstanceOf(Frame.Hello.class, transport.sent.poll(1, TimeUnit.SECONDS));
+                for (int i = 0; i < 256; i++)
+                    client.send(new Frame.Request(client.nextSequence(), null, null, "queued"));
+                pending =
+                        workers.submit(
+                                () -> {
+                                    client.send(
+                                            new Frame.Request(
+                                                    client.nextSequence(), null, null, "waiting"));
+                                    return null;
+                                });
+                assertThrows(TimeoutException.class, () -> pending.get(100, TimeUnit.MILLISECONDS));
+                assertTrue(transport.sent.isEmpty());
+            }
+            var failure =
+                    assertThrows(ExecutionException.class, () -> pending.get(1, TimeUnit.SECONDS));
+            assertInstanceOf(IllegalStateException.class, failure.getCause());
         }
     }
 

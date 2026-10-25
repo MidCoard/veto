@@ -23,10 +23,7 @@ final class ConnectionExecutionScope implements AutoCloseable {
 
     @Override
     public void close() {
-        try {
-            security.close();
-        } finally {
-            LocaleContextHolder.setLocaleContext(previousLocale);
-        }
+        security.close();
+        LocaleContextHolder.setLocaleContext(previousLocale);
     }
 }

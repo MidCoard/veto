@@ -134,37 +134,55 @@ class WebSocketOutputTest {
 
     @ParameterizedTest
     @ValueSource(booleans = {false, true})
-    void slowPeerCannotExceedMessageOrUtf8ByteLimit(boolean byteLimit) throws Exception {
+    void fullOutputQueueWaitsForMessageOrUtf8ByteCapacity(boolean byteLimit) throws Exception {
         var fixture = fixture();
         var socket = connect(fixture, "bounded");
         var entered = block(socket);
         var connection = connection(fixture.server(), socket);
         assertTrue(connection.send(new Frame.Error("in flight", 0)));
         assertTrue(entered.await(2, TimeUnit.SECONDS));
-        var message = new Frame.Error(byteLimit ? "界".repeat(200_000) : "queued", 0);
-        int admitted = byteLimit ? 1 : 256;
+        var message = new Frame.Error(byteLimit ? "界".repeat(2 * 1024 * 1024) : "queued", 0);
+        int admitted = byteLimit ? 10 : 256;
         for (int i = 0; i < admitted; i++) assertTrue(connection.send(message));
-        assertEquals(1, fixture.server().getActiveSessionCount());
-        assertFalse(connection.send(message));
-        assertEquals(0, fixture.server().getActiveSessionCount());
-        release.countDown();
+        try (var producers = Executors.newVirtualThreadPerTaskExecutor()) {
+            var pending = producers.submit(() -> connection.send(message));
+            assertThrows(TimeoutException.class, () -> pending.get(100, TimeUnit.MILLISECONDS));
+            assertEquals(1, fixture.server().getActiveSessionCount());
+            release.countDown();
+            assertTrue(pending.get(2, TimeUnit.SECONDS));
+            verify(socket, timeout(5_000).times(admitted + 2)).sendMessage(any(TextMessage.class));
+        }
         fixture.server().stop();
-        verify(socket, times(1)).sendMessage(any(TextMessage.class));
-        verify(socket)
-                .close(
-                        CloseStatus.SESSION_NOT_RELIABLE.withReason(
-                                "Outbound buffer limit exceeded"));
+        verify(socket).close(CloseStatus.GOING_AWAY);
     }
 
     @Test
-    void oversizedSingleMessageIsRejectedBeforeNetworkIo() throws Exception {
+    void singleMessageLargerThanEightMiBReachesTheWriter() throws Exception {
         var fixture = fixture();
-        var socket = connect(fixture, "oversized");
-        assertFalse(
-                connection(fixture.server(), socket)
-                        .send(new Frame.Error("x".repeat(1024 * 1024 + 1), 0)));
+        var socket = connect(fixture, "large-message");
+        var text = "x".repeat(8 * 1024 * 1024) + "中文 🚀";
+        assertTrue(connection(fixture.server(), socket).send(new Frame.Error(text, 0)));
+        verify(socket, timeout(5_000))
+                .sendMessage(
+                        argThat(
+                                message ->
+                                        message instanceof TextMessage value
+                                                && FrameCodec.decode(value.getPayload())
+                                                        instanceof Frame.Error frame
+                                                && text.equals(frame.content())));
         fixture.server().stop();
-        verify(socket, never()).sendMessage(any(TextMessage.class));
+        assertTrue(connections(fixture.server()).isEmpty());
+    }
+
+    @Test
+    void partialInputIsBoundedByTotalUtf8BytesBeforeJsonDecoding() throws Exception {
+        var fixture = fixture();
+        var socket = connect(fixture, "oversized-input");
+        var part = new TextMessage("界".repeat(16 * 1024), false);
+        int parts = FrameCodec.MAX_ENCODED_FRAME_BYTES / part.getPayloadLength() + 1;
+        for (int i = 0; i < parts; i++) fixture.server().handleTextMessage(socket, part);
+        verify(socket, timeout(2_000)).close(CloseStatus.TOO_BIG_TO_PROCESS);
+        fixture.server().stop();
         assertTrue(connections(fixture.server()).isEmpty());
     }
 
@@ -188,19 +206,24 @@ class WebSocketOutputTest {
     }
 
     @Test
-    void immediateCloseDiscardsQueuedOutputAndWakesAnIdleWriter() throws Exception {
+    void immediateCloseDiscardsQueuedOutputAndReleasesWaitingProducers() throws Exception {
         var fixture = fixture();
         var socket = connect(fixture, "closing");
         var entered = block(socket);
         var connection = connection(fixture.server(), socket);
         assertTrue(connection.send(new Frame.Error("in flight", 0)));
         assertTrue(entered.await(2, TimeUnit.SECONDS));
-        assertTrue(connection.send(new Frame.Error("discard", 0)));
-        fixture.server().afterConnectionClosed(socket, CloseStatus.GOING_AWAY);
+        for (int i = 0; i < 256; i++) assertTrue(connection.send(new Frame.Error("discard", 0)));
+        try (var producers = Executors.newVirtualThreadPerTaskExecutor()) {
+            var pending = producers.submit(() -> connection.send(new Frame.Error("waiting", 0)));
+            assertThrows(TimeoutException.class, () -> pending.get(100, TimeUnit.MILLISECONDS));
+            fixture.server().afterConnectionClosed(socket, CloseStatus.GOING_AWAY);
+            assertFalse(pending.get(1, TimeUnit.SECONDS));
+        }
         assertFalse(connection.send(new Frame.Error("rejected", 0)));
         assertEquals(0, fixture.server().getActiveSessionCount());
         release.countDown();
-        verify(socket, timeout(2_000)).close(CloseStatus.GOING_AWAY);
+        verify(socket, timeout(2_000)).close(CloseStatus.NORMAL);
         verify(socket, times(1)).sendMessage(any(TextMessage.class));
         var idle = connect(fixture, "idle");
         fixture.server().afterConnectionClosed(idle, CloseStatus.NORMAL);
@@ -226,7 +249,10 @@ class WebSocketOutputTest {
                             })
                     .when(socket)
                     .close(any(CloseStatus.class));
-            fixture.server().afterConnectionClosed(socket, CloseStatus.GOING_AWAY);
+            doThrow(new IOException("send failed"))
+                    .when(socket)
+                    .sendMessage(any(TextMessage.class));
+            assertTrue(connection(fixture.server(), socket).send(new Frame.Error("fails", 0)));
             assertTrue(closing.await(2, TimeUnit.SECONDS));
         } else {
             var entered = block(socket);
@@ -235,7 +261,7 @@ class WebSocketOutputTest {
             fixture.server().afterConnectionClosed(socket, CloseStatus.GOING_AWAY);
         }
         assertEquals(0, fixture.server().getActiveSessionCount());
-        assertEquals(1, connections(fixture.server()).size());
+        assertEquals(closingSocket ? 1 : 0, connections(fixture.server()).size());
         try (var workers = Executors.newVirtualThreadPerTaskExecutor()) {
             var shutdown =
                     workers.submit(
@@ -247,7 +273,7 @@ class WebSocketOutputTest {
             release.countDown();
             shutdown.get(2, TimeUnit.SECONDS);
         }
-        verify(socket).close(CloseStatus.GOING_AWAY);
+        verify(socket).close(closingSocket ? CloseStatus.SERVER_ERROR : CloseStatus.NORMAL);
         assertTrue(connections(fixture.server()).isEmpty());
     }
 
@@ -384,9 +410,11 @@ class WebSocketOutputTest {
     private static @NonNull ProtocolConnection connection(
             @NonNull WebSocketServer server, @NonNull WebSocketSession socket) {
         var value = connections(server).get(socket.getId());
-        if (!(value instanceof WebSocketConnection connection))
+        if (value == null
+                || !(ReflectionTestUtils.getField(value, "protocol")
+                        instanceof ProtocolConnection protocol))
             throw new AssertionError("WebSocket connection is not registered");
-        return connection.protocol;
+        return protocol;
     }
 
     private static @NonNull WebSocketSession socket(@NonNull String id, @NonNull String token) {

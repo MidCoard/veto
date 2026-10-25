@@ -1,5 +1,6 @@
 package top.focess.veto.session;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.List;
@@ -51,9 +52,7 @@ public class QuoteCheckService {
             List<@NonNull Check> result =
                     mapper.convertValue(checks, new TypeReference<List<@NonNull Check>>() {});
             return result == null ? List.of() : result;
-        } catch (IllegalArgumentException e) {
-            throw e;
-        } catch (Exception e) {
+        } catch (JsonProcessingException e) {
             throw new IllegalArgumentException("Saved citations are not available", e);
         }
     }

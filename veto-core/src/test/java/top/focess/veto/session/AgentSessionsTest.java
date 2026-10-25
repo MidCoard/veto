@@ -3,6 +3,7 @@ package top.focess.veto.session;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -185,7 +186,8 @@ class AgentSessionsTest {
 
     private static final class Connection {
         private final @NonNull ProtocolConnection connection;
-        private final @NonNull List<@NonNull Pending> queue = new ArrayList<>();
+        private final @NonNull ArrayDeque<@NonNull Runnable> tasks = new ArrayDeque<>();
+        private final @NonNull List<Frame.@NonNull ServerFrame> frames = new ArrayList<>();
 
         Connection(@NonNull UUID user) {
             connection =
@@ -198,27 +200,18 @@ class AgentSessionsTest {
                             user,
                             () -> true,
                             BooleanSupplier::getAsBoolean,
-                            (frame, version, attached) -> {
-                                synchronized (queue) {
-                                    queue.add(new Pending(frame, attached));
-                                }
-                                return true;
-                            },
+                            tasks::add,
+                            frames::add,
                             ignored -> {},
                             Locale.ENGLISH);
         }
 
         synchronized @NonNull List<Frame.@NonNull ServerFrame> delivered() {
-            var delivered =
-                    queue.stream()
-                            .filter(p -> p.attached().getAsBoolean())
-                            .map(Pending::frame)
-                            .toList();
-            queue.clear();
+            Runnable task;
+            while ((task = tasks.poll()) != null) task.run();
+            var delivered = List.copyOf(frames);
+            frames.clear();
             return delivered;
         }
-
-        private record Pending(
-                Frame.@NonNull ServerFrame frame, @NonNull BooleanSupplier attached) {}
     }
 }

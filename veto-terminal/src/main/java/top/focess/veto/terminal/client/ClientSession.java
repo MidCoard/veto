@@ -30,7 +30,7 @@ import top.focess.veto.contract.ProtocolClient;
  * <p>Deltas render in every state, including connection-local messages without a session or agent.
  * Command input requires an active command; session approvals can arrive independently and are
  * queued in arrival order. Command input takes display priority without discarding approvals. Done
- * and Error settle only the matching positive request sequence. Welcome reports the connected
+ * and Error settle only the matching nonzero request sequence. Welcome reports the connected
  * backend version without changing command state. Terminate tears down from any state.
  *
  * <h3>Thread model</h3>
@@ -231,9 +231,8 @@ public final class ClientSession {
         synchronized (lock) {
             var previousInteraction = activePrompt();
             if (frame instanceof Frame.TurnOutcome outcome
-                    && frame instanceof Frame.SeqResponse response
                     && activeRequestSeq != 0
-                    && response.seq() == activeRequestSeq) {
+                    && outcome.seq() == activeRequestSeq) {
                 var snapshot = applyOutcome(outcome);
                 if (snapshot != null) events.add(() -> view.onMetaChanged(snapshot));
             }
@@ -322,7 +321,7 @@ public final class ClientSession {
                                                         + ": "
                                                         + event.data().toPrettyString()));
                 case Frame.Prompt prompt -> {
-                    if (activeRequestSeq == 0 || prompt.seq() != activeRequestSeq) {
+                    if (prompt.seq() != activeRequestSeq) {
                         log.warn("Command prompt arrived without a command in flight; dropping");
                         break;
                     }
@@ -349,11 +348,8 @@ public final class ClientSession {
                     events.add(() -> view.onError(StyledText.error("Error: " + e.content())));
                     // Query failures, including late replies, never complete a command.
                     if (e.seq() == 0 || e.seq() != activeRequestSeq) break;
-                    // An IDLE client only displays the late error; active requests also advance.
-                    if (activeRequestSeq != 0) {
-                        commandPrompt = null;
-                        reply = dispatchNextOrIdle(events);
-                    }
+                    commandPrompt = null;
+                    reply = dispatchNextOrIdle(events);
                 }
                 default ->
                         log.warn(

@@ -96,9 +96,12 @@ public final class ManagedPlugin implements AutoCloseable {
         }
     }
 
-    /** Runs the callback under admission once the plugin reaches ACTIVE; revocation cancels it. */
+    /**
+     * Runs under admission on the external caller that delivers readiness. Callbacks registered
+     * during startup complete before start returns; revocation cancels them.
+     */
     public void whenActive(@NonNull Runnable callback) {
-        active.thenRunAsync(
+        active.thenRun(
                 () -> {
                     try {
                         execute(
@@ -342,13 +345,14 @@ public final class ManagedPlugin implements AutoCloseable {
                             try {
                                 implementation().start();
                                 state = PluginState.ACTIVE;
-                                active.complete(null);
                             } catch (Throwable failure) {
                                 failOnControlThread();
                                 throw safe(failure);
                             }
                             return true;
                         }));
+        // Ready callbacks may invoke the plugin, so run them after releasing its control worker.
+        active.complete(null);
     }
 
     /** Admission checks the stop state atomically; handlers run outside the control thread. */

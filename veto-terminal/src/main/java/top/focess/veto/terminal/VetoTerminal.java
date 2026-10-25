@@ -125,7 +125,7 @@ public class VetoTerminal {
      * Constructs a new VetoTerminal instance.
      *
      * @param t the Mordant Terminal instance used for styled outputs
-     * @param client the ProtocolClient used for IPC communications with the backend
+     * @param client the ProtocolClient used for TCP communications with the backend
      */
     // start(LineReader) is the lifecycle initializer: all remaining fields are assigned before any
     // private REPL or ClientView path is reachable. Checker cannot model this two-phase API.
@@ -141,7 +141,7 @@ public class VetoTerminal {
      *
      * @param reader the JLine LineReader instance to read inputs from
      */
-    public void start(@NonNull LineReader reader) {
+    public void start(@NonNull LineReader reader) throws InterruptedException {
         this.reader = reader;
         this.mainThread = Thread.currentThread();
         this.theme = new MordantTheme(t);
@@ -181,20 +181,17 @@ public class VetoTerminal {
         } finally {
             // Stop rendering before restoring the terminal and closing its status bar.
             running = false;
-            try {
-                client.close();
-            } finally {
-                while (true) {
-                    try {
-                        consumerThread.join();
-                        break;
-                    } catch (InterruptedException ignored) {
-                        // A REPL wake must not leave the consumer running during terminal cleanup.
-                    }
+            client.close();
+            while (true) {
+                try {
+                    consumerThread.join();
+                    break;
+                } catch (InterruptedException ignored) {
+                    // A REPL wake must not leave the consumer running during terminal cleanup.
                 }
-                hintWidgets.disable();
-                status.close();
             }
+            hintWidgets.disable();
+            status.close();
         }
     }
 
@@ -226,7 +223,8 @@ public class VetoTerminal {
     }
 
     /** An accepted reply enters the outbox before completion can dispatch another command. */
-    void submitInput(@NonNull String line, Frame.ServerFrame displayedInteraction) {
+    void submitInput(@NonNull String line, Frame.ServerFrame displayedInteraction)
+            throws InterruptedException {
         synchronized (interactionLock) {
             var reply = session.submit(line, displayedInteraction);
             if (reply != null) client.send(reply);
@@ -234,7 +232,7 @@ public class VetoTerminal {
     }
 
     /** Inbound transitions and any resulting command share the same ordering boundary. */
-    void acceptFrame(Frame.@NonNull ServerFrame frame) {
+    void acceptFrame(Frame.@NonNull ServerFrame frame) throws InterruptedException {
         synchronized (interactionLock) {
             var reply = session.onFrame(frame);
             if (reply != null) client.send(reply);
@@ -242,7 +240,8 @@ public class VetoTerminal {
     }
 
     /** Returns false when idle cancellation means the REPL should exit. */
-    private boolean cancelCommand(ClientSession.@NonNull PromptView displayed) {
+    private boolean cancelCommand(ClientSession.@NonNull PromptView displayed)
+            throws InterruptedException {
         synchronized (interactionLock) {
             if (displayed.activePrompt() instanceof Frame.Veto veto) {
                 var refusal = session.declineApproval(veto);
@@ -265,7 +264,7 @@ public class VetoTerminal {
      * state, reads a line, and submits it (a command, a prompt reply, or a cancel).
      */
     @SuppressWarnings("argument") // JLine uses null mask to request unmasked input.
-    private void repl() {
+    private void repl() throws InterruptedException {
         while (running) {
             try {
                 ClientSession.PromptView view = session.promptView();
@@ -484,13 +483,13 @@ public class VetoTerminal {
      *
      * @param args command line arguments, supports --debug or -d to enable log file output
      */
-    static void main(@NonNull String @NonNull [] args) {
+    static void main(@NonNull String @NonNull [] args) throws InterruptedException {
         System.setProperty("file.encoding", "UTF-8");
 
         ClientOptions options = ClientOptions.parse(args);
         Logging.configure(options.debug());
 
-        // The workspace root is sent to the backend in the IPC Hello handshake and becomes the
+        // The workspace root is sent to the backend in the TCP Hello handshake and becomes the
         // agent's operational root. --workspace makes it explicit; otherwise it falls back to the
         // JVM cwd (user.dir) - i.e. wherever the terminal is launched from.
         String workspace = options.workspace();

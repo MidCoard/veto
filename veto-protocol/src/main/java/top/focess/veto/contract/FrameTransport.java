@@ -12,20 +12,20 @@ import org.jspecify.annotations.NonNull;
  * partially opened resources on setup failure. Frame payloads must remain unchanged during send.
  */
 public interface FrameTransport extends AutoCloseable {
-    int MAX_FRAME_BYTES = 1024 * 1024;
-
     /** Writes one complete frame; completion is not acknowledgement of remote execution. */
     void send(@NonNull Frame frame) throws IOException;
 
     /**
-     * Blocks for a complete frame. After EOF, malformed input or IO failure, the owner must close
-     * the connection. Failure does not imply that the transport has already released its resources.
+     * Blocks for a complete frame. The transport owns receive-idle detection independently of
+     * outbound traffic. After EOF, malformed input or IO failure, the owner must close the
+     * connection. Failure does not imply that the transport has already released its resources.
      */
     @NonNull Frame receive() throws IOException;
 
     /**
      * Releases this transport's IO resources without joining protocol workers or invoking endpoint
-     * callbacks. The endpoint owns worker termination after close unblocks their IO.
+     * callbacks. Implementations handle expected IO cleanup failures locally. The endpoint calls
+     * close directly, then joins its workers after their IO has been unblocked.
      */
     @Override
     void close();

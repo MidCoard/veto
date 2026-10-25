@@ -11,7 +11,6 @@ import java.nio.ByteBuffer;
 import java.nio.channels.ClosedByInterruptException;
 import java.nio.channels.ClosedChannelException;
 import java.nio.channels.ClosedSelectorException;
-import java.nio.channels.NotYetConnectedException;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
 import java.nio.channels.ServerSocketChannel;
@@ -27,9 +26,11 @@ import top.focess.veto.contract.FrameCodec;
 import top.focess.veto.contract.FrameTransport;
 
 /**
- * Channel transport used by the terminal's ProtocolClient and the backend's IpcServer. Owns the
+ * Channel transport used by the terminal's ProtocolClient and the backend's TcpServer. Owns the
  * channel and its length-prefixed UTF-8 JSON frames; the four-byte big-endian length excludes the
- * header. Invalid or incomplete input is reported to the owner, which must end the connection.
+ * header. Each payload is one complete JSON Frame, using the same codec and byte limit as
+ * WebSocket. The read/write loops handle partial channel IO. Invalid or incomplete input is
+ * reported to the owner, which must end the connection.
  *
  * <p><b>Thread safety:</b> one reader, one writer and concurrent close. Each direction owns its
  * buffers and selector, so a stalled write does not block reads. The calling workers wait for IO
@@ -55,7 +56,6 @@ public final class TcpConnection implements FrameTransport {
         Selector output = null;
         try {
             if (endpoint != null) channel.socket().connect(endpoint, IO_TIMEOUT_MILLIS);
-            if (!channel.isConnected()) throw new NotYetConnectedException();
             channel.setOption(StandardSocketOptions.TCP_NODELAY, true);
             channel.configureBlocking(false);
             input = Selector.open();
@@ -123,15 +123,19 @@ public final class TcpConnection implements FrameTransport {
      * retry.
      */
     public void send(byte @NonNull [] payload) throws IOException {
-        if (payload.length == 0 || payload.length > MAX_FRAME_BYTES)
+        if (payload.length == 0 || payload.length > FrameCodec.MAX_ENCODED_FRAME_BYTES)
             throw new IOException("Protocol frame exceeds the allowed size");
-        var buffer = ByteBuffer.allocate(Integer.BYTES + payload.length);
-        buffer.putInt(payload.length).put(payload).flip();
         long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(IO_TIMEOUT_MILLIS);
+        writeFully(ByteBuffer.allocate(Integer.BYTES).putInt(payload.length).flip(), deadline);
+        writeFully(ByteBuffer.wrap(payload), deadline);
+    }
+
+    private void writeFully(@NonNull ByteBuffer buffer, long deadline) throws IOException {
         while (buffer.hasRemaining()) {
             if (deadline - System.nanoTime() <= 0)
                 throw new SocketTimeoutException("TCP write timed out");
-            if (channel.write(buffer) == 0) awaitReady(writable, deadline);
+            int written = channel.write(buffer);
+            if (written == 0) awaitReady(writable, deadline);
         }
     }
 
@@ -144,7 +148,7 @@ public final class TcpConnection implements FrameTransport {
         header.limit(Integer.BYTES);
         readFully(header, deadline);
         int length = header.flip().getInt();
-        if (length <= 0 || length > MAX_FRAME_BYTES)
+        if (length <= 0 || length > FrameCodec.MAX_ENCODED_FRAME_BYTES)
             throw new IOException("Invalid protocol frame length");
         var payload = ByteBuffer.allocate(length);
         readFully(payload, deadline);

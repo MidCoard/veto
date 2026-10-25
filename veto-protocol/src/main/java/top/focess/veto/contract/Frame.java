@@ -10,7 +10,6 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.api.agent.screening.Danger;
@@ -39,8 +38,9 @@ import top.focess.veto.api.plugin.Scope;
  * <h3>Request/response correlation</h3>
  *
  * Either peer may initiate an exchange. Requests carry a sequence allocated by their sender;
- * responses echo that sequence. Receiving a request never completes a locally pending request.
- * Endpoints decide which application operations they accept, independently of these wire types.
+ * responses echo that sequence. The sign carries no meaning; only zero is reserved for uncorrelated
+ * observations. Receiving a request never completes a locally pending request. Endpoints decide
+ * which application operations they accept, independently of these wire types.
  *
  * <p>Request admission and settlement are separate: RequestAccepted confirms admission, while
  * Done/Error echoes the same request sequence after settlement. Session broadcasts use sequence
@@ -136,7 +136,7 @@ public sealed interface Frame
      * connection. A successful Hello never grants account access.
      *
      * @param version the exact protocol version the client uses
-     * @param seq monotonic sequence number for correlating with the {@link Welcome} response
+     * @param seq connection-local identifier for correlating with the {@link Welcome} response
      * @param productVersion the connecting client's product version; never {@code null} - a client
      *     that genuinely cannot report a version passes {@link Version#UNKNOWN}. The server echoes
      *     its own in {@link Welcome}.
@@ -155,8 +155,8 @@ public sealed interface Frame
                     @NonNull String cwd)
             implements ClientFrame, SeqRequest {
         public Hello {
-            if (seq <= 0)
-                throw new IllegalArgumentException("Sequence must be positive; 0 is uncorrelated");
+            if (seq == 0)
+                throw new IllegalArgumentException("Sequence must be nonzero; 0 is uncorrelated");
         }
     }
 
@@ -169,8 +169,7 @@ public sealed interface Frame
                     @NonNull String raw)
             implements ClientFrame, SeqRequest {
         public Request {
-            if (seq <= 0) throw new IllegalArgumentException("Request sequence must be positive");
-            Objects.requireNonNull(raw, "raw");
+            if (seq == 0) throw new IllegalArgumentException("Request sequence must be nonzero");
         }
     }
 
@@ -182,8 +181,7 @@ public sealed interface Frame
             String requestId)
             implements ServerFrame, SeqResponse, ScopedFrame {
         public RequestAccepted {
-            if (seq <= 0) throw new IllegalArgumentException("Request sequence must be positive");
-            Objects.requireNonNull(scope, "scope");
+            if (seq == 0) throw new IllegalArgumentException("Request sequence must be nonzero");
         }
     }
 
@@ -194,8 +192,7 @@ public sealed interface Frame
                     @NonNull UUID sessionId)
             implements ClientFrame, SeqRequest {
         public DeclineVetoes {
-            if (seq <= 0) throw new IllegalArgumentException("Request sequence must be positive");
-            Objects.requireNonNull(sessionId, "sessionId");
+            if (seq == 0) throw new IllegalArgumentException("Request sequence must be nonzero");
         }
     }
 
@@ -203,7 +200,7 @@ public sealed interface Frame
      * Tab-completion query. Backend responds with exactly one {@link CompleteResult} carrying
      * structured completion candidates, echoing the same {@code seq}.
      *
-     * @param seq monotonic sequence number for correlating with the response
+     * @param seq connection-local identifier for correlating with the response
      */
     record Complete(
             @JsonProperty(value = "raw", required = true) @JsonSetter(nulls = Nulls.FAIL)
@@ -211,8 +208,8 @@ public sealed interface Frame
             @JsonProperty(value = "seq", required = true) @JsonSetter(nulls = Nulls.FAIL) long seq)
             implements ClientFrame, SeqRequest {
         public Complete {
-            if (seq <= 0)
-                throw new IllegalArgumentException("Sequence must be positive; 0 is uncorrelated");
+            if (seq == 0)
+                throw new IllegalArgumentException("Sequence must be nonzero; 0 is uncorrelated");
         }
     }
 
@@ -221,7 +218,7 @@ public sealed interface Frame
      * one {@link HintResult} carrying the placeholder and optional description, echoing the same
      * {@code seq}.
      *
-     * @param seq monotonic sequence number for correlating with the hint response
+     * @param seq connection-local identifier for correlating with the hint response
      */
     record Hint(
             @JsonProperty(value = "raw", required = true) @JsonSetter(nulls = Nulls.FAIL)
@@ -229,8 +226,8 @@ public sealed interface Frame
             @JsonProperty(value = "seq", required = true) @JsonSetter(nulls = Nulls.FAIL) long seq)
             implements ClientFrame, SeqRequest {
         public Hint {
-            if (seq <= 0)
-                throw new IllegalArgumentException("Sequence must be positive; 0 is uncorrelated");
+            if (seq == 0)
+                throw new IllegalArgumentException("Sequence must be nonzero; 0 is uncorrelated");
         }
     }
 
@@ -241,7 +238,7 @@ public sealed interface Frame
             @JsonProperty(value = "seq", required = true) @JsonSetter(nulls = Nulls.FAIL) long seq)
             implements ClientFrame, SeqResponse {
         public Input {
-            if (seq <= 0) throw new IllegalArgumentException("Request sequence must be positive");
+            if (seq == 0) throw new IllegalArgumentException("Request sequence must be nonzero");
         }
 
         @Override
@@ -261,8 +258,8 @@ public sealed interface Frame
                     long targetSeq)
             implements ClientFrame, SeqRequest {
         public Cancel {
-            if (seq <= 0 || targetSeq <= 0)
-                throw new IllegalArgumentException("Sequence must be positive; 0 is uncorrelated");
+            if (seq == 0 || targetSeq == 0)
+                throw new IllegalArgumentException("Sequence must be nonzero; 0 is uncorrelated");
         }
     }
 
@@ -276,9 +273,8 @@ public sealed interface Frame
             @JsonProperty(value = "seq", required = true) @JsonSetter(nulls = Nulls.FAIL) long seq)
             implements ServerFrame, SeqResponse {
         public CancelResult {
-            Objects.requireNonNull(status, "status");
-            if (seq <= 0)
-                throw new IllegalArgumentException("Sequence must be positive; 0 is uncorrelated");
+            if (seq == 0)
+                throw new IllegalArgumentException("Sequence must be nonzero; 0 is uncorrelated");
         }
     }
 
@@ -297,7 +293,7 @@ public sealed interface Frame
     /** Terminal is shutting down cleanly — backend should release resources. Fire-and-forget. */
     record Bye() implements ClientFrame {}
 
-    /** Periodic keep-alive; only one acknowledgement is outstanding per connection. */
+    /** Client keep-alive sent when no business frame has been sent during the idle interval. */
     record Heartbeat() implements ClientFrame {}
 
     /** Application output with an explicit scope; connection-local output uses GlobalScope. */
@@ -326,8 +322,7 @@ public sealed interface Frame
                     CompleteResult,
                     HintResult,
                     CancelResult,
-                    Done,
-                    Error,
+                    TurnOutcome,
                     Input,
                     VetoResult {
         /**
@@ -339,7 +334,7 @@ public sealed interface Frame
     }
 
     /** Ends an agent turn or command; -1 identifies an outcome without an agent turn. */
-    sealed interface TurnOutcome extends ServerFrame, ScopedFrame permits Done, Error {
+    sealed interface TurnOutcome extends ServerFrame, ScopedFrame, SeqResponse permits Done, Error {
         int turnNumber();
 
         /**
@@ -364,8 +359,8 @@ public sealed interface Frame
                     @NonNull Version productVersion)
             implements ServerFrame, SeqResponse {
         public Welcome {
-            if (seq <= 0)
-                throw new IllegalArgumentException("Sequence must be positive; 0 is uncorrelated");
+            if (seq == 0)
+                throw new IllegalArgumentException("Sequence must be nonzero; 0 is uncorrelated");
         }
     }
 
@@ -396,8 +391,8 @@ public sealed interface Frame
             implements ServerFrame, SeqResponse {
         public CompleteResult {
             candidates = List.copyOf(candidates);
-            if (seq <= 0)
-                throw new IllegalArgumentException("Sequence must be positive; 0 is uncorrelated");
+            if (seq == 0)
+                throw new IllegalArgumentException("Sequence must be nonzero; 0 is uncorrelated");
         }
     }
 
@@ -437,8 +432,8 @@ public sealed interface Frame
             @JsonProperty(value = "seq", required = true) @JsonSetter(nulls = Nulls.FAIL) long seq)
             implements ServerFrame, SeqResponse {
         public HintResult {
-            if (seq <= 0)
-                throw new IllegalArgumentException("Sequence must be positive; 0 is uncorrelated");
+            if (seq == 0)
+                throw new IllegalArgumentException("Sequence must be nonzero; 0 is uncorrelated");
         }
     }
 
@@ -452,12 +447,7 @@ public sealed interface Frame
             String content,
             String username,
             @JsonProperty(value = "seq", required = true) @JsonSetter(nulls = Nulls.FAIL) long seq)
-            implements TurnOutcome, SeqResponse {
-        public Done {
-            Objects.requireNonNull(scope, "scope");
-            if (seq < 0) throw new IllegalArgumentException("Sequence cannot be negative");
-        }
-    }
+            implements TurnOutcome {}
 
     /**
      * Fatal — terminates the exchange with an error message.
@@ -478,12 +468,7 @@ public sealed interface Frame
             @JsonProperty(value = "seq", required = true) @JsonSetter(nulls = Nulls.FAIL) long seq,
             String username,
             String code)
-            implements SeqResponse, TurnOutcome {
-        public Error {
-            Objects.requireNonNull(scope, "scope");
-            if (seq < 0) throw new IllegalArgumentException("Sequence cannot be negative");
-        }
-
+            implements TurnOutcome {
         public Error(@NonNull String content, long seq) {
             this(new Scope.GlobalScope(), null, -1, content, seq, null, null);
         }
@@ -508,7 +493,7 @@ public sealed interface Frame
             @JsonProperty(value = "seq", required = true) @JsonSetter(nulls = Nulls.FAIL) long seq)
             implements ServerFrame, SeqRequest {
         public Prompt {
-            if (seq <= 0) throw new IllegalArgumentException("Request sequence must be positive");
+            if (seq == 0) throw new IllegalArgumentException("Request sequence must be nonzero");
         }
     }
 
@@ -547,8 +532,8 @@ public sealed interface Frame
                 Danger danger,
                 Relevance relevance,
                 long seq) {
-            if (seq <= 0)
-                throw new IllegalArgumentException("Sequence must be positive; 0 is uncorrelated");
+            if (seq == 0)
+                throw new IllegalArgumentException("Sequence must be nonzero; 0 is uncorrelated");
             this.scope = scope;
             this.callId = callId;
             this.tool = tool;
@@ -575,8 +560,8 @@ public sealed interface Frame
             @JsonProperty(value = "seq", required = true) @JsonSetter(nulls = Nulls.FAIL) long seq)
             implements ClientFrame, SeqResponse, ScopedFrame {
         public VetoResult {
-            if (seq <= 0)
-                throw new IllegalArgumentException("Sequence must be positive; 0 is uncorrelated");
+            if (seq == 0)
+                throw new IllegalArgumentException("Sequence must be nonzero; 0 is uncorrelated");
         }
     }
 
@@ -616,7 +601,7 @@ public sealed interface Frame
      */
     record Terminate(String reason) implements ServerFrame {}
 
-    /** Acknowledges the outstanding heartbeat on this connection. */
+    /** Keeps server-to-client traffic active when replying to an idle client's heartbeat. */
     record HeartbeatAck(
             @JsonProperty(value = "timestamp", required = true) @JsonSetter(nulls = Nulls.FAIL)
                     @NonNull Instant timestamp)

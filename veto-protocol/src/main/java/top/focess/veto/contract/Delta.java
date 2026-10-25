@@ -8,7 +8,6 @@ import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import com.fasterxml.jackson.annotation.Nulls;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.time.Instant;
-import java.util.Objects;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.api.plugin.Scope;
 
@@ -31,7 +30,6 @@ public record Delta(
                 @NonNull Data data)
         implements Frame.ServerFrame, Frame.ScopedFrame {
     public Delta {
-        Objects.requireNonNull(scope, "scope");
         if (data instanceof AgentData && !(scope instanceof Scope.AgentScope))
             throw new IllegalArgumentException("Agent output requires AgentScope");
     }

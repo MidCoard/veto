@@ -9,13 +9,13 @@ import top.focess.command.*;
 import top.focess.veto.api.plugin.Scope;
 import top.focess.veto.contract.Frame;
 import top.focess.veto.contract.Frame.HintInfo;
-import top.focess.veto.terminal.IpcServer;
+import top.focess.veto.terminal.TcpServer;
 
 /**
  * Registry wrapping the {@link CommandManager} from {@code focess-command}.
  *
  * <p>Provides command registration, dispatch, tab-completion, and hint generation for all Veto
- * slash-commands and plain-text LLM prompts. The {@link IpcServer} owns the transport layer and
+ * slash-commands and plain-text LLM prompts. The {@link TcpServer} owns the transport layer and
  * calls {@link #dispatch(VetoCommandSender, String)} with a sender whose outbox has already been
  * wired to the ROUTER socket.
  *

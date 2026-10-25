@@ -2,9 +2,32 @@ package top.focess.veto.api.util;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import org.junit.jupiter.api.Test;
 
 class ByteBoundedQueueTest {
+    @Test
+    void capacityWaitResumesAfterPollAndClosureWakesRemainingProducers() throws Exception {
+        var queue = new ByteBoundedQueue<String>(1, 10);
+        assertTrue(queue.offer("first", 10));
+        try (var workers = Executors.newVirtualThreadPerTaskExecutor()) {
+            var next = workers.submit(() -> queue.offer("second", 10, 5, TimeUnit.SECONDS));
+            assertThrows(TimeoutException.class, () -> next.get(100, TimeUnit.MILLISECONDS));
+            assertEquals("first", queue.take());
+            assertTrue(next.get(1, TimeUnit.SECONDS));
+            var blocked = workers.submit(() -> queue.offer("third", 10, 5, TimeUnit.SECONDS));
+            assertThrows(TimeoutException.class, () -> blocked.get(100, TimeUnit.MILLISECONDS));
+            queue.close(true);
+            assertFalse(blocked.get(1, TimeUnit.SECONDS));
+            assertEquals("second", queue.take());
+            assertNull(queue.take());
+        } finally {
+            queue.close(false);
+        }
+    }
+
     @Test
     void bothLimitsAreReleasedByPollingAndClearingWithoutReordering() {
         var queue = new ByteBoundedQueue<String>(2, 10);

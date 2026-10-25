@@ -12,6 +12,7 @@ import java.util.UUID;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
+import java.util.concurrent.Executor;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
@@ -32,25 +33,32 @@ import top.focess.veto.agent.intercept.VetoPrompt;
 import top.focess.veto.api.agent.AgentState;
 import top.focess.veto.api.llm.LlmBinding;
 import top.focess.veto.api.plugin.Scope;
+import top.focess.veto.api.util.ByteBoundedQueue;
 import top.focess.veto.command.CommandRegistry;
 import top.focess.veto.command.SessionCommandService;
 import top.focess.veto.command.VetoCommandSender;
 import top.focess.veto.contract.Delta;
 import top.focess.veto.contract.Frame;
+import top.focess.veto.contract.FrameCodec;
 import top.focess.veto.vault.UserEntity;
 
 /**
- * Backend protocol endpoint shared by IPC and WebSocket peers. Receives decoded frames from the
- * transport server and dispatches them to agent sessions; it owns no socket or transport worker.
- * This thread-safe connection's monitor owns exchanges and terminal command order; AgentSessions
- * owns attachments. Preparation and command execution run outside the monitor. Agent completion
- * uses result/settlement callbacks. Output only enters a bounded transport queue; its exclusive
- * writer revalidates delivery.
+ * Backend protocol endpoint shared by TCP and WebSocket peers. Receives decoded frames from the
+ * transport server and dispatches them to agent sessions. Owns the shared output queue and
+ * serializes delivery on the server-owned executor; that executor also owns request preparation and
+ * control handlers. The transport only writes complete Frames. This thread-safe connection's
+ * monitor owns exchanges and terminal command order; AgentSessions owns attachments. Preparation
+ * and command execution run outside the monitor. Agent completion uses result/settlement callbacks.
+ * Capacity waits and socket writes happen outside the monitor; output is reauthorized immediately
+ * before delivery. Servers close all endpoints before joining their executor, including tasks
+ * belonging to endpoints already removed from their registry.
  */
 public final class ProtocolConnection implements AutoCloseable {
     private static final @NonNull Logger log =
             LoggerFactory.getLogger("top.focess.veto.session.ProtocolConnection");
     private static final int MAX_PENDING = 64;
+    private static final int MAX_QUEUED_FRAMES = 256;
+    private static final int MAX_QUEUED_BYTES = 64 * 1024 * 1024;
     // Every allocated exchange remains reserved for this incarnation. A finite budget bounds
     // replay tracking without assuming allocation and delivery occur in the same order.
     private static final int MAX_SEQUENCES = 65_536;
@@ -62,7 +70,11 @@ public final class ProtocolConnection implements AutoCloseable {
     private final @NonNull BooleanSupplier authenticated;
     private final @NonNull Predicate<@NonNull BooleanSupplier> authorization;
     private final @NonNull ProtocolOutput output;
-    private final @NonNull Consumer<@NonNull Boolean> onClose;
+    private final @NonNull Executor workers;
+    private final @NonNull Consumer<@NonNull CloseReason> onClose;
+    private final @NonNull ByteBoundedQueue<@NonNull OutboundFrame> outbox =
+            new ByteBoundedQueue<>(MAX_QUEUED_FRAMES, MAX_QUEUED_BYTES);
+    private boolean writing;
     private final @NonNull Locale locale;
     private final @NonNull Map<@NonNull Long, @NonNull ProtocolOperation> operations =
             new HashMap<>();
@@ -91,8 +103,9 @@ public final class ProtocolConnection implements AutoCloseable {
             UUID user,
             @NonNull BooleanSupplier authenticated,
             @NonNull Predicate<@NonNull BooleanSupplier> authorization,
+            @NonNull Executor workers,
             @NonNull ProtocolOutput output,
-            @NonNull Consumer<@NonNull Boolean> onClose,
+            @NonNull Consumer<@NonNull CloseReason> onClose,
             @NonNull Locale locale) {
         this.id = id;
         this.runtime = runtime;
@@ -102,6 +115,7 @@ public final class ProtocolConnection implements AutoCloseable {
         this.identity = new ConnectionIdentity(user, null, 0);
         this.authenticated = authenticated;
         this.authorization = authorization;
+        this.workers = workers;
         this.output = output;
         this.onClose = onClose;
         this.locale = locale;
@@ -172,10 +186,13 @@ public final class ProtocolConnection implements AutoCloseable {
         }
     }
 
+    /**
+     * The transport invokes this in receive order; other public operations may run concurrently.
+     */
     public void receive(Frame.@NonNull ClientFrame frame) {
         if (closed) return;
         if (!authenticated.getAsBoolean()) {
-            close();
+            close(CloseReason.UNAUTHORIZED);
             return;
         }
         if (frame instanceof Frame.Hello hello) {
@@ -198,7 +215,7 @@ public final class ProtocolConnection implements AutoCloseable {
             // A correlated rejection could falsely settle the original operation. Closing also
             // prevents replay; release this monitor before transport or attachment cleanup.
             send(new Frame.Error(protocolError, 0));
-            finish(true);
+            finish(CloseReason.PROTOCOL_ERROR, true);
             return;
         }
         switch (frame) {
@@ -235,17 +252,24 @@ public final class ProtocolConnection implements AutoCloseable {
     }
 
     private void hello(Frame.@NonNull Hello hello) {
+        boolean invalid;
         synchronized (this) {
-            if (ready || hello.version() != Frame.PROTOCOL_VERSION) {
-                send(new Frame.Error("Invalid protocol handshake", hello.seq()));
-                finish(true);
-                return;
+            invalid = ready || hello.version() != Frame.PROTOCOL_VERSION;
+            if (!invalid) {
+                if (registry != null)
+                    sender = new VetoCommandSender(this, hello.productVersion(), hello.cwd());
+                receivedSequences.add(hello.seq());
             }
-            if (registry != null)
-                sender = new VetoCommandSender(this, hello.productVersion(), hello.cwd());
-            receivedSequences.add(hello.seq());
-            if (!send(new Frame.Welcome(Frame.PROTOCOL_VERSION, hello.seq(), VetoVersion.VERSION)))
-                return;
+        }
+        if (invalid) {
+            send(new Frame.Error("Invalid protocol handshake", hello.seq()));
+            finish(CloseReason.PROTOCOL_ERROR, true);
+            return;
+        }
+        if (!send(new Frame.Welcome(Frame.PROTOCOL_VERSION, hello.seq(), VetoVersion.VERSION)))
+            return;
+        synchronized (this) {
+            if (closed) return;
             ready = true;
         }
         if (registry == null) runtime.connectBrowser(this);
@@ -267,24 +291,25 @@ public final class ProtocolConnection implements AutoCloseable {
 
     private void admit(long seq, Frame.@NonNull ClientFrame frame) {
         ProtocolOperation start = null;
+        boolean full;
         synchronized (this) {
             if (closed) return;
-            if (operations.size() >= MAX_PENDING) {
-                send(new Frame.Error("Too many pending requests", seq));
-                return;
-            }
-            var operation = new ProtocolOperation(seq, frame, identity);
-            operations.put(seq, operation);
-            if (registry == null || !(frame instanceof Frame.Request)) start = operation;
-            else {
-                queued.addLast(operation);
-                if (active == null) {
-                    active = queued.pollFirst();
-                    start = active;
+            full = operations.size() >= MAX_PENDING;
+            if (!full) {
+                var operation = new ProtocolOperation(seq, frame, identity);
+                operations.put(seq, operation);
+                if (registry == null || !(frame instanceof Frame.Request)) start = operation;
+                else {
+                    queued.addLast(operation);
+                    if (active == null) {
+                        active = queued.pollFirst();
+                        start = active;
+                    }
                 }
             }
         }
-        if (start != null) start(start);
+        if (full) send(new Frame.Error("Too many pending requests", seq));
+        else if (start != null) start(start);
     }
 
     private void start(@NonNull ProtocolOperation operation) {
@@ -292,15 +317,15 @@ public final class ProtocolConnection implements AutoCloseable {
             if (closed || operations.get(operation.seq) != operation) return;
             // Queued terminal commands resolve identity at execution, after preceding login/logout.
             if (registry != null) operation.authority = identity;
-            operation.worker =
-                    Thread.ofVirtual()
-                            .name("connection-admission-" + id)
-                            .unstarted(() -> execute(operation));
-            operation.worker.start();
+            workers.execute(() -> execute(operation));
         }
     }
 
     private void execute(@NonNull ProtocolOperation operation) {
+        synchronized (this) {
+            if (closed || operations.get(operation.seq) != operation) return;
+            operation.worker = Thread.currentThread();
+        }
         execution.set(operation);
         Frame.ServerFrame response =
                 new Frame.Done(new Scope.GlobalScope(), null, -1, null, null, operation.seq);
@@ -319,13 +344,14 @@ public final class ProtocolConnection implements AutoCloseable {
                         })) throw new IllegalStateException("Connection authority expired");
                 response = new Frame.Done(session.scope(), null, -1, null, null, operation.seq);
             } else if (operation.frame instanceof Frame.Request request) {
-                if (request.sessionId() == null) {
+                var target = request.sessionId();
+                if (target == null) {
                     var terminal = requireSender();
                     response = requireRegistry().dispatch(terminal, request.raw());
                     if (response instanceof Frame.TurnOutcome outcome)
                         operation.scope =
                                 requireRegistry().terminalOutcome(terminal, outcome).scope();
-                } else submitRequest(operation, request);
+                } else submitRequest(operation, request, target);
             }
         } catch (ProtectedInputException rejected) {
             response =
@@ -377,10 +403,10 @@ public final class ProtocolConnection implements AutoCloseable {
     }
 
     private void submitRequest(
-            @NonNull ProtocolOperation operation, Frame.@NonNull Request request) {
+            @NonNull ProtocolOperation operation,
+            Frame.@NonNull Request request,
+            @NonNull UUID target) {
         var user = requireUser(operation);
-        var target = request.sessionId();
-        if (target == null) throw new IllegalArgumentException("Session required");
         if (request.raw().isBlank()) throw new IllegalArgumentException("Prompt must not be empty");
         var config =
                 sessions.prepare(target.toString(), user)
@@ -452,11 +478,10 @@ public final class ProtocolConnection implements AutoCloseable {
                                 throw new IllegalStateException("Request was not admitted");
                             return handle;
                         });
-        var handle = operation.handle;
-        if (handle == null || handle != submitted)
+        if (operation.handle != submitted)
             throw new IllegalStateException("Request was not admitted");
         send(
-                new Frame.RequestAccepted(operation.seq, scope, handle.requestId()),
+                new Frame.RequestAccepted(operation.seq, scope, submitted.requestId()),
                 operation.authority.version(),
                 () -> true);
     }
@@ -529,44 +554,52 @@ public final class ProtocolConnection implements AutoCloseable {
 
     private void finish(@NonNull ProtocolOperation operation, Frame.@NonNull ServerFrame response) {
         ProtocolOperation next = null;
+        CompletableFuture<Void> acknowledgement;
+        boolean deferred;
         synchronized (this) {
-            if (!operation.cancelAcknowledged.isDone()) {
-                var pendingResponse = response;
-                operation.cancelAcknowledged.thenRun(() -> finish(operation, pendingResponse));
-                return;
+            acknowledgement = operation.cancelAcknowledged;
+            deferred = !acknowledgement.isDone();
+            if (!deferred) {
+                if (operations.remove(operation.seq) != operation) return;
+                queued.remove(operation);
             }
-            if (operations.remove(operation.seq) != operation) return;
-            queued.remove(operation);
-            if (operation.input != null)
-                operation.input.completeExceptionally(new CancellationException());
-            if (operation.cancelled)
-                response = new Frame.Done(operation.scope, null, -1, null, null, operation.seq);
-            else if (response instanceof Frame.Done done)
-                response =
-                        new Frame.Done(
-                                done.scope(),
-                                done.requestId(),
-                                done.turnNumber(),
-                                done.content(),
-                                done.username(),
-                                operation.seq);
-            else if (response instanceof Frame.Error error)
-                response =
-                        new Frame.Error(
-                                error.scope(),
-                                error.requestId(),
-                                error.turnNumber(),
-                                error.content(),
-                                operation.seq,
-                                error.username(),
-                                error.code());
-            send(response, operation.authority.version(), () -> true);
+        }
+        if (deferred) {
+            var pendingResponse = response;
+            acknowledgement.thenRun(() -> finish(operation, pendingResponse));
+            return;
+        }
+        if (operation.input != null)
+            operation.input.completeExceptionally(new CancellationException());
+        if (operation.cancelled)
+            response = new Frame.Done(operation.scope, null, -1, null, null, operation.seq);
+        else if (response instanceof Frame.Done done)
+            response =
+                    new Frame.Done(
+                            done.scope(),
+                            done.requestId(),
+                            done.turnNumber(),
+                            done.content(),
+                            done.username(),
+                            operation.seq);
+        else if (response instanceof Frame.Error error)
+            response =
+                    new Frame.Error(
+                            error.scope(),
+                            error.requestId(),
+                            error.turnNumber(),
+                            error.content(),
+                            operation.seq,
+                            error.username(),
+                            error.code());
+        send(response, operation.authority.version(), () -> true);
+        synchronized (this) {
             if (active == operation) {
                 active = queued.pollFirst();
                 next = active;
             }
         }
-        if (response instanceof Frame.Terminate) finish(true);
+        if (response instanceof Frame.Terminate) finish(CloseReason.PROTOCOL_ERROR, true);
         else if (next != null) start(next);
     }
 
@@ -586,6 +619,7 @@ public final class ProtocolConnection implements AutoCloseable {
     private Frame.@NonNull CancelStatus cancel(long target) {
         ProtocolOperation operation;
         RequestHandle handle;
+        Thread worker;
         synchronized (this) {
             operation = operations.get(target);
             if (operation == null) return Frame.CancelStatus.NO_ACTIVE_REQUEST;
@@ -597,16 +631,18 @@ public final class ProtocolConnection implements AutoCloseable {
             }
             if (operation.cancelled) return Frame.CancelStatus.ACCEPTED;
             handle = operation.handle;
+            worker = operation.worker;
             if (handle == null) {
                 operation.cancelled = true;
-                var worker = operation.worker;
-                if (worker != null) worker.interrupt();
-                else
-                    finish(
-                            operation,
-                            new Frame.Done(new Scope.GlobalScope(), null, -1, null, null, target));
-                return Frame.CancelStatus.ACCEPTED;
             }
+        }
+        if (handle == null) {
+            if (worker != null) worker.interrupt();
+            else
+                finish(
+                        operation,
+                        new Frame.Done(new Scope.GlobalScope(), null, -1, null, null, target));
+            return Frame.CancelStatus.ACCEPTED;
         }
         try {
             if (!handle.requestCancellation()) return Frame.CancelStatus.REJECTED;
@@ -629,8 +665,8 @@ public final class ProtocolConnection implements AutoCloseable {
             if (operation.input != null && !operation.input.isDone())
                 throw new IllegalStateException("Input already pending");
             operation.input = future;
-            send(new Frame.Prompt(text, mask, operation.seq));
         }
+        send(new Frame.Prompt(text, mask, operation.seq));
         return future.orTimeout(timeoutMillis, TimeUnit.MILLISECONDS);
     }
 
@@ -657,18 +693,11 @@ public final class ProtocolConnection implements AutoCloseable {
     }
 
     private void asyncControl(@NonNull Runnable action, long seq) {
-        ConnectionIdentity admittedAuthority;
         synchronized (this) {
             if (closed) return;
-            if (!controlSlots.tryAcquire()) {
-                send(new Frame.Error("Too many pending controls", seq));
-                return;
-            }
-            admittedAuthority = identity;
-        }
-        Thread.ofVirtual()
-                .name("connection-control-" + id)
-                .start(
+            if (controlSlots.tryAcquire()) {
+                var admittedAuthority = identity;
+                workers.execute(
                         () -> {
                             var control =
                                     new ProtocolOperation(
@@ -685,6 +714,10 @@ public final class ProtocolConnection implements AutoCloseable {
                                 controlSlots.release();
                             }
                         });
+                return;
+            }
+        }
+        send(new Frame.Error("Too many pending controls", seq));
     }
 
     private boolean valid(@NonNull ProtocolOperation operation) {
@@ -724,8 +757,37 @@ public final class ProtocolConnection implements AutoCloseable {
     private boolean send(
             Frame.@NonNull ServerFrame frame, long version, @NonNull BooleanSupplier attached) {
         if (closed) return false;
+        if (!authenticated.getAsBoolean()) {
+            close(CloseReason.UNAUTHORIZED);
+            return false;
+        }
         var permitted = authorizedOutput(frame, version, attached);
-        return permitted != null && output.send(permitted, version, attached);
+        if (permitted == null) return false;
+        try {
+            int bytes = FrameCodec.encode(permitted).length;
+            if (bytes > FrameCodec.MAX_ENCODED_FRAME_BYTES
+                    || !outbox.offer(
+                            new OutboundFrame(permitted, version, attached),
+                            bytes,
+                            10,
+                            TimeUnit.SECONDS)) {
+                if (closed) return false;
+                close(CloseReason.OUTPUT_LIMIT);
+                return false;
+            }
+            synchronized (this) {
+                if (closed) return false;
+                if (!writing) {
+                    writing = true;
+                    workers.execute(this::drainOutput);
+                }
+            }
+            return true;
+        } catch (InterruptedException interrupted) {
+            // Agent cancellation and connection shutdown interrupt output producers.
+            Thread.currentThread().interrupt();
+            return false;
+        }
     }
 
     public boolean sendSession(
@@ -733,22 +795,21 @@ public final class ProtocolConnection implements AutoCloseable {
         return send(frame, identity.version(), attached);
     }
 
-    /** Rechecked by the transport immediately before writing queued output. */
-    public Frame.ServerFrame authorizedOutput(
+    /** Rechecked by this endpoint immediately before writing queued output. */
+    private Frame.ServerFrame authorizedOutput(
             Frame.@NonNull ServerFrame frame, long version, @NonNull BooleanSupplier attached) {
         if (closed
                 && !(draining
                         && (frame instanceof Frame.Terminate || frame instanceof Frame.Error)))
             return null;
-        if (!attached.getAsBoolean() || !authenticated.getAsBoolean()) return null;
+        if (!attached.getAsBoolean()) return null;
         if (version != identity.version()) {
             if (registry != null
                     && frame instanceof Frame.TurnOutcome outcome
-                    && outcome instanceof Frame.SeqResponse response
-                    && response.seq() > 0)
+                    && outcome.seq() != 0)
                 frame =
                         new Frame.Done(
-                                new Scope.GlobalScope(), null, -1, null, null, response.seq());
+                                new Scope.GlobalScope(), null, -1, null, null, outcome.seq());
             else return null;
         }
         if (frame instanceof Frame.ScopedFrame scoped) {
@@ -760,8 +821,7 @@ public final class ProtocolConnection implements AutoCloseable {
         if (terminal != null
                 && commandRegistry != null
                 && frame instanceof Frame.TurnOutcome outcome
-                && outcome instanceof Frame.SeqResponse response
-                && response.seq() > 0) return commandRegistry.terminalOutcome(terminal, outcome);
+                && outcome.seq() != 0) return commandRegistry.terminalOutcome(terminal, outcome);
         return frame;
     }
 
@@ -790,19 +850,35 @@ public final class ProtocolConnection implements AutoCloseable {
 
     @Override
     public void close() {
-        finish(false);
+        close(CloseReason.NORMAL);
     }
 
-    private void finish(boolean drain) {
+    public void close(@NonNull CloseReason reason) {
+        finish(reason, false);
+    }
+
+    public boolean isClosed() {
+        return closed;
+    }
+
+    private void finish(@NonNull CloseReason reason, boolean drain) {
         List<@NonNull ProtocolOperation> closing;
+        boolean closeOutput;
         synchronized (this) {
-            if (closed) return;
+            if (closed && (!draining || drain)) return;
             draining = drain;
             closed = true;
             closing = List.copyOf(operations.values());
             operations.clear();
             queued.clear();
             active = null;
+            outbox.close(drain);
+            closeOutput = !drain || (!writing && outbox.isEmpty());
+            if (closeOutput) draining = false;
+            else if (!writing) {
+                writing = true;
+                workers.execute(this::drainOutput);
+            }
         }
         runtime.disconnect(this);
         for (var operation : closing) {
@@ -814,8 +890,56 @@ public final class ProtocolConnection implements AutoCloseable {
             var worker = operation.worker;
             if (worker != null) worker.interrupt();
         }
-        onClose.accept(drain);
+        if (closeOutput) onClose.accept(reason);
     }
+
+    private void drainOutput() {
+        try {
+            while (true) {
+                OutboundFrame pending;
+                boolean drained;
+                synchronized (this) {
+                    pending = outbox.poll();
+                    drained = pending == null && draining;
+                    if (pending == null) {
+                        writing = false;
+                        if (drained) draining = false;
+                    }
+                }
+                if (pending == null) {
+                    if (drained) onClose.accept(CloseReason.PROTOCOL_ERROR);
+                    return;
+                }
+                if (!authenticated.getAsBoolean()) {
+                    close(CloseReason.UNAUTHORIZED);
+                    break;
+                }
+                var frame =
+                        authorizedOutput(pending.frame(), pending.version(), pending.attached());
+                if (frame != null) output.send(frame);
+            }
+        } catch (Throwable failure) {
+            if (!closed) log.warn("Protocol output failed for '{}'", id, failure);
+            close(CloseReason.IO_ERROR);
+        }
+        synchronized (this) {
+            writing = false;
+        }
+    }
+
+    /** Transport-independent reason supplied to the server that owns the native connection. */
+    public enum CloseReason {
+        NORMAL,
+        PROTOCOL_ERROR,
+        IO_ERROR,
+        OUTPUT_LIMIT,
+        SERVER_SHUTDOWN,
+        UNAUTHORIZED,
+        FRAME_TOO_LARGE
+    }
+
+    private record OutboundFrame(
+            Frame.@NonNull ServerFrame frame, long version, @NonNull BooleanSupplier attached) {}
 
     /**
      * Immutable authentication snapshot; the version changes whenever connection authority changes.

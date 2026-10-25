@@ -34,7 +34,7 @@ class FrameSerializationTest {
             tree.remove("seq");
             assertNull(FrameCodec.decode(tree.toString()));
             tree.put("seq", -1);
-            assertNull(FrameCodec.decode(tree.toString()));
+            assertInstanceOf(Frame.class, FrameCodec.decode(tree.toString()));
             tree.put("seq", 0);
             if (frame instanceof Frame.Done)
                 assertInstanceOf(Frame.Done.class, FrameCodec.decode(tree.toString()));
@@ -43,6 +43,8 @@ class FrameSerializationTest {
         var cancel = (ObjectNode) JSON.readTree(FrameCodec.encodeString(new Frame.Cancel(3, 2)));
         cancel.remove("targetSeq");
         assertNull(FrameCodec.decode(cancel.toString()));
+        cancel.put("targetSeq", -2);
+        assertEquals(new Frame.Cancel(3, -2), FrameCodec.decode(cancel.toString()));
         cancel.put("targetSeq", 0);
         assertNull(FrameCodec.decode(cancel.toString()));
         var failure =
@@ -149,6 +151,15 @@ class FrameSerializationTest {
             assertTrue(JSON.readTree(json).path("type").isTextual());
             assertEquals(frame, FrameCodec.decode(json));
             assertEquals(frame, FrameCodec.decode(FrameCodec.encode(frame)));
+            var fields = (ObjectNode) JSON.readTree(json);
+            if (fields.has("seq")) {
+                fields.put("seq", Long.MIN_VALUE);
+                var decoded = assertInstanceOf(Frame.class, FrameCodec.decode(fields.toString()));
+                assertEquals(fields, JSON.readTree(FrameCodec.encodeString(decoded)));
+                assertEquals(
+                        decoded,
+                        FrameCodec.decode(fields.toString().getBytes(StandardCharsets.UTF_8)));
+            }
         }
     }
 

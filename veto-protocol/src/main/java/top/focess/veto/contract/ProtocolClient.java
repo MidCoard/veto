@@ -12,7 +12,6 @@ import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import top.focess.veto.api.util.ByteBoundedQueue;
-import top.focess.veto.api.util.Resources;
 import top.focess.veto.api.util.Threads;
 
 /**
@@ -20,43 +19,45 @@ import top.focess.veto.api.util.Threads;
  * {@link FrameTransport}. Independent virtual workers read and write that transport; backend
  * session dispatch belongs to ProtocolConnection in veto-core.
  *
- * <p>Public operations are thread-safe: one private monitor protects admission, queues, correlation
- * and deadlines, including once-only transport closure. Frame reads/writes and worker joins happen
- * outside it. Concurrent receive callers consume distinct frames. Grouped calls are not atomic:
- * send may fail after isClosed returned false.
+ * <p>Public operations are thread-safe: one private monitor protects lifecycle, correlation and
+ * deadlines, including once-only transport closure. The byte queues own capacity waiting and
+ * draining. Frame reads/writes, capacity waits and worker joins happen outside the protocol
+ * monitor. Concurrent receive callers consume distinct frames. Grouped calls are not atomic: send
+ * may fail after isClosed returned false.
  *
  * <p>Queued frames share their payloads by reference. Finish constructing mutable payloads before
  * enqueueing and leave them read-only afterward; see {@link Frame}.
  *
  * <p>The caller establishes the transport before constructing this client. Construction takes
  * ownership and starts both workers; Hello/Welcome negotiation is asynchronous. Close may run
- * concurrently with read and write to unblock both. The writer checks heartbeat expiry between
- * sends, so detection may wait for a bounded write.
+ * concurrently with read and write to unblock both. The writer sends a heartbeat only when no
+ * business frame is queued and outbound IO has been idle. The transport owns receive-idle
+ * detection; any incoming frame counts as activity, without a separate heartbeat acknowledgement
+ * deadline.
  */
 public final class ProtocolClient implements AutoCloseable {
     private static final @NonNull Logger log =
             LoggerFactory.getLogger("top.focess.veto.contract.ProtocolClient");
-    private static final int CAPACITY = 256;
-    private static final int MAX_QUEUED_BYTES = 8 * 1024 * 1024;
-    private static final long REPLY_TIMEOUT_NANOS = TimeUnit.SECONDS.toNanos(10);
+    private static final int MAX_QUEUED_FRAMES = 256;
+    // Per-queue backlog budget, independent of the maximum size of a single JSON Frame.
+    private static final int MAX_QUEUED_BYTES = 64 * 1024 * 1024;
+    private static final long HANDSHAKE_TIMEOUT_NANOS = TimeUnit.SECONDS.toNanos(10);
 
     private final @NonNull Object lock = new Object();
     // Populated only during construction; the external close owner joins the complete group.
     private final @NonNull List<@NonNull Thread> workers = new ArrayList<>(2);
     private final @NonNull ByteBoundedQueue<Frame.@NonNull ClientFrame> outgoing =
-            new ByteBoundedQueue<>(CAPACITY, MAX_QUEUED_BYTES);
+            new ByteBoundedQueue<>(MAX_QUEUED_FRAMES, MAX_QUEUED_BYTES);
     private final @NonNull ByteBoundedQueue<Frame.@NonNull ServerFrame> incoming =
-            new ByteBoundedQueue<>(CAPACITY, MAX_QUEUED_BYTES);
+            new ByteBoundedQueue<>(MAX_QUEUED_FRAMES, MAX_QUEUED_BYTES);
     // Null means awaiting a reply. Each query removes its entry before returning.
     private final @NonNull HashMap<@NonNull Long, Frame.@Nullable SeqResponse> pending =
             new HashMap<>();
     private final long heartbeatNanos;
-    private @NonNull ProtocolClientState state = ProtocolClientState.AWAITING_WELCOME;
+    private @NonNull ProtocolClientState state = ProtocolClientState.INITIALIZED;
     private final @NonNull FrameTransport transport;
-    // Welcome deadline when AWAITING_WELCOME; next heartbeat send time when OPEN.
-    private long deadlineNanos;
-    // Null when no heartbeat is awaiting confirmation; the connection stays OPEN while waiting.
-    private Long heartbeatAckDeadlineNanos;
+    // Handshake start until Welcome; then the baseline for outbound idle time.
+    private long lastSendNanos;
     private long sequence = 2; // Hello owns sequence 1.
 
     public ProtocolClient(@NonNull FrameTransport transport) {
@@ -83,7 +84,7 @@ public final class ProtocolClient implements AutoCloseable {
             throw new IllegalArgumentException("Heartbeat interval must be positive");
         this.transport = transport;
         heartbeatNanos = TimeUnit.MILLISECONDS.toNanos(heartbeatMillis);
-        deadlineNanos = System.nanoTime() + REPLY_TIMEOUT_NANOS;
+        lastSendNanos = System.nanoTime();
         workers.add(Thread.ofVirtual().name("protocol-reader").start(this::runReadLoop));
         workers.add(
                 Thread.ofVirtual().name("protocol-writer").start(() -> runWriteLoop(version, cwd)));
@@ -113,6 +114,9 @@ public final class ProtocolClient implements AutoCloseable {
                 var frame = nextOutgoing();
                 if (frame == null) return;
                 transport.send(frame);
+                synchronized (lock) {
+                    lastSendNanos = System.nanoTime();
+                }
             }
         } catch (Throwable failure) {
             shutdown(failure);
@@ -120,24 +124,29 @@ public final class ProtocolClient implements AutoCloseable {
     }
 
     /**
-     * Queues requests during negotiation; rejects closed/full connections and payloads exceeding
-     * one MiB. Admission is not delivery.
+     * Queues requests during negotiation. A full queue waits up to ten seconds for capacity;
+     * closure and interruption end the wait. Admission is not delivery.
+     *
+     * @throws InterruptedException when cancellation interrupts the capacity wait
      */
-    public void send(Frame.@NonNull ClientFrame frame) {
+    public void send(Frame.@NonNull ClientFrame frame) throws InterruptedException {
         synchronized (lock) {
             if (state == ProtocolClientState.CLOSED)
                 throw new IllegalStateException("Protocol connection is closed");
-            int bytes = FrameCodec.encode(frame).length;
-            if (bytes > FrameTransport.MAX_FRAME_BYTES)
-                throw new IllegalArgumentException("Protocol frame exceeds one MiB");
-            if (!outgoing.offer(frame, bytes))
-                throw new IllegalStateException("Protocol send queue is full");
+        }
+        int bytes = FrameCodec.encode(frame).length;
+        if (bytes > FrameCodec.MAX_ENCODED_FRAME_BYTES)
+            throw new IllegalArgumentException("Protocol message exceeds 64 MiB");
+        if (!outgoing.offer(frame, bytes, 10, TimeUnit.SECONDS))
+            throw new IllegalStateException(
+                    "Protocol send queue closed or capacity wait timed out");
+        synchronized (lock) {
             lock.notifyAll();
         }
     }
 
     /** Queues cancellation with a connection-owned sequence; CancelResult arrives on receive(). */
-    public void cancel(long targetSeq) {
+    public void cancel(long targetSeq) throws InterruptedException {
         send(new Frame.Cancel(nextSequence(), targetSeq));
     }
 
@@ -145,7 +154,6 @@ public final class ProtocolClient implements AutoCloseable {
         synchronized (lock) {
             if (state == ProtocolClientState.CLOSED)
                 throw new IllegalStateException("Protocol connection is closed");
-            if (sequence <= 0) throw new IllegalStateException("Protocol sequence exhausted");
             return sequence++;
         }
     }
@@ -153,23 +161,12 @@ public final class ProtocolClient implements AutoCloseable {
     /** Returns null on timeout or after the closed stream drains. */
     public Frame.ServerFrame receive(long timeout, @NonNull TimeUnit unit)
             throws InterruptedException {
-        long remaining = unit.toNanos(timeout);
-        long deadline = System.nanoTime() + remaining;
-        synchronized (lock) {
-            while (incoming.isEmpty() && state != ProtocolClientState.CLOSED && remaining > 0) {
-                TimeUnit.NANOSECONDS.timedWait(lock, remaining);
-                remaining = deadline - System.nanoTime();
-            }
-            return incoming.poll();
-        }
+        return incoming.poll(timeout, unit);
     }
 
     /** Waits for a frame; returns null only after the closed stream drains. */
     public Frame.ServerFrame receive() throws InterruptedException {
-        synchronized (lock) {
-            while (incoming.isEmpty() && state != ProtocolClientState.CLOSED) lock.wait();
-            return incoming.poll();
-        }
+        return incoming.take();
     }
 
     public Frame.CompleteResult complete(
@@ -185,18 +182,24 @@ public final class ProtocolClient implements AutoCloseable {
 
     private <R extends Frame.SeqRequest & Frame.ClientFrame> Frame.SeqResponse exchange(
             @NonNull LongFunction<@NonNull R> request, long timeout, @NonNull TimeUnit unit) {
+        long deadline = System.nanoTime() + unit.toNanos(timeout);
+        long seq;
+        R frame;
         synchronized (lock) {
-            if (state != ProtocolClientState.OPEN) return null;
-            long seq = nextSequence();
-            var frame = request.apply(seq);
-            int bytes = FrameCodec.encode(frame).length;
-            if (bytes > FrameTransport.MAX_FRAME_BYTES || !outgoing.offer(frame, bytes))
-                return null;
+            if (state != ProtocolClientState.RUNNING) return null;
+            seq = sequence++;
+            frame = request.apply(seq);
             pending.put(seq, null);
-            lock.notifyAll();
-            long remaining = unit.toNanos(timeout);
-            long deadline = System.nanoTime() + remaining;
-            try {
+        }
+        try {
+            int bytes = FrameCodec.encode(frame).length;
+            if (bytes > FrameCodec.MAX_ENCODED_FRAME_BYTES
+                    || !outgoing.offer(
+                            frame, bytes, deadline - System.nanoTime(), TimeUnit.NANOSECONDS))
+                return null;
+            synchronized (lock) {
+                lock.notifyAll();
+                long remaining = deadline - System.nanoTime();
                 while (state != ProtocolClientState.CLOSED
                         && pending.get(seq) == null
                         && remaining > 0) {
@@ -204,11 +207,13 @@ public final class ProtocolClient implements AutoCloseable {
                     remaining = deadline - System.nanoTime();
                 }
                 return pending.get(seq);
-            } catch (InterruptedException interrupted) {
-                // JLine's prompt-swap wake must remain visible after this optional query returns.
-                Thread.currentThread().interrupt();
-                return null;
-            } finally {
+            }
+        } catch (InterruptedException interrupted) {
+            // JLine's prompt-swap wake must remain visible after this optional query returns.
+            Thread.currentThread().interrupt();
+            return null;
+        } finally {
+            synchronized (lock) {
                 pending.remove(seq);
             }
         }
@@ -217,22 +222,16 @@ public final class ProtocolClient implements AutoCloseable {
     private Frame.ClientFrame nextOutgoing() throws InterruptedException, TimeoutException {
         synchronized (lock) {
             while (state != ProtocolClientState.CLOSED) {
-                var ackDeadline = heartbeatAckDeadlineNanos;
-                long remaining =
-                        (ackDeadline == null ? deadlineNanos : ackDeadline) - System.nanoTime();
-                if (state == ProtocolClientState.AWAITING_WELCOME) {
+                if (state == ProtocolClientState.INITIALIZED) {
+                    long remaining = HANDSHAKE_TIMEOUT_NANOS - (System.nanoTime() - lastSendNanos);
                     if (remaining <= 0) throw new TimeoutException("Protocol handshake timed out");
                     TimeUnit.NANOSECONDS.timedWait(lock, remaining);
                     continue;
                 }
-                if (remaining <= 0) {
-                    if (ackDeadline != null)
-                        throw new TimeoutException("Heartbeat acknowledgement timed out");
-                    heartbeatAckDeadlineNanos = System.nanoTime() + REPLY_TIMEOUT_NANOS;
-                    return new Frame.Heartbeat();
-                }
                 var next = outgoing.poll();
                 if (next != null) return next;
+                long remaining = heartbeatNanos - (System.nanoTime() - lastSendNanos);
+                if (remaining <= 0) return new Frame.Heartbeat();
                 TimeUnit.NANOSECONDS.timedWait(lock, remaining);
             }
             return null;
@@ -240,57 +239,53 @@ public final class ProtocolClient implements AutoCloseable {
     }
 
     /** Admits the actual server frame; returns whether the reader should continue. */
-    private boolean accept(Frame.@NonNull ServerFrame frame) throws IOException, TimeoutException {
+    private boolean accept(Frame.@NonNull ServerFrame frame)
+            throws IOException, TimeoutException, InterruptedException {
+        boolean terminal;
         synchronized (lock) {
             if (state == ProtocolClientState.CLOSED) return false;
-            if (frame instanceof Frame.Terminate
-                    || (state == ProtocolClientState.AWAITING_WELCOME
-                            && frame instanceof Frame.Error)) {
-                enqueueIncoming(frame);
-                return false;
-            }
-            if (state == ProtocolClientState.AWAITING_WELCOME) {
+            terminal =
+                    frame instanceof Frame.Terminate
+                            || (state == ProtocolClientState.INITIALIZED
+                                    && frame instanceof Frame.Error);
+        }
+        if (terminal) {
+            enqueueIncoming(frame);
+            return false;
+        }
+        synchronized (lock) {
+            if (state == ProtocolClientState.CLOSED) return false;
+            if (state == ProtocolClientState.INITIALIZED) {
                 if (!(frame instanceof Frame.Welcome welcome))
                     throw new IOException("Expected protocol Welcome before application frames");
                 if (welcome.seq() != 1) return true;
                 if (welcome.version() != Frame.PROTOCOL_VERSION)
                     throw new IOException("Unsupported protocol version");
-                if (deadlineNanos - System.nanoTime() <= 0)
+                if (System.nanoTime() - lastSendNanos >= HANDSHAKE_TIMEOUT_NANOS)
                     throw new TimeoutException("Protocol handshake timed out");
-                state = ProtocolClientState.OPEN;
-                deadlineNanos = System.nanoTime() + heartbeatNanos;
+                state = ProtocolClientState.RUNNING;
+                lastSendNanos = System.nanoTime();
                 log.debug("Protocol connected to backend {}", welcome.productVersion());
-                enqueueIncoming(welcome);
-                return true;
-            }
-            if (frame instanceof Frame.HeartbeatAck) {
-                var ackDeadline = heartbeatAckDeadlineNanos;
-                if (ackDeadline == null) return true;
-                if (ackDeadline - System.nanoTime() <= 0)
-                    throw new TimeoutException("Heartbeat acknowledgement timed out");
-                heartbeatAckDeadlineNanos = null;
-                deadlineNanos = System.nanoTime() + heartbeatNanos;
                 lock.notifyAll();
+            } else if (frame instanceof Frame.HeartbeatAck) {
                 return true;
-            }
-            if (frame instanceof Frame.SeqResponse sequenced
+            } else if (frame instanceof Frame.SeqResponse sequenced
                     && pending.containsKey(sequenced.seq())
                     && pending.get(sequenced.seq()) == null) {
                 pending.put(sequenced.seq(), sequenced);
                 lock.notifyAll();
                 return true;
             }
-            enqueueIncoming(frame);
-            return true;
         }
+        enqueueIncoming(frame);
+        return true;
     }
 
-    /** Caller holds the protocol monitor for queue admission and notification. */
-    private void enqueueIncoming(Frame.@NonNull ServerFrame frame) {
-        int bytes = FrameCodec.encode(frame).length;
-        if (!incoming.offer(frame, bytes))
-            throw new IllegalStateException("Protocol receive queue is full");
-        lock.notifyAll();
+    /** Shared admission boundary for terminal and ordinary input; never holds the protocol lock. */
+    private void enqueueIncoming(Frame.@NonNull ServerFrame frame)
+            throws IOException, InterruptedException {
+        if (!incoming.offer(frame, FrameCodec.encode(frame).length, 10, TimeUnit.SECONDS))
+            throw new IOException("Protocol receive queue closed or capacity wait timed out");
     }
 
     /**
@@ -303,16 +298,13 @@ public final class ProtocolClient implements AutoCloseable {
      */
     @Override
     public void close() {
-        try {
-            shutdown(null);
-        } finally {
-            while (true) {
-                try {
-                    Threads.joinAll(workers);
-                    break;
-                } catch (InterruptedException ignored) {
-                    // Final close must finish joining both workers.
-                }
+        shutdown(null);
+        while (true) {
+            try {
+                Threads.joinAll(workers);
+                break;
+            } catch (InterruptedException ignored) {
+                // Final close must finish joining both workers.
             }
         }
     }
@@ -321,17 +313,13 @@ public final class ProtocolClient implements AutoCloseable {
         synchronized (lock) {
             if (state == ProtocolClientState.CLOSED) return;
             state = ProtocolClientState.CLOSED;
-            heartbeatAckDeadlineNanos = null;
-            outgoing.clear();
+            outgoing.close(false);
+            incoming.close(true);
             lock.notifyAll();
             // Transport close releases IO resources; only the owner joins protocol workers.
-            if (cause == null) {
-                transport.close();
-                return;
-            }
-            Resources.closeOnFailure(transport, cause);
+            transport.close();
         }
-        log.warn("Protocol connection failed", cause);
+        if (cause != null) log.warn("Protocol connection failed", cause);
     }
 
     public boolean isClosed() {
@@ -342,8 +330,8 @@ public final class ProtocolClient implements AutoCloseable {
 
     /** Client lifecycle state, read and updated under ProtocolClient's private lock. */
     private enum ProtocolClientState {
-        AWAITING_WELCOME,
-        OPEN,
+        INITIALIZED,
+        RUNNING,
         CLOSED
     }
 }

@@ -61,6 +61,7 @@ class ClientSessionTest {
     void acceptanceBroadcastsAndStaleRepliesCannotSettleAnotherOperation() {
         var view = new RecordingView();
         var session = newSession(view);
+        sequences.set(-3);
         var first =
                 assertInstanceOf(
                         Objects.requireNonNull(Frame.Request.class), session.submit("first", null));

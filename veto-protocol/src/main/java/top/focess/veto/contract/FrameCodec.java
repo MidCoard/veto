@@ -3,6 +3,7 @@ package top.focess.veto.contract;
 import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.JsonToken;
+import com.fasterxml.jackson.core.StreamReadConstraints;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.DeserializationContext;
 import com.fasterxml.jackson.databind.DeserializationFeature;
@@ -17,6 +18,7 @@ import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.fasterxml.jackson.datatype.jsr310.deser.InstantDeserializer;
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
@@ -32,6 +34,9 @@ import org.slf4j.LoggerFactory;
  * Frame}. Codec thread safety does not make those payloads thread-safe.
  */
 public final class FrameCodec {
+    /** Maximum bytes in one complete UTF-8 JSON Frame, shared by TCP and WebSocket. */
+    public static final int MAX_ENCODED_FRAME_BYTES = 64 * 1024 * 1024;
+
     private static final @NonNull Logger log =
             LoggerFactory.getLogger("top.focess.veto.contract.FrameCodec");
     private static final @NonNull TypeReference<@NonNull Frame> FRAME_TYPE =
@@ -51,6 +56,11 @@ public final class FrameCodec {
                     .enable(JsonParser.Feature.STRICT_DUPLICATE_DETECTION);
 
     static {
+        JSON.getFactory()
+                .setStreamReadConstraints(
+                        StreamReadConstraints.builder()
+                                .maxStringLength(MAX_ENCODED_FRAME_BYTES)
+                                .build());
         JSON.coercionConfigFor(LogicalType.Textual)
                 .setCoercion(CoercionInputShape.Integer, CoercionAction.Fail)
                 .setCoercion(CoercionInputShape.Float, CoercionAction.Fail)
@@ -87,6 +97,10 @@ public final class FrameCodec {
 
     /** Decodes UTF-8 JSON; malformed input returns null without logging payload contents. */
     public static Frame decode(byte @NonNull [] payload) {
+        if (payload.length > MAX_ENCODED_FRAME_BYTES) {
+            log.warn("Rejected protocol payload ({} bytes, size limit exceeded)", payload.length);
+            return null;
+        }
         try {
             return JSON.readValue(payload, FRAME_TYPE);
         } catch (IOException failure) {
@@ -98,17 +112,15 @@ public final class FrameCodec {
         }
     }
 
-    /** Decodes text directly using the same validation rules as the byte transport. */
+    /** Decodes text under the same UTF-8 byte budget and validation as the byte transport. */
     public static Frame decode(@NonNull String payload) {
-        try {
-            return JSON.readValue(payload, FRAME_TYPE);
-        } catch (IOException failure) {
+        if (payload.length() > MAX_ENCODED_FRAME_BYTES) {
             log.warn(
-                    "Rejected protocol payload ({} characters, {})",
-                    payload.length(),
-                    failure.getClass().getSimpleName());
+                    "Rejected protocol text ({} characters, size limit exceeded)",
+                    payload.length());
             return null;
         }
+        return decode(payload.getBytes(StandardCharsets.UTF_8));
     }
 
     /** JavaTimeModule otherwise also accepts numeric epochs, outside the shared wire schema. */

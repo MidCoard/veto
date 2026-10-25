@@ -11,7 +11,6 @@ import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.net.SocketTimeoutException;
 import java.net.UnknownHostException;
-import java.nio.channels.NotYetConnectedException;
 import java.nio.channels.SocketChannel;
 import java.nio.charset.StandardCharsets;
 import java.util.concurrent.CountDownLatch;
@@ -27,20 +26,11 @@ import org.junit.jupiter.params.provider.ValueSource;
 import top.focess.veto.api.util.Resources;
 import top.focess.veto.contract.Frame;
 import top.focess.veto.contract.FrameCodec;
-import top.focess.veto.contract.FrameTransport;
+import top.focess.veto.contract.ProtocolClient;
 import top.focess.veto.contract.Version;
 
 @Timeout(25)
 class TcpConnectionTest {
-    @Test
-    void unconnectedChannelIsRejectedAndClosedDuringInitialization() throws Exception {
-        try (var channel = SocketChannel.open()) {
-            assertTrue(channel.isOpen());
-            assertThrows(NotYetConnectedException.class, () -> TcpConnection.accept(channel));
-            assertFalse(channel.isOpen());
-        }
-    }
-
     @Test
     void unresolvedBindHostDoesNotFallBackToAllInterfaces() {
         assertThrows(
@@ -65,6 +55,30 @@ class TcpConnectionTest {
                     assertEquals(welcome, client.receive());
                 }
             }
+        }
+    }
+
+    @Test
+    void messagesLargerThanEightMiBPassTheClientQueuesAndTcpInBothDirections() throws Exception {
+        try (var listener = TcpConnection.bind("tcp://127.0.0.1:0");
+                var client =
+                        new ProtocolClient(
+                                TcpConnection.connect(
+                                        "tcp://127.0.0.1:" + listener.socket().getLocalPort()));
+                var server = TcpConnection.accept(listener.accept())) {
+            assertInstanceOf(Frame.Hello.class, server.receive());
+            server.send(new Frame.Welcome(Frame.PROTOCOL_VERSION, 1, Version.UNKNOWN));
+            assertInstanceOf(Frame.Welcome.class, client.receive(2, TimeUnit.SECONDS));
+            var text = "x".repeat(8 * 1024 * 1024) + "中文 🚀";
+            var request = new Frame.Request(2, null, null, text);
+            client.send(request);
+            assertTrue(
+                    request.equals(server.receive()), "Large request must survive all IO batches");
+            var response = new Frame.Error(text, 2);
+            server.send(response);
+            assertTrue(
+                    response.equals(client.receive(5, TimeUnit.SECONDS)),
+                    "Large reply must survive client queueing");
         }
     }
 
@@ -113,7 +127,7 @@ class TcpConnectionTest {
     }
 
     @ParameterizedTest
-    @ValueSource(ints = {0, -1, Integer.MIN_VALUE, 1_048_577, Integer.MAX_VALUE})
+    @ValueSource(ints = {0, -1, Integer.MIN_VALUE, 67_108_865, Integer.MAX_VALUE})
     void rejectsInvalidLengthWithoutWaitingForOrAllocatingItsPayload(int length) throws Exception {
         try (var workers = Executors.newVirtualThreadPerTaskExecutor();
                 var pair = SocketPair.open()) {
@@ -167,7 +181,7 @@ class TcpConnectionTest {
             assertThrows(IOException.class, () -> pair.connection().send(new byte[0]));
             assertThrows(
                     IOException.class,
-                    () -> pair.connection().send(new byte[FrameTransport.MAX_FRAME_BYTES + 1]));
+                    () -> pair.connection().send(new byte[FrameCodec.MAX_ENCODED_FRAME_BYTES + 1]));
             var expected = new Frame.Heartbeat();
             pair.connection().send(expected);
             var input = new DataInputStream(pair.peer().getInputStream());
@@ -180,6 +194,7 @@ class TcpConnectionTest {
         try (var workers = Executors.newVirtualThreadPerTaskExecutor();
                 var pair = SocketPair.open()) {
             pair.accepted().socket().setSendBufferSize(1_024);
+            var payload = new byte[1024 * 1024];
             var startedIo = new CountDownLatch(2);
             var incoming =
                     workers.submit(
@@ -191,7 +206,7 @@ class TcpConnectionTest {
                     workers.submit(
                             () -> {
                                 startedIo.countDown();
-                                pair.connection().send(new byte[FrameTransport.MAX_FRAME_BYTES]);
+                                pair.connection().send(payload);
                                 return null;
                             });
             assertTrue(startedIo.await(2, TimeUnit.SECONDS));
@@ -211,7 +226,7 @@ class TcpConnectionTest {
             pair.peer().setSoTimeout(2_000);
             assertTrue(
                     pair.peer().getInputStream().readAllBytes().length
-                            < FrameTransport.MAX_FRAME_BYTES + Integer.BYTES);
+                            < payload.length + Integer.BYTES);
         }
     }
 
@@ -251,13 +266,14 @@ class TcpConnectionTest {
         try (var workers = Executors.newVirtualThreadPerTaskExecutor();
                 var pair = SocketPair.open()) {
             pair.accepted().socket().setSendBufferSize(1_024);
+            var payload = new byte[1024 * 1024];
             var writing = new CountDownLatch(1);
             long started = System.nanoTime();
             var outgoing =
                     workers.submit(
                             () -> {
                                 writing.countDown();
-                                pair.connection().send(new byte[FrameTransport.MAX_FRAME_BYTES]);
+                                pair.connection().send(payload);
                                 return null;
                             });
             assertTrue(writing.await(2, TimeUnit.SECONDS));

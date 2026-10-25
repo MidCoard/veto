@@ -50,7 +50,7 @@ import top.focess.veto.vault.KeysteadVault;
 import top.focess.veto.vault.LoginSessionManager;
 import top.focess.veto.vault.TestUsers;
 
-class IpcPeerIsolationTest {
+class TcpPeerIsolationTest {
     private static final @NonNull AtomicLong sequences = new AtomicLong(100);
 
     private static long nextSequence() {
@@ -93,7 +93,7 @@ class IpcPeerIsolationTest {
         context.registerBean(AgentSessions.class, () -> runtime);
         context.registerBean(SessionService.class, () -> mock(SessionService.class));
         context.registerBean(SessionCommandService.class, () -> mock(SessionCommandService.class));
-        context.register(IpcServer.class);
+        context.register(TcpServer.class);
         context.refresh();
         return context;
     }
@@ -142,7 +142,7 @@ class IpcPeerIsolationTest {
         var endpoint =
                 openEndpoint(
                         registry, mock(AgentService.class), TestAgentSessions.create(), address);
-        var server = endpoint.getBean(IpcServer.class);
+        var server = endpoint.getBean(TcpServer.class);
         try (var terminal = connect(address)) {
             assertEquals("fresh login", request(terminal, "login").content());
             terminal.send(requestFrame("private"));
@@ -208,7 +208,7 @@ class IpcPeerIsolationTest {
         var endpoint =
                 openEndpoint(
                         registry, mock(AgentService.class), TestAgentSessions.create(), address);
-        var server = endpoint.getBean(IpcServer.class);
+        var server = endpoint.getBean(TcpServer.class);
         try (var terminal = connect(address)) {
             request(terminal, "login");
             terminal.send(new Frame.Complete("/credential", nextSequence()));
@@ -219,83 +219,6 @@ class IpcPeerIsolationTest {
             assertInstanceOf(Frame.HeartbeatAck.class, receive(terminal));
         } finally {
             release.countDown();
-            endpoint.close();
-        }
-    }
-
-    @Test
-    @Timeout(20)
-    void queuedOutputCannotSurviveAuthenticationChangeButCommandStillCompletes() throws Exception {
-        int port;
-        try (var reservation = new ServerSocket(0)) {
-            port = reservation.getLocalPort();
-        }
-        var alice = TestUsers.registry().findByUserId(TestUsers.ALICE).orElseThrow();
-        var registry = mock(CommandRegistry.class);
-        var senderRef = new AtomicReference<VetoCommandSender>();
-        doCallRealMethod().when(registry).terminalOutcome(any(), any());
-        when(registry.dispatch(any(), anyString()))
-                .thenAnswer(
-                        invocation -> {
-                            VetoCommandSender sender = invocation.getArgument(0);
-                            if (sender == null) throw new AssertionError("Missing sender");
-                            sender.setUser(alice);
-                            senderRef.set(sender);
-                            return done("logged in");
-                        });
-        var address = "tcp://127.0.0.1:" + port;
-        var endpoint =
-                openEndpoint(
-                        registry, mock(AgentService.class), TestAgentSessions.create(), address);
-        var server = endpoint.getBean(IpcServer.class);
-        try (var terminal = connect(address)) {
-            request(terminal, "login");
-            var sender = senderRef.get();
-            if (sender == null) throw new AssertionError("Missing sender");
-            var connection = sender.connection();
-            long original = connection.authenticationVersion();
-            var privateOutput = Delta.message("private queued text");
-            var privateResult =
-                    new Frame.Done(
-                            new Scope.GlobalScope(),
-                            null,
-                            -1,
-                            "private result",
-                            null,
-                            nextSequence());
-            server.revokeUser(TestUsers.ALICE);
-            assertNull(connection.authorizedOutput(privateOutput, original, () -> true));
-            var cancelled =
-                    assertInstanceOf(
-                            Frame.Done.class,
-                            connection.authorizedOutput(privateResult, original, () -> true));
-            assertNull(cancelled.content());
-            assertNull(cancelled.username());
-            assertEquals(privateResult.seq(), cancelled.seq());
-            request(terminal, "login-again");
-            assertNull(connection.authorizedOutput(privateOutput, original, () -> true));
-            var refreshed =
-                    assertInstanceOf(
-                            Frame.Done.class,
-                            connection.authorizedOutput(privateResult, original, () -> true));
-            assertNull(refreshed.content());
-            assertEquals(TestUsers.ALICE, refreshed.scope().userId());
-            assertNull(
-                    connection.authorizedOutput(
-                            new Frame.Error(
-                                    new Scope.SessionScope(
-                                            TestUsers.ALICE, UUID.randomUUID().toString()),
-                                    null,
-                                    -1,
-                                    "private broadcast",
-                                    0,
-                                    null,
-                                    null),
-                            original,
-                            () -> true));
-            terminal.send(new Frame.Heartbeat());
-            assertInstanceOf(Frame.HeartbeatAck.class, receive(terminal));
-        } finally {
             endpoint.close();
         }
     }
@@ -324,13 +247,13 @@ class IpcPeerIsolationTest {
         var endpoint =
                 openEndpoint(
                         registry, mock(AgentService.class), TestAgentSessions.create(), address);
-        var server = endpoint.getBean(IpcServer.class);
+        var server = endpoint.getBean(TcpServer.class);
         try (var terminal = connect(address)) {
             request(terminal, "login");
             var sender = senderRef.get();
             if (sender == null) throw new AssertionError("Missing sender");
             terminal.send(new Frame.Bye());
-            var connectionsField = IpcServer.class.getDeclaredField("connections");
+            var connectionsField = TcpServer.class.getDeclaredField("connections");
             connectionsField.setAccessible(true);
             if (!(connectionsField.get(server) instanceof Map<?, ?> connections))
                 throw new AssertionError("Missing connections");
@@ -382,7 +305,7 @@ class IpcPeerIsolationTest {
 
         var address = "tcp://127.0.0.1:" + port;
         var endpoint = openEndpoint(registry, agents, runtime, address);
-        var server = endpoint.getBean(IpcServer.class);
+        var server = endpoint.getBean(TcpServer.class);
         var sessionId = UUID.randomUUID();
         try (var terminal = connect(address)) {
             request(terminal, "login");
@@ -413,9 +336,7 @@ class IpcPeerIsolationTest {
                             new Scope.AgentScope(TestUsers.ALICE, sessionId.toString(), "agent"),
                             new Delta.Thought("private", 1));
             {
-                long version = sender.connection().authenticationVersion();
                 server.revokeUser(TestUsers.ALICE);
-                assertNull(sender.connection().authorizedOutput(delta, version, () -> true));
                 publish(runtime, delta);
                 runtime.session(new Scope.SessionScope(TestUsers.ALICE, sessionId.toString()))
                         .send(
@@ -494,7 +415,7 @@ class IpcPeerIsolationTest {
 
         var address = "tcp://127.0.0.1:" + port;
         var endpoint = openEndpoint(registry, mock(AgentService.class), runtime, address);
-        var server = endpoint.getBean(IpcServer.class);
+        var server = endpoint.getBean(TcpServer.class);
         try (var terminal = connect(address)) {
             request(terminal, "login");
             var sender = senderRef.get();
@@ -573,7 +494,7 @@ class IpcPeerIsolationTest {
         var endpoint =
                 openEndpoint(
                         registry, mock(AgentService.class), TestAgentSessions.create(), address);
-        var server = endpoint.getBean(IpcServer.class);
+        var server = endpoint.getBean(TcpServer.class);
         try (var terminal = connect(address)) {
             assertEquals("true", request(terminal, "login").content());
             terminal.send(requestFrame("prompt"));
@@ -624,15 +545,15 @@ class IpcPeerIsolationTest {
         var endpoint =
                 openEndpoint(
                         registry, mock(AgentService.class), TestAgentSessions.create(), address);
-        var server = endpoint.getBean(IpcServer.class);
-        var beans = new StaticListableBeanFactory(Map.of("ipcServer", server));
+        var server = endpoint.getBean(TcpServer.class);
+        var beans = new StaticListableBeanFactory(Map.of("tcpServer", server));
         var lifecycle =
                 new AuthLifecycleManager(
                         mock(KeysteadVault.class),
                         mock(PromptHandler.class),
                         mock(EventManager.class),
                         new LoginSessionManager(),
-                        beans.getBeanProvider(IpcServer.class));
+                        beans.getBeanProvider(TcpServer.class));
         try (var first = connect(address);
                 var second = connect(address);
                 var other = connect(address)) {
@@ -719,7 +640,8 @@ class IpcPeerIsolationTest {
         var registry = mock(CommandRegistry.class);
         var flooding = new CountDownLatch(1);
         var rejected = new CountDownLatch(1);
-        var payload = Delta.message("x".repeat(512 * 1024));
+        var capacity = new CountDownLatch(8);
+        var payload = Delta.message("x".repeat(8 * 1024 * 1024));
         doCallRealMethod().when(registry).terminalOutcome(any(), any());
         when(registry.dispatch(any(), anyString()))
                 .thenAnswer(
@@ -732,6 +654,7 @@ class IpcPeerIsolationTest {
                                     rejected.countDown();
                                     break;
                                 }
+                                capacity.countDown();
                             }
                             return done(null);
                         });
@@ -758,11 +681,19 @@ class IpcPeerIsolationTest {
                     healthy.send(new Frame.Heartbeat());
                     assertInstanceOf(Frame.HeartbeatAck.class, healthy.receive());
                     assertTrue(
-                            rejected.await(5, TimeUnit.SECONDS),
-                            "slow output must hit the byte budget");
+                            capacity.await(5, TimeUnit.SECONDS),
+                            "slow output must fill its byte budget");
+                    assertFalse(
+                            rejected.await(100, TimeUnit.MILLISECONDS),
+                            "a full output queue must wait for capacity");
                     healthy.send(new Frame.Heartbeat());
                     assertInstanceOf(Frame.HeartbeatAck.class, healthy.receive());
                 }
+                assertTrue(
+                        rejected.await(5, TimeUnit.SECONDS),
+                        "closing the slow peer must wake its waiting producer");
+                healthy.send(new Frame.Heartbeat());
+                assertInstanceOf(Frame.HeartbeatAck.class, healthy.receive());
             }
         }
     }
@@ -780,9 +711,9 @@ class IpcPeerIsolationTest {
         var endpoint =
                 openEndpoint(
                         registry, mock(AgentService.class), TestAgentSessions.create(), address);
-        var server = endpoint.getBean(IpcServer.class);
+        var server = endpoint.getBean(TcpServer.class);
         try (var terminal = connect(address)) {
-            var workerField = IpcServer.class.getDeclaredField("acceptor");
+            var workerField = TcpServer.class.getDeclaredField("acceptor");
             workerField.setAccessible(true);
             if (!(workerField.get(server) instanceof Thread worker))
                 throw new AssertionError("Missing IO owner");

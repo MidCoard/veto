@@ -16,9 +16,8 @@ import org.junit.jupiter.api.Timeout;
 class ProtocolClientFailureCleanupTest {
     @Test
     @Timeout(5)
-    void rejectedHandshakeClosesTransportAndPreservesTheOriginalFailure() throws Exception {
+    void failedHandshakeClosesTransportOnceAndJoinsTheWriter() throws Exception {
         var handshakeFailure = new IllegalStateException("handshake rejected");
-        var cleanupFailure = new IllegalStateException("cleanup failed");
         var closes = new CountDownLatch(1);
         var closeCount = new AtomicInteger();
         var writer = new AtomicReference<Thread>();
@@ -37,7 +36,6 @@ class ProtocolClientFailureCleanupTest {
                     public void close() {
                         closeCount.incrementAndGet();
                         closes.countDown();
-                        throw cleanupFailure;
                     }
                 };
         var client = new ProtocolClient(transport);
@@ -46,7 +44,6 @@ class ProtocolClientFailureCleanupTest {
             assertTrue(client.isClosed());
             client.close();
             assertWorkerStopped(writer.get());
-            assertArrayEquals(new Throwable[] {cleanupFailure}, handshakeFailure.getSuppressed());
             assertEquals(1, closeCount.get());
             assertNull(client.receive());
         } finally {

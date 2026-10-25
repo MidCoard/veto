@@ -8,6 +8,7 @@ import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import top.focess.veto.api.plugin.PluginContext;
@@ -215,7 +216,11 @@ class ManagedPluginStateTest {
                                 Map.of()),
                         new JsonValue.ObjectValue(Map.of()));
                 assertEquals(PluginState.INITIALIZED, managed.state());
+                var ready = new AtomicBoolean();
+                managed.whenActive(() -> ready.set(true));
+                assertFalse(ready.get());
                 managed.start();
+                assertTrue(ready.get(), "Ready callbacks must finish before startup returns");
                 assertEquals(PluginState.ACTIVE, managed.state());
                 assertEquals(managed.state(), managed.execute(managed::state));
                 managed.close();

@@ -14,6 +14,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
@@ -244,62 +245,63 @@ class ProtocolClientLifecycleTest {
     }
 
     @Test
-    void fullOutboxRejectsWorkInsteadOfDroppingIt() throws Exception {
+    void fullOutboxWaitsUntilTheWriterMakesCapacity() throws Exception {
         var peer = new Peer();
         peer.blockSend = true;
-        try (var client = new ProtocolClient(peer)) {
+        try (var workers = Executors.newVirtualThreadPerTaskExecutor();
+                var client = new ProtocolClient(peer)) {
             assertInstanceOf(Frame.Welcome.class, client.receive(1, TimeUnit.SECONDS));
             client.send(new Frame.Request(client.nextSequence(), null, null, "in-flight"));
             assertTrue(peer.sending.await(1, TimeUnit.SECONDS));
             for (int i = 0; i < 256; i++)
                 client.send(new Frame.Request(client.nextSequence(), null, null, "queued"));
-            assertThrows(
-                    IllegalStateException.class,
-                    () ->
-                            client.send(
-                                    new Frame.Request(
-                                            client.nextSequence(), null, null, "overflow")));
-            assertNull(client.hint("optional", 1, TimeUnit.SECONDS));
+            var pending =
+                    workers.submit(
+                            () -> {
+                                client.send(
+                                        new Frame.Request(
+                                                client.nextSequence(), null, null, "waiting"));
+                                return null;
+                            });
+            assertThrows(TimeoutException.class, () -> pending.get(100, TimeUnit.MILLISECONDS));
+            assertNull(client.hint("optional", 100, TimeUnit.MILLISECONDS));
             assertFalse(client.isClosed());
             peer.release.countDown();
+            pending.get(2, TimeUnit.SECONDS);
         } finally {
             peer.release.countDown();
         }
     }
 
     @Test
-    void outboxRejectsExcessBytesBeforeItsFrameCountLimit() throws Exception {
+    void outboxByteBudgetBackpressuresBeforeItsFrameCountLimit() throws Exception {
         var peer = new Peer();
         peer.blockSend = true;
-        try (var client = new ProtocolClient(peer)) {
+        try (var workers = Executors.newVirtualThreadPerTaskExecutor();
+                var client = new ProtocolClient(peer)) {
             assertInstanceOf(Frame.Welcome.class, client.receive(1, TimeUnit.SECONDS));
             client.send(new Frame.Request(client.nextSequence(), null, null, "in-flight"));
             assertTrue(peer.sending.await(1, TimeUnit.SECONDS));
-            var payload = "x".repeat(800 * 1024);
+            var payload = "x".repeat(6 * 1024 * 1024);
             for (int i = 0; i < 10; i++)
                 client.send(new Frame.Request(client.nextSequence(), null, null, payload));
-            assertThrows(
-                    IllegalStateException.class,
-                    () ->
-                            client.send(
-                                    new Frame.Request(client.nextSequence(), null, null, payload)));
-            assertThrows(
-                    IllegalArgumentException.class,
-                    () ->
-                            client.send(
-                                    new Frame.Request(
-                                            client.nextSequence(),
-                                            null,
-                                            null,
-                                            "x".repeat(FrameTransport.MAX_FRAME_BYTES))));
-            assertNull(
-                    client.hint("x".repeat(FrameTransport.MAX_FRAME_BYTES), 1, TimeUnit.SECONDS));
+            var pending =
+                    workers.submit(
+                            () -> {
+                                client.send(
+                                        new Frame.Request(
+                                                client.nextSequence(), null, null, payload));
+                                return null;
+                            });
+            assertThrows(TimeoutException.class, () -> pending.get(100, TimeUnit.MILLISECONDS));
             assertFalse(client.isClosed());
+            peer.release.countDown();
+            pending.get(2, TimeUnit.SECONDS);
         }
     }
 
     @Test
-    void pendingHeartbeatAndBlockedWriterDoNotStopRepliesOrStreamDelivery() throws Exception {
+    void heartbeatAndBlockedWriterDoNotStopRepliesOrStreamDelivery() throws Exception {
         var peer = new Peer();
         try (var client = new ProtocolClient(peer, Version.UNKNOWN, "", 20)) {
             assertInstanceOf(Frame.Welcome.class, client.receive(1, TimeUnit.SECONDS));
@@ -321,29 +323,31 @@ class ProtocolClientLifecycleTest {
     }
 
     @Test
-    void receiveOverflowClosesConnectionAndRetainsAcceptedFrames() throws Exception {
+    void fullReceiveQueueResumesWhenTheConsumerMakesCapacity() throws Exception {
         var peer = new Peer();
         try (var client = new ProtocolClient(peer)) {
             assertInstanceOf(Frame.Welcome.class, client.receive(1, TimeUnit.SECONDS));
             for (int i = 0; i < 257; i++) assertTrue(peer.incoming.offer(Delta.message("event")));
-            assertTrue(peer.closed.await(2, TimeUnit.SECONDS));
-            assertTrue(client.isClosed());
-            for (int i = 0; i < 256; i++) assertTrue(client.receive() instanceof Delta);
-            assertNull(client.receive(), "Overflow ends the stream after admitted frames drain");
+            assertFalse(peer.closed.await(100, TimeUnit.MILLISECONDS));
+            for (int i = 0; i < 257; i++)
+                assertInstanceOf(Delta.class, client.receive(1, TimeUnit.SECONDS));
+            assertFalse(client.isClosed());
         }
     }
 
     @Test
-    void incomingByteBudgetClosesBeforeTheFrameCountLimit() throws Exception {
+    void incomingByteBudgetWaitsWithoutDroppingAcceptedFrames() throws Exception {
         var peer = new Peer();
         try (var client = new ProtocolClient(peer)) {
             assertInstanceOf(Frame.Welcome.class, client.receive(1, TimeUnit.SECONDS));
-            var frame = Delta.message("x".repeat(800 * 1024));
+            var frame = Delta.message("x".repeat(6 * 1024 * 1024));
             for (int i = 0; i < 11; i++) assertTrue(peer.incoming.offer(frame));
-            assertTrue(peer.closed.await(2, TimeUnit.SECONDS));
-            assertTrue(client.isClosed());
-            for (int i = 0; i < 10; i++) assertEquals(frame, client.receive(0, TimeUnit.SECONDS));
-            assertNull(client.receive());
+            assertFalse(peer.closed.await(100, TimeUnit.MILLISECONDS));
+            for (int i = 0; i < 11; i++)
+                assertTrue(
+                        frame.equals(client.receive(2, TimeUnit.SECONDS)),
+                        "Every admitted frame must be retained");
+            assertFalse(client.isClosed());
         }
     }
 

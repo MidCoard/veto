@@ -14,7 +14,7 @@ import top.focess.veto.command.PromptHandler;
 import top.focess.veto.command.VetoCommandSender;
 import top.focess.veto.event.EventManager;
 import top.focess.veto.security.SignupPolicy;
-import top.focess.veto.terminal.IpcServer;
+import top.focess.veto.terminal.TcpServer;
 
 class AuthConcurrencyTest {
     @Test
@@ -32,7 +32,7 @@ class AuthConcurrencyTest {
                         mock(PromptHandler.class),
                         mock(EventManager.class),
                         tokens,
-                        new StaticListableBeanFactory().getBeanProvider(IpcServer.class));
+                        new StaticListableBeanFactory().getBeanProvider(TcpServer.class));
         var accounts = mock(UserAdminService.class);
         var sender = mock(VetoCommandSender.class);
         when(sender.userId()).thenReturn(ADMIN);

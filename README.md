@@ -198,7 +198,7 @@ Default listeners:
 | Surface | Default |
 | --- | --- |
 | REST and application WebSocket | `http://127.0.0.1:8443` |
-| terminal IPC | `tcp://127.0.0.1:5555` |
+| terminal TCP | `tcp://127.0.0.1:5555` |
 | routing WebSocket service | port `9090`, path `/ws/veto/bus` |
 | gRPC routing service | port `9091` |
 
@@ -256,7 +256,7 @@ configuration classes.
 | Property | Default | Meaning |
 | --- | --- | --- |
 | `server.port` | `8443` | REST server port |
-| `veto.terminal.bind-address` | `tcp://127.0.0.1:5555` | terminal IPC bind address |
+| `veto.terminal.bind-address` | `tcp://127.0.0.1:5555` | terminal TCP bind address |
 | `veto.security.deployer-policy` | `FULL_ACCESS` | `FULL_ACCESS`, `PROTECTED`, `SANDBOXED`, or `TENANT` |
 | `veto.security.screening-mode` | `STRICT` | `STRICT`, `BALANCED`, or `PERMISSIVE` |
 | `veto.security.signup.mode` | `invite` | `solo`, `public`, or `invite` |

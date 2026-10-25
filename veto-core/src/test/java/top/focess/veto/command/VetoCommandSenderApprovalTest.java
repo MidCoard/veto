@@ -6,6 +6,7 @@ import static org.mockito.Mockito.*;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.function.BooleanSupplier;
@@ -36,22 +37,21 @@ class VetoCommandSenderApprovalTest {
         var runtime = TestAgentSessions.create(repository, agents);
         var frames = new LinkedBlockingQueue<Frame.ServerFrame>();
         var scope = new Scope.AgentScope(TestUsers.ALICE, UUID.randomUUID().toString(), "agent");
-        try (var connection =
-                new ProtocolConnection(
-                        "terminal",
-                        runtime,
-                        mock(SessionService.class),
-                        mock(SessionCommandService.class),
-                        mock(CommandRegistry.class),
-                        TestUsers.ALICE,
-                        () -> true,
-                        BooleanSupplier::getAsBoolean,
-                        (frame, version, attached) -> {
-                            frames.add(frame);
-                            return true;
-                        },
-                        ignored -> {},
-                        Locale.ENGLISH)) {
+        try (var workers = Executors.newVirtualThreadPerTaskExecutor();
+                var connection =
+                        new ProtocolConnection(
+                                "terminal",
+                                runtime,
+                                mock(SessionService.class),
+                                mock(SessionCommandService.class),
+                                mock(CommandRegistry.class),
+                                TestUsers.ALICE,
+                                () -> true,
+                                BooleanSupplier::getAsBoolean,
+                                workers,
+                                frames::add,
+                                ignored -> {},
+                                Locale.ENGLISH)) {
             connection.receive(new Frame.Hello(Frame.PROTOCOL_VERSION, 1, Version.UNKNOWN, "."));
             assertInstanceOf(Frame.Welcome.class, frames.poll(2, TimeUnit.SECONDS));
             runtime.select(

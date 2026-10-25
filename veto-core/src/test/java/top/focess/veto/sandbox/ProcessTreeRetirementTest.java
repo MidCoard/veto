@@ -235,6 +235,7 @@ class ProcessTreeRetirementTest {
                 $info = [Diagnostics.ProcessStartInfo]::new()
                 $info.FileName = (Get-Process -Id $PID).Path
                 $info.UseShellExecute = $false
+                $info.CreateNoWindow = $true
                 $info.RedirectStandardOutput = $true
                 $info.RedirectStandardError = $true
                 $info.Arguments = '-NoProfile -NonInteractive -File "CHILD_SCRIPT"'

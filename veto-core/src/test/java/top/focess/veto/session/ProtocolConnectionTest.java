@@ -10,6 +10,8 @@ import java.util.UUID;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -49,6 +51,7 @@ class ProtocolConnectionTest {
     private final @NonNull BlockingQueue<Frame.@NonNull ServerFrame> replies =
             new LinkedBlockingQueue<>();
     private final @NonNull AtomicBoolean authenticated = new AtomicBoolean(true);
+    private final @NonNull ExecutorService workers = Executors.newVirtualThreadPerTaskExecutor();
     private final @NonNull ModelBinding model =
             new ModelBinding(
                     ProviderType.ANTHROPIC,
@@ -77,12 +80,13 @@ class ProtocolConnectionTest {
                     TestUsers.ALICE,
                     authenticated::get,
                     operation -> authenticated.get() && operation.getAsBoolean(),
-                    (frame, version, attached) -> attached.getAsBoolean() && replies.offer(frame),
+                    workers,
+                    replies::add,
                     ignored -> {},
                     Locale.CHINESE);
 
     @BeforeEach
-    void setUp() {
+    void setUp() throws InterruptedException {
         prepare(entity);
         when(primary.id()).thenReturn("primary");
         when(child.id()).thenReturn("child");
@@ -90,7 +94,7 @@ class ProtocolConnectionTest {
         when(agents.agent(anyString())).thenReturn(primary);
         when(agents.sessionAgent(entity.getId(), "child")).thenReturn(child);
         connection.receive(new Frame.Hello(5, 1, Version.UNKNOWN, ""));
-        assertInstanceOf(Frame.Welcome.class, replies.poll());
+        assertInstanceOf(Frame.Welcome.class, replies.poll(2, TimeUnit.SECONDS));
     }
 
     private void prepare(@NonNull SessionEntity session) {
@@ -107,6 +111,7 @@ class ProtocolConnectionTest {
     @AfterEach
     void close() {
         connection.close();
+        workers.close();
     }
 
     @Test

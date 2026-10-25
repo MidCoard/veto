@@ -4,6 +4,7 @@ import jakarta.annotation.PreDestroy;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import org.jspecify.annotations.NonNull;
@@ -104,7 +105,7 @@ public class SessionActions {
                                         report(error);
                                     }
                                 });
-                    } catch (RuntimeException error) {
+                    } catch (RejectedExecutionException error) {
                         report(error);
                     }
                 };
@@ -125,9 +126,10 @@ public class SessionActions {
                 .warn("Resource action delivery failed; clients recover from snapshots", error);
     }
 
-    /** Stops the delivery executor. */
+    /** Discards queued notifications and waits for the interrupted delivery worker to exit. */
     @PreDestroy
     public void close() {
         delivery.shutdownNow();
+        delivery.close();
     }
 }

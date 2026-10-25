@@ -19,7 +19,7 @@ import top.focess.veto.command.commands.LoginCommand;
 import top.focess.veto.event.EventManager;
 import top.focess.veto.i18n.Msg;
 import top.focess.veto.security.SignupPolicy;
-import top.focess.veto.terminal.IpcServer;
+import top.focess.veto.terminal.TcpServer;
 
 class LoginCommandTest {
     @Test
@@ -42,7 +42,7 @@ class LoginCommandTest {
                         mock(PromptHandler.class),
                         events,
                         new LoginSessionManager(),
-                        new StaticListableBeanFactory().getBeanProvider(IpcServer.class));
+                        new StaticListableBeanFactory().getBeanProvider(TcpServer.class));
         var sender = mock(VetoCommandSender.class);
         when(sender.hasPermission(any(CommandPermission.class))).thenReturn(true);
         when(sender.input("Password:", true)).thenReturn("wrong-password");

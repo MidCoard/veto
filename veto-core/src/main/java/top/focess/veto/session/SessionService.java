@@ -433,7 +433,7 @@ public class SessionService {
      *
      * @param userId the account ID
      * @param cwd the terminal's current working directory; never {@code null} (the terminal always
-     *     reports its JVM working dir in the IPC {@code Hello} handshake)
+     *     reports its JVM working dir in the TCP {@code Hello} handshake)
      */
     public @NonNull List<SessionEntity> listSessions(@NonNull UUID userId, @NonNull String cwd) {
         return sessions.findByUserId(userId).stream()
@@ -605,8 +605,8 @@ public class SessionService {
 
     /**
      * Resolves the LLM config for a session by name + userId (REST path). The REST controller has
-     * no terminalId (that's an IPC concept); it resolves the session by name for the authenticated
-     * user and returns the config + session id in one call.
+     * no terminalId (that's a terminal concept); it resolves the session by name for the
+     * authenticated user and returns the config + session id in one call.
      */
     public @NonNull Optional<SessionConfig> resolveByName(
             @NonNull String name, @NonNull UUID userId) {

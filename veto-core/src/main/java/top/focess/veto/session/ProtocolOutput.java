@@ -1,14 +1,11 @@
 package top.focess.veto.session;
 
-import java.util.function.BooleanSupplier;
+import java.io.IOException;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.contract.Frame;
 
-/**
- * Admits a server frame to a transport's bounded output queue without blocking on IO. Carries the
- * producing authority version and attachment for delivery authorization.
- */
+/** Writes one complete server Frame. The protocol endpoint owns queuing and authorization. */
 @FunctionalInterface
 public interface ProtocolOutput {
-    boolean send(Frame.@NonNull ServerFrame frame, long version, @NonNull BooleanSupplier attached);
+    void send(Frame.@NonNull ServerFrame frame) throws IOException;
 }

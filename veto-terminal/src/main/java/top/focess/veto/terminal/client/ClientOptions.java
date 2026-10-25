@@ -14,7 +14,7 @@ import org.jspecify.annotations.NonNull;
  *   <li>{@code --address <addr>} / {@code -a <addr>} — backend connect address (default {@code
  *       tcp://127.0.0.1:5555}).
  *   <li>{@code --workspace <path>} / {@code -w <path>} — absolute path of the workspace root the
- *       agent operates in (sent to the backend in the IPC Hello handshake). When omitted, the
+ *       agent operates in (sent to the backend in the TCP Hello handshake). When omitted, the
  *       terminal's JVM cwd ({@code user.dir}) is used, so the workspace is wherever the terminal is
  *       launched from.
  * </ul>

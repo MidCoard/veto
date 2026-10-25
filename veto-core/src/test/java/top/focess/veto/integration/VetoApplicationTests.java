@@ -49,6 +49,7 @@ import top.focess.veto.integration.plugins.PluginManager;
 import top.focess.veto.memory.TurnLogService;
 import top.focess.veto.observability.AuditLogger;
 import top.focess.veto.session.AgentSessions;
+import top.focess.veto.session.ProtocolConnection;
 import top.focess.veto.vault.LoginSessionManager;
 import top.focess.veto.vault.UserRegistry;
 import top.focess.veto.veto.GBNFGrammarEngine;
@@ -318,13 +319,21 @@ class VetoApplicationTests {
                                                             + "/ws/veto/bus?token="
                                                             + token),
                                             new WebSocket.Listener() {
+                                                private final @NonNull StringBuilder incoming =
+                                                        new StringBuilder();
+
                                                 @Override
                                                 public @NonNull CompletionStage<?> onText(
                                                         @NonNull WebSocket webSocket,
                                                         @NonNull CharSequence data,
                                                         boolean last) {
-                                                    assertTrue(last);
-                                                    assertTrue(messages.offer(data.toString()));
+                                                    incoming.append(data);
+                                                    if (last) {
+                                                        assertTrue(
+                                                                messages.offer(
+                                                                        incoming.toString()));
+                                                        incoming.setLength(0);
+                                                    }
                                                     webSocket.request(1);
                                                     return CompletableFuture.completedFuture(null);
                                                 }
@@ -340,17 +349,26 @@ class VetoApplicationTests {
                                             })
                                     .get(10, TimeUnit.SECONDS));
             try {
+                var largeText = "x".repeat(8 * 1024 * 1024) + "中文 🚀";
                 socket.sendText(
                                 FrameCodec.encodeString(
                                         new Frame.Hello(
-                                                Frame.PROTOCOL_VERSION, 1, Version.UNKNOWN, "")),
+                                                Frame.PROTOCOL_VERSION,
+                                                1,
+                                                Version.UNKNOWN,
+                                                largeText)),
                                 true)
                         .get(5, TimeUnit.SECONDS);
                 assertInstanceOf(Frame.Welcome.class, nextWebSocketFrame(messages));
+                var endpoint = ReflectionTestUtils.getField(webSocketConnection(token), "protocol");
+                if (!(endpoint instanceof ProtocolConnection connection))
+                    throw new AssertionError("Missing protocol endpoint");
+                var largeResponse = new Frame.Error(largeText, 0);
+                assertTrue(connection.send(largeResponse));
+                assertTrue(
+                        largeResponse.equals(nextWebSocketFrame(messages)),
+                        "WebSocket must preserve the complete large reply");
                 var session = nativeWebSocket(token);
-                var worker = ReflectionTestUtils.getField(webSocketConnection(token), "writer");
-                if (!(worker instanceof Thread writer))
-                    throw new AssertionError("Missing WebSocket writer");
                 assertEquals(90_000L, session.getUserProperties().get(READ_IDLE_TIMEOUT_MS));
                 assertEquals(
                         10_000L, session.getUserProperties().get(BLOCKING_SEND_TIMEOUT_PROPERTY));
@@ -374,10 +392,14 @@ class VetoApplicationTests {
                 assertNull(ReflectionTestUtils.invokeMethod(session, "checkExpiration"));
                 assertEquals(1001, closed.get(5, TimeUnit.SECONDS));
                 assertFalse(session.isOpen());
-                // Client close notification precedes the server writer's registry cleanup.
-                writer.join(5000);
-                assertFalse(writer.isAlive());
-                assertThrows(AssertionError.class, () -> nativeWebSocket(token));
+                var connections =
+                        ReflectionTestUtils.getField(
+                                context.getBean(WebSocketServer.class), "connections");
+                if (!(connections instanceof Map<?, ?> peers))
+                    throw new AssertionError("Missing connections");
+                long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+                while (!peers.isEmpty() && System.nanoTime() < deadline) Thread.sleep(10);
+                assertTrue(peers.isEmpty());
             } finally {
                 socket.abort();
             }
@@ -392,7 +414,9 @@ class VetoApplicationTests {
     }
 
     private @NonNull WsSession nativeWebSocket(@NonNull String token) {
-        var candidate = ReflectionTestUtils.getField(webSocketConnection(token), "socket");
+        var transport = ReflectionTestUtils.getField(webSocketConnection(token), "transport");
+        if (transport == null) throw new AssertionError("Missing WebSocket transport");
+        var candidate = ReflectionTestUtils.getField(transport, "socket");
         if (candidate instanceof NativeWebSocketSession nativeSocket
                 && nativeSocket.getNativeSession() instanceof WsSession session) return session;
         throw new AssertionError("Missing native Tomcat session");
@@ -405,7 +429,9 @@ class VetoApplicationTests {
             throw new AssertionError("Missing connections");
         for (var connection : connections.values()) {
             if (connection == null) continue;
-            var candidate = ReflectionTestUtils.getField(connection, "socket");
+            var transport = ReflectionTestUtils.getField(connection, "transport");
+            if (transport == null) throw new AssertionError("Missing WebSocket transport");
+            var candidate = ReflectionTestUtils.getField(transport, "socket");
             if (candidate instanceof WebSocketSession socket
                     && token.equals(
                             socket.getAttributes()

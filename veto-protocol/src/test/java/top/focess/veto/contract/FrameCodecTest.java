@@ -198,7 +198,6 @@ class FrameCodecTest {
             strings = {
                 "{\"type\":\"cancel\",\"targetSeq\":1}",
                 "{\"type\":\"cancel\",\"targetSeq\":1,\"seq\":0}",
-                "{\"type\":\"cancel\",\"targetSeq\":1,\"seq\":-1}",
                 "{\"type\":\"cancel\",\"targetSeq\":1,\"seq\":null}",
                 "{\"type\":\"cancel_result\",\"seq\":1}",
                 "{\"type\":\"cancel_result\",\"status\":null,\"seq\":1}",
@@ -207,10 +206,9 @@ class FrameCodecTest {
                 "{\"type\":\"cancel_result\",\"status\":\"0\",\"seq\":1}",
                 "{\"type\":\"cancel_result\",\"status\":\"UNKNOWN\",\"seq\":1}",
                 "{\"type\":\"cancel_result\",\"status\":\"ACCEPTED\"}",
-                "{\"type\":\"cancel_result\",\"status\":\"ACCEPTED\",\"seq\":0}",
-                "{\"type\":\"cancel_result\",\"status\":\"ACCEPTED\",\"seq\":-1}"
+                "{\"type\":\"cancel_result\",\"status\":\"ACCEPTED\",\"seq\":0}"
             })
-    void cancellationRequiresStatusAndPositiveCorrelation(@NonNull String payload) {
+    void cancellationRequiresStatusAndNonzeroCorrelation(@NonNull String payload) {
         assertNull(FrameCodec.decode(payload));
         assertNull(FrameCodec.decode(payload.getBytes(StandardCharsets.UTF_8)));
     }

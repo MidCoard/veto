@@ -26,12 +26,11 @@ public final class TestConnection {
                         user,
                         () -> true,
                         BooleanSupplier::getAsBoolean,
-                        (frame, version, attached) -> {
-                            if (!attached.getAsBoolean()) return false;
+                        Runnable::run,
+                        frame -> {
                             if (!(frame instanceof Frame.ScopedFrame scoped))
                                 throw new AssertionError("Expected session output");
                             receive.accept(scoped);
-                            return true;
                         },
                         ignored -> {},
                         Locale.ENGLISH);

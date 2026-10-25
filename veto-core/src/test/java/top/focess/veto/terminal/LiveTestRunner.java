@@ -14,7 +14,7 @@ import top.focess.veto.contract.Version;
 import top.focess.veto.transport.tcp.TcpConnection;
 
 /**
- * Live production-path test: boots the full backend with IpcServer on a real TCP port, connects a
+ * Live production-path test: boots the full backend with TcpServer on a real TCP port, connects a
  * standard TCP connection, and exercises every command just like the real terminal does.
  */
 @SpringBootTest(

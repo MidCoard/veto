@@ -14,7 +14,7 @@ import top.focess.veto.contract.Version;
  * Reports the product versions of the connected components.
  *
  * <p>Prints the backend ({@code veto-core}) version - a build-time constant - alongside the
- * connecting terminal's ({@code veto-terminal}) version, which the terminal reported during the IPC
+ * connecting terminal's ({@code veto-terminal}) version, which the terminal reported during the TCP
  * {@link Frame.Hello} handshake. Available to everyone; version information is not sensitive.
  */
 public class VersionCommand extends VetoCommand {
