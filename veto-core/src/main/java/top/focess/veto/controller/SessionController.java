@@ -27,7 +27,6 @@ import top.focess.veto.model.SessionEntity;
 import top.focess.veto.session.SessionHistoryLoader;
 import top.focess.veto.session.SessionRecordService;
 import top.focess.veto.session.SessionService;
-import top.focess.veto.session.SessionService.SessionConfig;
 import top.focess.veto.vault.KeysteadVault;
 
 /**
@@ -159,15 +158,13 @@ public class SessionController {
     // Turn payloads intentionally preserve code and model text; Jackson supplies JSON encoding.
     @SuppressWarnings("JvmTaintAnalysis")
     public @NonNull ResponseEntity<?> history(@PathVariable @NonNull String name) {
-        SessionConfig cfg = requireOwnedSession(name);
-        UUID userId = vault.currentUser();
-        if (userId == null) throw new ResponseStatusException(HttpStatus.UNAUTHORIZED);
-        String agentId = service.primaryAgentIdFor(name, userId).orElse(null);
+        SessionEntity session = requireOwnedSession(name);
+        String agentId = session.getPrimaryAgentId();
         List<HistoryTurnResponse> turns = new ArrayList<>();
         // The conversation ledger has no agent IDs; keep child streams in /records only.
         if (agentId == null) return ResponseEntity.ok(turns);
         for (TurnRecord turn :
-                RecordUsage.contentRecords(historyLoader.load(cfg.sessionId(), agentId))) {
+                RecordUsage.contentRecords(historyLoader.load(session.getId(), agentId))) {
             Long count = RecordTokenCounter.count(turn.payload());
             Object source = turn.payload().get("tokenCountSource");
             turns.add(
@@ -190,9 +187,9 @@ public class SessionController {
      */
     @GetMapping(value = "/{name}/records", produces = MediaType.APPLICATION_JSON_VALUE)
     public @NonNull ResponseEntity<?> records(@PathVariable @NonNull String name) {
-        SessionConfig cfg = requireOwnedSession(name);
+        SessionEntity session = requireOwnedSession(name);
         return ResponseEntity.ok(
-                recordService.load(cfg.sessionId(), name, cfg.toolResultPresentation()));
+                recordService.load(session.getId(), name, session.getToolResultPresentation()));
     }
 
     /**
@@ -200,8 +197,8 @@ public class SessionController {
      */
     @GetMapping("/{name}/execution")
     public @NonNull List<ExecutionState> execution(@PathVariable @NonNull String name) {
-        SessionConfig cfg = requireOwnedSession(name);
-        return agentRegistry.agents(UUID.fromString(cfg.sessionId())).stream()
+        SessionEntity session = requireOwnedSession(name);
+        return agentRegistry.agents(UUID.fromString(session.getId())).stream()
                 .map(
                         entry ->
                                 new ExecutionState(
@@ -216,25 +213,25 @@ public class SessionController {
     @GetMapping("/{name}/agents")
     public @NonNull List<SessionAgentRegistry.@NonNull AgentSummary> agents(
             @PathVariable @NonNull String name) {
-        SessionConfig cfg = requireOwnedSession(name);
-        return agentRegistry.records(UUID.fromString(cfg.sessionId()));
+        SessionEntity session = requireOwnedSession(name);
+        return agentRegistry.records(UUID.fromString(session.getId()));
     }
 
     /** Shows preserved plugin pins, including packages missing after a backend restart. */
     @GetMapping("/{name}/plugins")
     public @NonNull List<SessionPlugins.BoundPluginStatus> plugins(
             @PathVariable @NonNull String name) {
-        SessionConfig cfg = requireOwnedSession(name);
-        return sessionPlugins.status(cfg.sessionId());
+        SessionEntity session = requireOwnedSession(name);
+        return sessionPlugins.status(session.getId());
     }
 
-    private @NonNull SessionConfig requireOwnedSession(@NonNull String name) {
+    private @NonNull SessionEntity requireOwnedSession(@NonNull String name) {
         UUID userId = vault.currentUser();
         if (userId == null) {
             throw new ResponseStatusException(
                     HttpStatus.UNAUTHORIZED, Msg.get("error.auth.notAuthenticated"));
         }
-        return service.resolveByName(name, userId)
+        return service.findByName(name, userId)
                 .orElseThrow(
                         () ->
                                 new ResponseStatusException(

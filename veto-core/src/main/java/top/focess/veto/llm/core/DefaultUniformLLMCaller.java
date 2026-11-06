@@ -22,7 +22,7 @@ import top.focess.veto.util.Nullness;
  *
  * <ol>
  *   <li>select the supporting {@link LLMProviderStrategy},
- *   <li>resolve the transport target via the {@link LlmEgress} strategy (in-place key vs broker),
+ *   <li>ask the provider to resolve its target, supplying host {@link LlmEgress} for network calls,
  *   <li>execute with bounded retry/backoff for transient ({@code retryable}) failures.
  * </ol>
  */
@@ -64,13 +64,7 @@ public class DefaultUniformLLMCaller implements UniformLLMCaller {
                             ? plugins.require(request.providerType())
                             : plugins.require(request.providerType(), sessionId);
         }
-        EgressEndpoint endpoint =
-                egress.resolve(
-                        request.providerType(),
-                        request.baseUrl() != null ? request.baseUrl() : provider.defaultBaseUrl(),
-                        request.credentialKey());
-        ResolvedRequest resolved =
-                new ResolvedRequest(request, endpoint.baseUrl(), endpoint.apiKey());
+        ResolvedRequest resolved = provider.resolve(request, this::resolveNetwork);
         LlmException last = null;
         for (int attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
             try {
@@ -84,6 +78,16 @@ public class DefaultUniformLLMCaller implements UniformLLMCaller {
             }
         }
         throw Nullness.requireNonNull(last);
+    }
+
+    private @NonNull ResolvedRequest resolveNetwork(
+            @NonNull VetoRequest request, String defaultEndpoint) {
+        EgressEndpoint endpoint =
+                egress.resolve(
+                        request.providerType(),
+                        request.baseUrl() != null ? request.baseUrl() : defaultEndpoint,
+                        request.credentialKey());
+        return new ResolvedRequest(request, endpoint.baseUrl(), endpoint.apiKey());
     }
 
     private void backoff(int attempt, @NonNull LlmException cause) {

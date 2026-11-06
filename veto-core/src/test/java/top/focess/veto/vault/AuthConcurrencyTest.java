@@ -10,11 +10,11 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.support.StaticListableBeanFactory;
+import top.focess.veto.bus.WebSocketServer;
 import top.focess.veto.command.PromptHandler;
 import top.focess.veto.command.VetoCommandSender;
 import top.focess.veto.event.EventManager;
 import top.focess.veto.security.SignupPolicy;
-import top.focess.veto.terminal.TcpServer;
 
 class AuthConcurrencyTest {
     @Test
@@ -32,7 +32,7 @@ class AuthConcurrencyTest {
                         mock(PromptHandler.class),
                         mock(EventManager.class),
                         tokens,
-                        new StaticListableBeanFactory().getBeanProvider(TcpServer.class));
+                        new StaticListableBeanFactory().getBeanProvider(WebSocketServer.class));
         var accounts = mock(UserAdminService.class);
         var sender = mock(VetoCommandSender.class);
         when(sender.userId()).thenReturn(ADMIN);
@@ -74,7 +74,10 @@ class AuthConcurrencyTest {
                 workers.submit(
                                 () -> {
                                     var bob = auth.login("bob", "test-password");
+                                    assertEquals(
+                                            bob.user().getRole(), auth.status(bob.token()).role());
                                     auth.logout(bob.token());
+                                    assertNull(auth.status(bob.token()).role());
                                     assertFalse(tokens.hasLoginSessions(BOB));
                                     assertNotNull(auth.status(null));
                                     assertTrue(auth.canManageUsers(sender));

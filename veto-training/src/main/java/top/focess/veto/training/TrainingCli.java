@@ -8,6 +8,8 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Properties;
 import org.jspecify.annotations.NonNull;
+import top.focess.veto.training.ModelTrainer.Completed;
+import top.focess.veto.training.ModelTrainer.Paused;
 
 /** Shared Java entry point for the two offline Gradle training tasks. */
 public final class TrainingCli {
@@ -31,8 +33,30 @@ public final class TrainingCli {
                         Duration.ofSeconds(
                                 Long.parseLong(
                                         properties.getProperty("timeout.seconds", "14400"))));
-        var result = trainer.train(request(root, properties), System.out::println);
-        System.out.println("Artifact: " + result.gguf());
+        var request = request(root, properties);
+        String action = properties.getProperty("action", "train");
+        if (action.equals("pause")) {
+            trainer.requestPause(request.outputDirectory());
+            System.out.println("Pause requested; wait for the training caller's Paused result.");
+            return;
+        }
+        var result =
+                switch (action) {
+                    case "train" -> trainer.train(request, System.out::println);
+                    case "resume" ->
+                            trainer.resume(
+                                    request,
+                                    root.resolve(required(properties, "resume.checkpoint")),
+                                    System.out::println);
+                    case "export" -> trainer.export(request, System.out::println);
+                    default ->
+                            throw new IllegalArgumentException(
+                                    "Unknown training action: " + action);
+                };
+        switch (result) {
+            case Completed completed -> System.out.println("Artifact: " + completed.gguf());
+            case Paused paused -> System.out.println("Paused checkpoint: " + paused.checkpoint());
+        }
         System.out.println("Elapsed: " + result.elapsed());
     }
 
@@ -58,7 +82,8 @@ public final class TrainingCli {
                         Integer.parseInt(properties.getProperty("lora.alpha", "32")),
                         Double.parseDouble(properties.getProperty("lora.dropout", "0.05")),
                         Integer.parseInt(properties.getProperty("sequence.length", "1024")),
-                        format));
+                        format,
+                        Integer.parseInt(properties.getProperty("checkpoint.steps", "100"))));
     }
 
     private static @NonNull String required(@NonNull Properties properties, @NonNull String name) {

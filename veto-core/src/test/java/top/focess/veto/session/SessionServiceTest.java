@@ -14,6 +14,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.regex.Pattern;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -46,6 +47,7 @@ import top.focess.veto.event.EventManager;
 import top.focess.veto.integration.plugins.PluginDataCleanup;
 import top.focess.veto.integration.plugins.PluginManager;
 import top.focess.veto.integration.plugins.PluginTestSupport;
+import top.focess.veto.integration.plugins.SecretAgentHostFixture;
 import top.focess.veto.integration.plugins.storage.ScopedPluginStorage;
 import top.focess.veto.memory.TurnRecordRepository;
 import top.focess.veto.model.AgentEntity;
@@ -62,6 +64,73 @@ import top.focess.veto.vault.UserRegistry;
 
 class SessionServiceTest {
     private final @NonNull SessionAgentRegistry liveAgents = mock(SessionAgentRegistry.class);
+
+    @Test
+    void historicalReadsUseOwnedWorkspaceAndPrimaryReplayWithoutModelOrRuntime() {
+        var sessions = mock(SessionRepository.class);
+        var agents = mock(AgentInstanceRepository.class);
+        var execution = mock(AgentService.class);
+        var history = mock(SessionHistoryLoader.class);
+        var runtime = mock(AgentSessions.class);
+        var legacy = new SessionEntity(TestUsers.ALICE, "same-name");
+        var selected = new SessionEntity(TestUsers.ALICE, "same-name", CWD);
+        selected.setPrimaryAgentId("primary");
+        var otherWorkspace =
+                new SessionEntity(
+                        TestUsers.ALICE, "elsewhere", Path.of(CWD, "other-workspace").toString());
+        when(sessions.findByUserId(TestUsers.ALICE))
+                .thenReturn(List.of(legacy, otherWorkspace, selected));
+        when(sessions.findByUserId(TestUsers.BOB)).thenReturn(List.of());
+        when(sessions.findFirstByNameAndUserIdOrderByLastActiveAtDesc("same-name", TestUsers.ALICE))
+                .thenReturn(Optional.of(selected));
+        when(tierRegistry.resolve(any(UUID.class), any()))
+                .thenThrow(new IllegalStateException("Old model binding was removed"));
+        var retained = TurnRecord.userPrompt(1, "retained question");
+        var reply = TurnRecord.assistantResponse(2, "retained reply");
+        var rewind = new TurnRecord(5, TurnType.REWIND, Map.of("record_index", 2), null);
+        var next = TurnRecord.userPrompt(6, "new question");
+        when(history.load(selected.getId(), "primary"))
+                .thenReturn(
+                        List.of(
+                                retained,
+                                reply,
+                                TurnRecord.userPrompt(3, "removed question"),
+                                TurnRecord.assistantResponse(4, "removed reply"),
+                                rewind,
+                                next));
+        var service =
+                new SessionService(
+                        sessions,
+                        agents,
+                        mock(AgentPatternRepository.class),
+                        execution,
+                        liveAgents,
+                        history,
+                        tierRegistry,
+                        mock(WorkspaceAdmissionPolicy.class),
+                        mock(ScopedPluginStorage.class),
+                        mock(HitlRecordRepository.class),
+                        mock(PluginManager.class),
+                        mock(EventManager.class),
+                        mock(PluginDataCleanup.class),
+                        mock(RequestContinuationStore.class),
+                        runtime);
+
+        assertEquals(
+                List.of(retained, reply, rewind, next),
+                service.history("same-name", TestUsers.ALICE, CWD));
+        assertSame(selected, service.findByName("same-name", TestUsers.ALICE).orElseThrow());
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> service.history("same-name", TestUsers.BOB, CWD));
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> service.history("elsewhere", TestUsers.ALICE, CWD));
+        verify(history).load(selected.getId(), "primary");
+        verifyNoMoreInteractions(history);
+        verifyNoInteractions(agents, execution, tierRegistry, runtime, liveAgents);
+        verify(sessions, never()).save(any());
+    }
 
     @Test
     void sessionDeletionStopsIndependentPeerAfterPrimaryAlreadyTerminated() {
@@ -527,7 +596,7 @@ class SessionServiceTest {
         AgentPatternRepository patterns = mock(AgentPatternRepository.class);
         AgentService agentService = mock(AgentService.class);
         SessionHistoryLoader loader = mock(SessionHistoryLoader.class);
-        SessionEntity session = new SessionEntity(TestUsers.ALICE, "coder");
+        SessionEntity session = new SessionEntity(TestUsers.ALICE, "coder", CWD);
         AgentEntity agent =
                 new AgentEntity(
                         session.getId(),
@@ -579,6 +648,22 @@ class SessionServiceTest {
         assertEquals(Integer.valueOf(4096), cfg.get().options().maxTokens());
         assertEquals(Double.valueOf(0.7), cfg.get().options().temperature());
         assertEquals(Optional.of(session.getId()), service.activeSession("term-1"));
+        var sessionId = UUID.fromString(session.getId());
+        assertEquals(cfg, service.resumeSession("term-restored", sessionId, TestUsers.ALICE, CWD));
+        assertEquals(Optional.of(session.getId()), service.activeSession("term-restored"));
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> service.resumeSession("wrong-owner", sessionId, TestUsers.BOB, CWD));
+        assertThrows(
+                IllegalArgumentException.class,
+                () ->
+                        service.resumeSession(
+                                "wrong-workspace",
+                                sessionId,
+                                TestUsers.ALICE,
+                                Path.of(CWD).resolveSibling("different-workspace").toString()));
+        assertTrue(service.activeSession("wrong-owner").isEmpty());
+        assertTrue(service.activeSession("wrong-workspace").isEmpty());
     }
 
     @Test
@@ -845,7 +930,7 @@ class SessionServiceTest {
 
         boolean removed;
         var scope = new Scope.AgentScope(TestUsers.ALICE, session.getId(), agent.getId());
-        try (var plugins = PluginTestSupport.manager()) {
+        try (var plugins = SecretAgentHostFixture.manager(agent.getId(), List.of("alpha"))) {
             var events = spy(PluginTestSupport.eventManager(plugins));
             var users = mock(UserRegistry.class);
             var user = mock(UserEntity.class);
@@ -881,7 +966,7 @@ class SessionServiceTest {
                             scope,
                             "source",
                             "password=alpha");
-            var matcher = java.util.regex.Pattern.compile("s_[a-f0-9]{32}").matcher(captured);
+            var matcher = Pattern.compile("cred_[a-f0-9]{32}").matcher(captured);
             assertTrue(matcher.find(), "expected a captured reference");
             String secret = matcher.group();
             TransactionSynchronizationManager.initSynchronization();
@@ -910,16 +995,16 @@ class SessionServiceTest {
             }
             assertTrue(service.activeSession("term-1").isEmpty(), "terminal detached on delete");
             assertTrue(PluginTestSupport.reveal(plugins, scope, secret).isEmpty());
-            // The retired session cannot capture new references. Its listener failure is
-            // contained by event delivery, leaving the submitted text unchanged.
-            assertEquals(
-                    "password=alpha",
-                    PluginTestSupport.protect(
-                            plugins,
-                            BeforeTextCommitEvent.Phase.INPUT,
-                            scope,
-                            "late",
-                            "password=alpha"));
+            // Retired scopes must reject publication rather than retain an unprotected value.
+            assertThrows(
+                    IllegalStateException.class,
+                    () ->
+                            PluginTestSupport.protect(
+                                    plugins,
+                                    BeforeTextCommitEvent.Phase.INPUT,
+                                    scope,
+                                    "late",
+                                    "password=alpha"));
         }
         assertTrue(removed, "delete should report the session removed");
 

@@ -1,4 +1,5 @@
 export const en: Record<string,string> = {
+  "tool.showMoreResult": "Show more ({count} characters remaining)",
   "tool.origin.plugin": "Plugin",
   "tool.origin.native": "Native",
   "tool.origin.agent_loop": "Agent Loop",
@@ -170,6 +171,7 @@ export const en: Record<string,string> = {
   "tool.taskCount": "{count} task(s)"
 };
 export const zh: Record<string,string> = {
+  "tool.showMoreResult": "显示更多（剩余 {count} 个字符）",
   "tool.origin.plugin": "Plugin",
   "tool.origin.native": "Native",
   "tool.origin.agent_loop": "Agent Loop",

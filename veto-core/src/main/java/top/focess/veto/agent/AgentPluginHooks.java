@@ -161,15 +161,11 @@ final class AgentPluginHooks {
         return selected == null ? List.of() : selected.responsePolicies(sessionId);
     }
 
-    @NonNull String captureSubmittedPrompt(@NonNull String prompt) {
-        return capturePrompt(prompt, false);
-    }
-
     @NonNull String captureUserPrompt(@NonNull String prompt) {
-        return capturePrompt(prompt, true);
+        return capturePrompt(prompt);
     }
 
-    private @NonNull String capturePrompt(@NonNull String prompt, boolean executing) {
+    private @NonNull String capturePrompt(@NonNull String prompt) {
         var manager = events.get();
         if (manager == null) return prompt;
         if (!alive.getAsBoolean()) throw new ProtectedInputException();
@@ -180,8 +176,7 @@ final class AgentPluginHooks {
                             BeforeTextCommitEvent.Phase.INPUT,
                             UUID.randomUUID().toString(),
                             prompt);
-            if (executing) dispatch(manager, event);
-            else dispatchSubmission(manager, event);
+            dispatch(manager, event);
             if (event.isCancelled() || !alive.getAsBoolean()) throw new ProtectedInputException();
             return event.text();
         } catch (RuntimeException failure) {

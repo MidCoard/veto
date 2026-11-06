@@ -7,26 +7,22 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
-import org.mockito.Mockito;
 import org.springframework.context.ApplicationContext;
-import top.focess.veto.agent.drift.ReadHistory;
 import top.focess.veto.agent.intercept.*;
 import top.focess.veto.agent.screening.*;
 import top.focess.veto.agent.workspace.*;
 import top.focess.veto.api.agent.tool.CapabilityTool;
 import top.focess.veto.api.credentials.VaultAccess;
-import top.focess.veto.api.event.BeforeTextCommitEvent;
 import top.focess.veto.api.llm.ToolCall;
 import top.focess.veto.api.llm.ToolResultPresentationMode;
 import top.focess.veto.api.plugin.Scope;
-import top.focess.veto.api.plugin.contract.PluginFailure;
 import top.focess.veto.api.plugin.contract.StandardContributionPoints;
-import top.focess.veto.bus.SessionActions;
 import top.focess.veto.integration.plugins.HostResourceConfiguration;
 import top.focess.veto.integration.plugins.PluginHostServices;
 import top.focess.veto.integration.plugins.PluginManager;
@@ -37,125 +33,17 @@ import top.focess.veto.vault.TestUsers;
 
 class CredentialImportIntegrationTest {
     private static final @NonNull String IMPORT_TOOL =
-            "plugin_top_focess_secret_protection__import_detected_credential";
+            "plugin_top_focess_secret_protection__import_credential";
 
     @AfterEach
     void clearContext() {
         ToolCallContextHolder.clear();
     }
 
-    @Test
-    void screenedImportBindsCallerAndArgumentsBeforeStorage(@TempDir @NonNull Path directory)
-            throws Exception {
-        var session = UUID.randomUUID();
-        var user = TestUsers.ALICE;
-        KeysteadVault vault = mock(KeysteadVault.class);
-        when(vault.isUnlocked(TestUsers.ALICE)).thenReturn(true);
-        var mapper = new ObjectMapper();
-        var workspace = Workspace.single(directory, PathMode.REAL);
-        try (var plugins = PluginTestSupport.manager(hostServices(vault))) {
-            var scope = new Scope.AgentScope(TestUsers.ALICE, session.toString(), "agent");
-            String reference = reference(plugins, scope);
-            when(vault.createSecureNoteIfAbsent(
-                            TestUsers.ALICE,
-                            "veto.import." + reference,
-                            Map.of(
-                                    "veto.import.id", reference,
-                                    "veto.import.service", "github",
-                                    "veto.import.label", "Repository"),
-                            "synthetic-token"))
-                    .thenReturn("cred_test");
-            var engine = engineWith(mapper, plugins);
-            var definition = importTool(engine);
-            var gateway =
-                    new Gateway(
-                            workspace,
-                            new DangerComputation(),
-                            SlmScreeningProvider.unavailable(),
-                            DeployerPolicy.FULL_ACCESS,
-                            ProtectedSet.empty(),
-                            new ReadHistory());
-            var call =
-                    new ToolCall(
-                            IMPORT_TOOL,
-                            Map.of(
-                                    "secret_ref",
-                                    reference,
-                                    "service",
-                                    "github",
-                                    "label",
-                                    "Repository"),
-                            "call");
-            var screened =
-                    assertInstanceOf(
-                            GatewayResult.Screened.class, gateway.screen(call, definition));
-            assertInstanceOf(
-                    ApprovalDecision.Prompt.class,
-                    new HitlRegistry(null, Mockito.mock(SessionActions.class))
-                            .decide("agent", call, definition, screened));
-            assertFalse(engine.execute(call, definition).success());
-            verifyNoInteractions(vault);
-            var permit =
-                    gateway.revalidateExecution(call, definition, screened.executionPermit())
-                            .withCaller("agent", user, session);
-            ToolCallContextHolder.set(
-                    new ToolCallContext(
-                            "mate", user, session, ToolResultPresentationMode.BASIC, permit));
-            assertFalse(engine.execute(call, definition).success());
-            verifyNoInteractions(vault);
-            ToolCallContextHolder.set(
-                    new ToolCallContext(
-                            "agent", user, session, ToolResultPresentationMode.BASIC, permit));
-            var changed =
-                    new ToolCall(
-                            IMPORT_TOOL,
-                            Map.of(
-                                    "secret_ref",
-                                    reference,
-                                    "service",
-                                    "github",
-                                    "label",
-                                    "Changed"),
-                            "call");
-            assertFalse(engine.execute(changed, definition).success());
-            verifyNoInteractions(vault);
-            var result = engine.execute(call, definition);
-            assertTrue(result.success(), result.content());
-            assertFalse(result.content().contains("synthetic-token"));
-            assertEquals(
-                    "cred_test", mapper.readTree(result.content()).path("credential_ref").asText());
-            assertEquals("created", mapper.readTree(result.content()).path("status").asText());
-            assertTrue(engine.execute(call, definition).success());
-            verify(vault, times(1))
-                    .createSecureNoteIfAbsent(
-                            TestUsers.ALICE,
-                            "veto.import." + reference,
-                            Map.of(
-                                    "veto.import.id", reference,
-                                    "veto.import.service", "github",
-                                    "veto.import.label", "Repository"),
-                            "synthetic-token");
-        }
-    }
-
     private static @NonNull PluginHostServices hostServices(@NonNull KeysteadVault vault) {
         return new HostResourceConfiguration()
                 .pluginHostServices(
                         PluginTestSupport.providerOf(vault), PluginTestSupport.providerOf(null));
-    }
-
-    private static @NonNull String reference(
-            @NonNull PluginManager plugins, Scope.@NonNull AgentScope scope) throws PluginFailure {
-        String captured =
-                PluginTestSupport.protect(
-                        plugins,
-                        BeforeTextCommitEvent.Phase.INPUT,
-                        scope,
-                        "source",
-                        "password=synthetic-token");
-        var matcher = java.util.regex.Pattern.compile("s_[a-f0-9]{32}").matcher(captured);
-        if (!matcher.find()) throw new AssertionError("Expected reference is missing");
-        return matcher.group();
     }
 
     private static @NonNull ToolEngineImpl engineWith(
@@ -174,7 +62,7 @@ class CredentialImportIntegrationTest {
     }
 
     private static @NonNull ToolDefinition importTool(@NonNull ToolEngineImpl engine) {
-        return engine.getActiveTools(null).stream()
+        return engine.getActiveTools(Set.of(IMPORT_TOOL)).stream()
                 .filter(definition -> definition.name().equals(IMPORT_TOOL))
                 .findFirst()
                 .orElseThrow();
@@ -191,7 +79,7 @@ class CredentialImportIntegrationTest {
             throw new AssertionError("Vault host service missing");
         try (var plugins = PluginTestSupport.manager(services)) {
             var scope = new Scope.AgentScope(TestUsers.ALICE, session.toString(), "agent");
-            String reference = reference(plugins, scope);
+            String reference = "synthetic-token";
             var engine = engineWith(new ObjectMapper(), plugins);
             var definition = importTool(engine);
             var workspace = Workspace.single(directory, PathMode.REAL);
@@ -199,8 +87,10 @@ class CredentialImportIntegrationTest {
                     new ToolCall(
                             IMPORT_TOOL,
                             Map.of(
-                                    "secret_ref",
+                                    "value",
                                     reference,
+                                    "visibility",
+                                    "PRIVATE",
                                     "service",
                                     "github",
                                     "label",
@@ -234,8 +124,10 @@ class CredentialImportIntegrationTest {
                             new ToolCall(
                                     call.toolName(),
                                     Map.of(
-                                            "secret_ref",
+                                            "value",
                                             reference,
+                                            "visibility",
+                                            "PRIVATE",
                                             "service",
                                             "github",
                                             "label",
@@ -260,7 +152,7 @@ class CredentialImportIntegrationTest {
                     new Scope.AgentScope(TestUsers.BOB, session.toString(), "agent"),
                     bobWriter.scope());
             assertThrows(
-                    IllegalStateException.class,
+                    SecurityException.class,
                     () -> invokeImport(plugins, reference, "github", "Repository"));
             installContext(call, definition, workspace, TestUsers.ALICE, null, "agent");
             assertThrows(
@@ -279,13 +171,10 @@ class CredentialImportIntegrationTest {
                         UUID.fromString(other.session()),
                         other.agent());
                 assertThrows(
-                        IllegalStateException.class,
+                        SecurityException.class,
                         () -> invokeImport(plugins, reference, "github", "Repository"));
             }
             verifyNoInteractions(vault);
-            assertEquals(
-                    "synthetic-token",
-                    PluginTestSupport.reveal(plugins, scope, reference).orElseThrow());
         }
     }
 
@@ -294,7 +183,16 @@ class CredentialImportIntegrationTest {
             @NonNull String reference,
             @NonNull String service,
             @NonNull String label) {
-        return access.open(Map.of("secret_ref", reference, "service", service, "label", label));
+        return access.open(
+                Map.of(
+                        "value",
+                        reference,
+                        "visibility",
+                        "PRIVATE",
+                        "service",
+                        service,
+                        "label",
+                        label));
     }
 
     @SuppressWarnings({"unchecked", "rawtypes"}) // The contributed handler is a CapabilityTool<?>.
@@ -309,8 +207,7 @@ class CredentialImportIntegrationTest {
                         .filter(
                                 value ->
                                         value.implementation() instanceof CapabilityTool<?> tool
-                                                && tool.getName()
-                                                        .equals("import_detected_credential"))
+                                                && tool.getName().equals("import_credential"))
                         .findFirst()
                         .orElseThrow();
         CapabilityTool<?> tool = (CapabilityTool<?>) entry.implementation();
@@ -320,7 +217,8 @@ class CredentialImportIntegrationTest {
                         mapper.treeToValue(
                                 mapper.valueToTree(
                                         Map.of(
-                                                "secret_ref", reference,
+                                                "value", reference,
+                                                "visibility", "PRIVATE",
                                                 "service", service,
                                                 "label", label)),
                                 tool.getArgsClass()));

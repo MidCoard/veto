@@ -39,6 +39,7 @@ import top.focess.veto.api.agent.tool.ToolErrors;
 import top.focess.veto.api.agent.tool.ToolExecutionException;
 import top.focess.veto.api.agent.tool.ToolResult;
 import top.focess.veto.api.agent.tool.ToolResultFormat;
+import top.focess.veto.api.agent.tool.ToolResultOptions;
 import top.focess.veto.api.agent.tool.ToolResultStatus;
 import top.focess.veto.api.agent.tool.WorkspaceReadTool;
 import top.focess.veto.api.agent.tool.WorkspaceWriteTool;
@@ -445,7 +446,8 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
                 definition, invocation.executionPermit().workspaceRoots());
         if (runtime == null)
             return successfulResult(
-                    call, definition, executeLocal(registration.handler(), jsonArgs, false));
+                            call, definition, executeLocal(registration.handler(), jsonArgs, false))
+                    .withOptions(resultOptions(registration.handler(), jsonArgs));
         LocalOutcome outcome =
                 runtime.execute(
                         () -> {
@@ -455,17 +457,28 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
                                 ToolCallContextHolder.guardFlow(
                                         execution -> new ManagedPluginFlow(runtime, execution));
                                 ToolCallContextHolder.guardAwait(runtime::ownAwait);
-                                return new LocalOutcome(content, null);
+                                return new LocalOutcome(
+                                        content,
+                                        null,
+                                        resultOptions(registration.handler(), jsonArgs));
                             } catch (Exception failure) {
-                                return new LocalOutcome(null, failure);
+                                return new LocalOutcome(null, failure, ToolResultOptions.DEFAULT);
                             }
                         });
         Exception failure = outcome.failure();
         if (failure != null) throw failure;
-        return successfulResult(call, definition, Nullness.requireNonNull(outcome.content()));
+        return successfulResult(call, definition, Nullness.requireNonNull(outcome.content()))
+                .withOptions(outcome.options());
     }
 
-    private record LocalOutcome(String content, Exception failure) {}
+    private record LocalOutcome(
+            String content, Exception failure, @NonNull ToolResultOptions options) {}
+
+    private <T> @NonNull ToolResultOptions resultOptions(
+            @NonNull CapabilityTool<T> tool, @NonNull JsonNode jsonArgs) throws Exception {
+        return tool.resultOptions(
+                Nullness.requireNonNull(mapper.treeToValue(jsonArgs, tool.getArgsClass())));
+    }
 
     private <T> @NonNull String executeLocal(
             @NonNull CapabilityTool<T> tool, @NonNull JsonNode jsonArgs, boolean injectHost)

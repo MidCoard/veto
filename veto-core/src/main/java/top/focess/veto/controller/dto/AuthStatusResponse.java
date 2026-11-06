@@ -13,5 +13,6 @@ public record AuthStatusResponse(
         UUID userId,
         @NonNull String timestamp,
         boolean authenticated,
-        String username)
+        String username,
+        String role)
         implements RestResponse {}

@@ -17,6 +17,7 @@ import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import top.focess.veto.agent.Agent;
 import top.focess.veto.agent.AgentService;
+import top.focess.veto.agent.HistoryProjection;
 import top.focess.veto.agent.RecordRecovery;
 import top.focess.veto.agent.SessionAgentRegistry;
 import top.focess.veto.agent.TurnRecord;
@@ -433,7 +434,7 @@ public class SessionService {
      *
      * @param userId the account ID
      * @param cwd the terminal's current working directory; never {@code null} (the terminal always
-     *     reports its JVM working dir in the TCP {@code Hello} handshake)
+     *     reports its working directory in the {@code Hello} handshake)
      */
     public @NonNull List<SessionEntity> listSessions(@NonNull UUID userId, @NonNull String cwd) {
         return sessions.findByUserId(userId).stream()
@@ -457,6 +458,56 @@ public class SessionService {
             @NonNull String sessionName,
             @NonNull UUID userId,
             @NonNull String cwd) {
+        SessionEntity session = requireInWorkspace(sessionName, userId, cwd);
+        return activateSession(terminalId, session, userId);
+    }
+
+    /**
+     * Restores an exact owned conversation after client authentication, without submitting work.
+     */
+    @Transactional
+    public @NonNull Optional<LlmConfig> resumeSession(
+            @NonNull String terminalId,
+            @NonNull UUID sessionId,
+            @NonNull UUID userId,
+            @NonNull String cwd) {
+        var session =
+                sessions.findById(sessionId.toString())
+                        .filter(value -> userId.equals(value.getUserId()))
+                        .orElseThrow(() -> new IllegalArgumentException("Session not found"));
+        if (!isInWorkspace(session.getWorkspaceRoots(), cwd))
+            throw new IllegalArgumentException("Session belongs to a different workspace");
+        return activateSession(terminalId, session, userId);
+    }
+
+    private @NonNull Optional<LlmConfig> activateSession(
+            @NonNull String terminalId, @NonNull SessionEntity session, @NonNull UUID userId) {
+        AgentEntity agent = primaryAgent(session);
+        if (agent == null) {
+            return Optional.empty();
+        }
+
+        ModelBinding resolved = tierRegistry.resolve(userId, agent.getTier());
+        LlmBinding binding = standaloneBinding(resolved);
+        List<TurnRecord> history = historyLoader.load(session.getId(), agent.getId());
+        agentService.getOrCreateAgent(
+                session.getId(),
+                agent.getId(),
+                binding,
+                history,
+                userId,
+                session.getWorkspaceRoots(),
+                session.getCurrentWorkspaceRootIndex(),
+                session.getToolResultPresentation());
+        session.touch();
+        sessions.save(session);
+        runtime.select(terminalId, new Scope.SessionScope(userId, session.getId()));
+
+        return Optional.of(llmConfig(resolved));
+    }
+
+    private @NonNull SessionEntity requireInWorkspace(
+            @NonNull String sessionName, @NonNull UUID userId, @NonNull String cwd) {
         // Find by userId + name (the same name may exist in multiple workspaces) and pick the one
         // whose workspace contains the terminal's cwd. With the create-time uniqueness check on
         // (userId, name, workspaceRoots), at most one session per name is bound to a given cwd —
@@ -483,29 +534,7 @@ public class SessionService {
                             });
             throw new IllegalArgumentException(Msg.get("error.session.notFound", sessionName));
         }
-        SessionEntity session = candidates.get(0);
-        AgentEntity agent = primaryAgent(session);
-        if (agent == null) {
-            return Optional.empty();
-        }
-
-        ModelBinding resolved = tierRegistry.resolve(userId, agent.getTier());
-        LlmBinding binding = standaloneBinding(resolved);
-        List<TurnRecord> history = historyLoader.load(session.getId(), agent.getId());
-        agentService.getOrCreateAgent(
-                session.getId(),
-                agent.getId(),
-                binding,
-                history,
-                userId,
-                session.getWorkspaceRoots(),
-                session.getCurrentWorkspaceRootIndex(),
-                session.getToolResultPresentation());
-        session.touch();
-        sessions.save(session);
-        runtime.select(terminalId, new Scope.SessionScope(userId, session.getId()));
-
-        return Optional.of(llmConfig(resolved));
+        return candidates.get(0);
     }
 
     /**
@@ -589,6 +618,24 @@ public class SessionService {
     }
 
     /**
+     * Reads an owned in-workspace session's effective primary history without starting an agent.
+     *
+     * @param name session name, resolved in the caller's current workspace
+     * @param userId authenticated account whose sessions may be read
+     * @param cwd terminal working directory used to disambiguate equal session names
+     * @return durable primary-agent records surviving REWIND, in recorded turn order
+     * @throws IllegalStateException when the session has no primary agent or its history is corrupt
+     * @throws IllegalArgumentException when no matching owned session exists in this workspace
+     */
+    public @NonNull List<TurnRecord> history(
+            @NonNull String name, @NonNull UUID userId, @NonNull String cwd) {
+        SessionEntity session = requireInWorkspace(name, userId, cwd);
+        String primaryId = session.getPrimaryAgentId();
+        if (primaryId == null) throw new IllegalStateException("Session has no primary agent.");
+        return HistoryProjection.effective(historyLoader.load(session.getId(), primaryId));
+    }
+
+    /**
      * Resolves the LLM config for the terminal's active session, re-resolved from the user's
      * current tier profile on every call. Empty when the terminal, session, or primary agent is
      * gone.
@@ -604,16 +651,24 @@ public class SessionService {
     }
 
     /**
+     * Finds an owned session without loading an agent or resolving a model configuration.
+     *
+     * @param name session name; the most recently active match wins across workspaces
+     * @param userId authenticated account whose sessions may be read
+     * @return the matching durable session, or empty when unavailable to the caller
+     */
+    public @NonNull Optional<SessionEntity> findByName(@NonNull String name, @NonNull UUID userId) {
+        return sessions.findFirstByNameAndUserIdOrderByLastActiveAtDesc(name, userId);
+    }
+
+    /**
      * Resolves the LLM config for a session by name + userId (REST path). The REST controller has
      * no terminalId (that's a terminal concept); it resolves the session by name for the
      * authenticated user and returns the config + session id in one call.
      */
     public @NonNull Optional<SessionConfig> resolveByName(
             @NonNull String name, @NonNull UUID userId) {
-        // Duplicate-tolerant: several sessions may share a name across workspaces, and the REST
-        // caller has no workspace to disambiguate with - the most-recently-active one wins.
-        SessionEntity session =
-                sessions.findFirstByNameAndUserIdOrderByLastActiveAtDesc(name, userId).orElse(null);
+        SessionEntity session = findByName(name, userId).orElse(null);
         if (session == null) return Optional.empty();
         AgentEntity agent = primaryAgent(session);
         if (agent == null) return Optional.empty();
@@ -704,8 +759,7 @@ public class SessionService {
      * the session has no primary agent.
      */
     public @NonNull Optional<String> primaryAgentIdFor(@NonNull String name, @NonNull UUID userId) {
-        SessionEntity session =
-                sessions.findFirstByNameAndUserIdOrderByLastActiveAtDesc(name, userId).orElse(null);
+        SessionEntity session = findByName(name, userId).orElse(null);
         if (session == null) {
             return Optional.empty();
         }

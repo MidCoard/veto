@@ -205,8 +205,8 @@ class FrameCodecTest {
                 "{\"type\":\"cancel_result\",\"status\":0,\"seq\":1}",
                 "{\"type\":\"cancel_result\",\"status\":\"0\",\"seq\":1}",
                 "{\"type\":\"cancel_result\",\"status\":\"UNKNOWN\",\"seq\":1}",
-                "{\"type\":\"cancel_result\",\"status\":\"ACCEPTED\"}",
-                "{\"type\":\"cancel_result\",\"status\":\"ACCEPTED\",\"seq\":0}"
+                "{\"type\":\"cancel_result\",\"status\":\"CANCELLED\"}",
+                "{\"type\":\"cancel_result\",\"status\":\"CANCELLED\",\"seq\":0}"
             })
     void cancellationRequiresStatusAndNonzeroCorrelation(@NonNull String payload) {
         assertNull(FrameCodec.decode(payload));

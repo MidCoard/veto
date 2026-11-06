@@ -25,12 +25,16 @@ import top.focess.veto.vault.TestUsers;
 
 @Timeout(10)
 class ProtocolConnectionSequenceTest {
+    private final @NonNull CommandRegistry registry = mock(CommandRegistry.class);
+    private final @NonNull AgentSessions runtime = TestAgentSessions.create();
+    private final @NonNull SessionService sessions = mock(SessionService.class);
+    private final @NonNull SessionCommandService commands = mock(SessionCommandService.class);
+
     @Test
     void signedRequestIdCorrelatesIndependentlyOfHintOrder() throws Exception {
         try (var fixture = new Fixture()) {
-            when(fixture.registry.hint(any(), anyString()))
-                    .thenReturn(new Frame.HintInfo("hint", null));
-            when(fixture.registry.dispatch(any(), eq("prompt")))
+            when(registry.hint(any(), anyString())).thenReturn(new Frame.HintInfo("hint", null));
+            when(registry.dispatch(any(), eq("prompt")))
                     .thenReturn(
                             new Frame.Done(new Scope.GlobalScope(), null, -1, "complete", null, 0));
             fixture.connection.receive(new Frame.Hint("prompt", 3));
@@ -40,7 +44,7 @@ class ProtocolConnectionSequenceTest {
                     -2, assertInstanceOf(Frame.RequestAccepted.class, fixture.receive()).seq());
             assertEquals(-2, assertInstanceOf(Frame.Done.class, fixture.receive()).seq());
             assertEquals(1, fixture.closed.getCount());
-            verify(fixture.registry).dispatch(any(), eq("prompt"));
+            verify(registry).dispatch(any(), eq("prompt"));
         }
     }
 
@@ -49,7 +53,7 @@ class ProtocolConnectionSequenceTest {
         var entered = new CountDownLatch(1);
         var release = new CountDownLatch(1);
         try (var fixture = new Fixture()) {
-            when(fixture.registry.dispatch(any(), anyString()))
+            when(registry.dispatch(any(), anyString()))
                     .thenAnswer(
                             invocation -> {
                                 entered.countDown();
@@ -64,7 +68,7 @@ class ProtocolConnectionSequenceTest {
             var failure = assertInstanceOf(Frame.Error.class, fixture.receive());
             assertEquals(0, failure.seq());
             assertTrue(fixture.closed.await(2, TimeUnit.SECONDS));
-            verify(fixture.registry, times(1)).dispatch(any(), anyString());
+            verify(registry, times(1)).dispatch(any(), anyString());
         } finally {
             release.countDown();
         }
@@ -72,21 +76,40 @@ class ProtocolConnectionSequenceTest {
 
     @Test
     void completedSequencesRemainReservedAndBudgetExhaustionRequiresReconnect() throws Exception {
-        try (var fixture = new Fixture()) {
+        var frames = new ArrayDeque<Frame.ServerFrame>();
+        var closed = new CountDownLatch(1);
+        // Identifier retention must not depend on scheduling 65,535 output workers within ten
+        // seconds. Real asynchronous delivery is exercised by the other connection tests.
+        try (var connection =
+                new ProtocolConnection(
+                        "sequence-budget",
+                        runtime,
+                        sessions,
+                        commands,
+                        registry,
+                        null,
+                        () -> true,
+                        BooleanSupplier::getAsBoolean,
+                        Runnable::run,
+                        frames::add,
+                        ignored -> closed.countDown(),
+                        Locale.ENGLISH)) {
+            connection.receive(new Frame.Hello(Frame.PROTOCOL_VERSION, 1, Version.UNKNOWN, "."));
+            assertInstanceOf(Frame.Welcome.class, frames.remove());
             // Hello reserves 1. Controls finish immediately but their sequences never become
             // reusable.
             for (long seq = 2; seq <= 65_536; seq++) {
-                fixture.connection.receive(new Frame.Cancel(seq, 1));
-                var result = assertInstanceOf(Frame.CancelResult.class, fixture.receive());
+                connection.receive(new Frame.Cancel(seq, 1));
+                var result = assertInstanceOf(Frame.CancelResult.class, frames.remove());
                 assertEquals(seq, result.seq());
                 assertEquals(Frame.CancelStatus.NO_ACTIVE_REQUEST, result.status());
             }
-            fixture.connection.receive(new Frame.Request(65_537, null, null, "must not run"));
-            var error = assertInstanceOf(Frame.Error.class, fixture.receive());
+            connection.receive(new Frame.Request(65_537, null, null, "must not run"));
+            var error = assertInstanceOf(Frame.Error.class, frames.remove());
             assertEquals(0, error.seq());
             assertTrue(error.content().contains("budget exhausted"));
-            assertTrue(fixture.closed.await(2, TimeUnit.SECONDS));
-            verify(fixture.registry, never()).dispatch(any(), anyString());
+            assertTrue(closed.await(2, TimeUnit.SECONDS));
+            verify(registry, never()).dispatch(any(), anyString());
         }
         try (var fixture = new Fixture()) {
             fixture.connection.receive(new Frame.Cancel(-3, -2));
@@ -94,7 +117,7 @@ class ProtocolConnectionSequenceTest {
             fixture.connection.receive(new Frame.Hint("reuse", -3));
             assertEquals(0, assertInstanceOf(Frame.Error.class, fixture.receive()).seq());
             assertTrue(fixture.closed.await(2, TimeUnit.SECONDS));
-            verify(fixture.registry, never()).hint(any(), anyString());
+            verify(registry, never()).hint(any(), anyString());
         }
     }
 
@@ -102,15 +125,14 @@ class ProtocolConnectionSequenceTest {
     void queuedOutputIsReauthorizedAfterLogoutAndRelogin() {
         var tasks = new ArrayDeque<Runnable>();
         var delivered = new ArrayList<Frame.ServerFrame>();
-        var registry = mock(CommandRegistry.class);
         doCallRealMethod().when(registry).terminalOutcome(any(), any());
         var alice = TestUsers.registry().findByUserId(TestUsers.ALICE).orElseThrow();
         try (var connection =
                 new ProtocolConnection(
                         "queued-authority",
-                        TestAgentSessions.create(),
-                        mock(SessionService.class),
-                        mock(SessionCommandService.class),
+                        runtime,
+                        sessions,
+                        commands,
                         registry,
                         null,
                         () -> true,
@@ -158,8 +180,7 @@ class ProtocolConnectionSequenceTest {
         }
     }
 
-    private static final class Fixture implements AutoCloseable {
-        final @NonNull CommandRegistry registry = mock(CommandRegistry.class);
+    private final class Fixture implements AutoCloseable {
         final @NonNull LinkedBlockingQueue<Frame.@NonNull ServerFrame> frames =
                 new LinkedBlockingQueue<>();
         final @NonNull CountDownLatch closed = new CountDownLatch(1);
@@ -171,9 +192,9 @@ class ProtocolConnectionSequenceTest {
             connection =
                     new ProtocolConnection(
                             "sequence-test",
-                            TestAgentSessions.create(),
-                            mock(SessionService.class),
-                            mock(SessionCommandService.class),
+                            runtime,
+                            sessions,
+                            commands,
                             registry,
                             null,
                             () -> true,

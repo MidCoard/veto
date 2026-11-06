@@ -1,4 +1,5 @@
 import { DetailCallCard, Fields, StructuredToolResult, WebFetchResult, WebSearchResult } from './ToolDetailViews';
+import { ExpandableText, TEXT_PREVIEW_CHARACTERS } from './ExpandableText';
 import React from './runtime';
 import { useI18n } from './runtime';
 import {
@@ -92,12 +93,12 @@ export const RunCommandCallCard: React.FC<{ command: RunCommandArgs }> = ({ comm
       }
     >
       <div className="code-surface bg-codebg px-3 py-2 font-mono text-xs leading-relaxed max-h-64 overflow-y-auto">
-        {command.commands.map((cmd, index) => (
+        <ExpandableText text={command.commands.map(cmd => [cmd.executable, ...cmd.args].map(part => /[\s"']/.test(part) || part === '' ? JSON.stringify(part) : part).join(' ')).join('\n')}>{visible => visible.split('\n').filter(line => line !== '').map((line, index) => (
           <div key={index} className="whitespace-pre-wrap break-words">
             <span className={`${CODE_MUTED} select-none`}>$ </span>
-            <span className={CODE_TEXT}>{[cmd.executable, ...cmd.args].map(part => /[\s"']/.test(part) || part === '' ? JSON.stringify(part) : part).join(' ')}</span>
+            <span className={CODE_TEXT}>{line}</span>
           </div>
-        ))}
+        ))}</ExpandableText>
         {command.cwd !== null && (
           <div className={`mt-1 text-[11px] ${CODE_MUTED} whitespace-pre-wrap break-words`}>
             {t('tool.cwd')}: {command.cwd}
@@ -115,12 +116,12 @@ export const RunCommandResultView: React.FC<{ text: string }> = ({ text }) => {
   return (
     <div className="mt-1 code-surface bg-codebg border border-rule rounded-lg p-2 font-mono text-xs max-h-64 overflow-y-auto">
       {output.stdout.length > 0 && (
-        <pre className={`whitespace-pre-wrap break-words ${CODE_TEXT}`}>{output.stdout}</pre>
+        <ExpandableText text={output.stdout} className={`whitespace-pre-wrap break-words ${CODE_TEXT}`} />
       )}
       {output.stderr !== null && output.stderr.length > 0 && (
         <>
           <div className={`text-[10px] ${CODE_MUTED} select-none`}>[stderr]</div>
-          <pre className="whitespace-pre-wrap break-words text-verdict">{output.stderr}</pre>
+          <ExpandableText text={output.stderr} className="whitespace-pre-wrap break-words text-verdict" />
         </>
       )}
       {output.exitCode !== null && (
@@ -158,12 +159,12 @@ export const RunTaskCallCard: React.FC<{ command: RunCommandArgs }> = ({ command
       }
     >
       <div className="code-surface bg-codebg px-3 py-2 font-mono text-xs leading-relaxed max-h-64 overflow-y-auto">
-        {command.commands.map((cmd, index) => (
+        <ExpandableText text={command.commands.map(cmd => [cmd.executable, ...cmd.args].map(part => /[\s"']/.test(part) || part === '' ? JSON.stringify(part) : part).join(' ')).join('\n')}>{visible => visible.split('\n').filter(line => line !== '').map((line, index) => (
           <div key={index} className="whitespace-pre-wrap break-words">
             <span className={`${CODE_MUTED} select-none`}>$ </span>
-            <span className={CODE_TEXT}>{[cmd.executable, ...cmd.args].map(part => /[\s"']/.test(part) || part === '' ? JSON.stringify(part) : part).join(' ')}</span>
+            <span className={CODE_TEXT}>{line}</span>
           </div>
-        ))}
+        ))}</ExpandableText>
         {command.cwd !== null && (
           <div className={`mt-1 text-[11px] ${CODE_MUTED} whitespace-pre-wrap break-words`}>
             {t('tool.cwd')}: {command.cwd}
@@ -187,7 +188,7 @@ export const TaskStartedView: React.FC<{ text: string }> = ({ text }) => {
       </span>
       <span className="font-mono text-xs text-paper">{started.taskId}</span>
       {started.pid !== null && <Chip>pid {started.pid}</Chip>}
-      {started.command !== null && <pre className="w-full whitespace-pre-wrap break-words text-xs font-mono">{started.command}</pre>}
+      {started.command !== null && <div className="w-full"><ExpandableText text={started.command} className="whitespace-pre-wrap break-words text-xs font-mono" /></div>}
       {started.cwd !== null && <p className="w-full text-xs text-dim break-all">{t('tool.cwd')}: {started.cwd}</p>}
     </div>
   );
@@ -216,6 +217,7 @@ export const TaskStatusResultView: React.FC<{ text: string }> = ({ text }) => {
   const status = parseTaskStatusContent(text);
   if (status === null) return <PlainResultBody text={text} />;
   if ('count' in status) {
+    if (text.length > TEXT_PREVIEW_CHARACTERS) return <PlainResultBody text={text} />;
     return <div className="space-y-2"><p className="text-xs font-mono text-dim">{t('tool.taskCount', { count: status.count })}</p>
       {status.tasks.map(task => <TaskStatusResultView key={task.taskId} text={JSON.stringify(task)} />)}</div>;
   }
@@ -234,9 +236,7 @@ export const TaskStatusResultView: React.FC<{ text: string }> = ({ text }) => {
       </div>
       <Fields values={Object.fromEntries(Object.entries(status).filter(([key]) => !['taskId', 'alive', 'exitCode', 'recentOutput'].includes(key)))} />
       {status.recentOutput !== null && status.recentOutput.length > 0 && (
-        <pre className={`code-surface bg-codebg border border-rule rounded-lg p-2 font-mono text-xs whitespace-pre-wrap break-words max-h-48 overflow-y-auto ${CODE_TEXT}`}>
-          {status.recentOutput}
-        </pre>
+        <ExpandableText text={status.recentOutput} className={`code-surface bg-codebg border border-rule rounded-lg p-2 font-mono text-xs whitespace-pre-wrap break-words max-h-48 overflow-y-auto ${CODE_TEXT}`} />
       )}
     </div>
   );
@@ -258,7 +258,7 @@ export const WriteFileCallCard: React.FC<{ args: WriteFileArgs }> = ({ args }) =
       }
     >
       <div className="max-h-96 overflow-y-auto">
-        <CodeHighlight code={args.codeContent} language="text" showLineNumbers={false} />
+        <ExpandableText text={args.codeContent}>{code => <CodeHighlight code={code} language="text" showLineNumbers={false} />}</ExpandableText>
       </div>
     </CardShell>
   );
@@ -281,17 +281,13 @@ export const ReplaceFileCallCard: React.FC<{ args: ReplaceFileArgs }> = ({ args 
           <div className="text-[10px] uppercase tracking-wider text-dim mb-1">
             {t('tool.replaceBefore')}
           </div>
-          <pre className="font-mono text-xs text-paper whitespace-pre-wrap break-words bg-verdict/10 border-l-2 border-verdict rounded-r p-2 max-h-48 overflow-y-auto">
-            {args.targetContent}
-          </pre>
+          <ExpandableText text={args.targetContent} className="font-mono text-xs text-paper whitespace-pre-wrap break-words bg-verdict/10 border-l-2 border-verdict rounded-r p-2 max-h-48 overflow-y-auto" />
         </div>
         <div>
           <div className="text-[10px] uppercase tracking-wider text-dim mb-1">
             {t('tool.replaceAfter')}
           </div>
-          <pre className="font-mono text-xs text-paper whitespace-pre-wrap break-words bg-pass/10 border-l-2 border-pass rounded-r p-2 max-h-48 overflow-y-auto">
-            {args.replacementContent}
-          </pre>
+          <ExpandableText text={args.replacementContent} className="font-mono text-xs text-paper whitespace-pre-wrap break-words bg-pass/10 border-l-2 border-pass rounded-r p-2 max-h-48 overflow-y-auto" />
         </div>
       </div>
     </CardShell>
@@ -322,9 +318,9 @@ export const ViewFileCallCard: React.FC<{ args: ViewFileArgs }> = ({ args }) => 
 );
 
 /** view_file TOOL_RESPONSE: code lines with a real line-number gutter. */
-export const ViewFileResultView: React.FC<{ text: string }> = ({ text }) => {
-  const lines = parseViewFileContent(text);
-  if (lines === null) return <PlainResultBody text={text} />;
+export const ViewFileResultView: React.FC<{ text: string }> = ({ text }) => <ExpandableText text={text}>{visible => {
+  const lines = parseViewFileContent(visible);
+  if (lines === null) return null;
   const gutterWidth = `${String(lines[lines.length - 1]?.n ?? 1).length + 1}ch`;
   return (
     <div className="code-surface bg-codebg border border-rule rounded-lg px-3 py-2 font-mono text-xs max-h-80 overflow-y-auto">
@@ -341,7 +337,7 @@ export const ViewFileResultView: React.FC<{ text: string }> = ({ text }) => {
       ))}
     </div>
   );
-};
+}}</ExpandableText>;
 
 // ---- list_dir ----
 
@@ -377,9 +373,9 @@ export const ListDirCallCard: React.FC<{ path: string }> = ({ path }) => (
 );
 
 /** list_dir TOOL_RESPONSE: compact listing; directories stand out from files. */
-export const ListDirResultView: React.FC<{ text: string }> = ({ text }) => {
-  const entries = parseListDirContent(text);
-  if (entries === null) return <PlainResultBody text={text} />;
+export const ListDirResultView: React.FC<{ text: string }> = ({ text }) => <ExpandableText text={text}>{visible => {
+  const entries = parseListDirContent(visible);
+  if (entries === null) return null;
   return (
     <div className="bg-panel border border-rule rounded-lg px-3 py-2 max-h-64 overflow-y-auto">
       {entries.map((entry) => (
@@ -400,7 +396,7 @@ export const ListDirResultView: React.FC<{ text: string }> = ({ text }) => {
       ))}
     </div>
   );
-};
+}}</ExpandableText>;
 
 // ---- grep_search ----
 
@@ -429,12 +425,12 @@ export const GrepSearchCallCard: React.FC<{ args: GrepSearchArgs }> = ({ args })
 );
 
 /** grep_search TOOL_RESPONSE: path:line: text rows; muted empty state. */
-export const GrepResultView: React.FC<{ text: string }> = ({ text }) => {
-  if (text === GREP_NO_MATCHES) {
+export const GrepResultView: React.FC<{ text: string }> = ({ text }) => <ExpandableText text={text}>{visible => {
+  if (visible === GREP_NO_MATCHES) {
     return <p className="text-xs font-mono text-dim/70 italic">{GREP_NO_MATCHES}</p>;
   }
-  const rows = parseGrepContent(text);
-  if (rows === null) return <PlainResultBody text={text} />;
+  const rows = parseGrepContent(visible);
+  if (rows === null) return null;
   return (
     <div className="bg-panel border border-rule rounded-lg px-3 py-2 max-h-80 overflow-y-auto">
       {rows.map((row, index) => (
@@ -446,7 +442,7 @@ export const GrepResultView: React.FC<{ text: string }> = ({ text }) => {
       ))}
     </div>
   );
-};
+}}</ExpandableText>;
 
 // ---- load_skill ----
 
@@ -469,7 +465,7 @@ export const LoadSkillResultView: React.FC<{ text: string }> = ({ text }) => {
   if (text.startsWith('{')) return <PlainResultBody text={text} />;
   return (
     <div className="bg-panel border border-rule rounded-lg px-3 py-2 max-h-96 overflow-y-auto">
-      <StreamingMarkdown content={text} isStreaming={false} />
+      <ExpandableText text={text}>{content => <StreamingMarkdown content={content} isStreaming={false} />}</ExpandableText>
     </div>
   );
 };
@@ -565,7 +561,7 @@ const JsonResultView: React.FC<{ text: string }> = ({ text }) => {
     const value: unknown = JSON.parse(text);
     return (
       <div className="mt-1 overflow-hidden rounded-lg border border-rule code-surface bg-codebg">
-        <CodeHighlight code={JSON.stringify(value, null, 2)} language="json" showLineNumbers={false} />
+        <ExpandableText text={JSON.stringify(value, null, 2)}>{code => <CodeHighlight code={code} language="json" showLineNumbers={false} />}</ExpandableText>
       </div>
     );
   } catch {
@@ -582,7 +578,7 @@ export const GenericToolCallCard: React.FC<{
 }> = ({ toolName, args }) => (
   <CardShell header={<span className="text-accent">{toolName}</span>}>
     {args !== undefined && Object.keys(args).length > 0 && (
-      <CodeHighlight code={JSON.stringify(args, null, 2)} language="json" showLineNumbers={false} />
+      <ExpandableText text={JSON.stringify(args, null, 2)}>{code => <CodeHighlight code={code} language="json" showLineNumbers={false} />}</ExpandableText>
     )}
   </CardShell>
 );
@@ -701,9 +697,7 @@ export const ToolCallRow: React.FC<{
 
 /** The default collapsible result body (plain pre-wrap on the panel surface). */
 export const PlainResultBody: React.FC<{ text: string }> = ({ text }) => (
-  <pre className="text-xs font-mono text-dim whitespace-pre-wrap break-words bg-panel border border-rule rounded-lg p-2 max-h-64 overflow-y-auto">
-    {text}
-  </pre>
+  <ExpandableText text={text} />
 );
 
 /**
@@ -747,13 +741,10 @@ export const ToolResultBody: React.FC<{ toolName: string | undefined; text: stri
  * Falls back to plain pre-wrap text when the body is not the compact JSON.
  */
 export const FileToolStatusChip: React.FC<{ text: string }> = ({ text }) => {
+  if (text.length > TEXT_PREVIEW_CHARACTERS) return <PlainResultBody text={text} />;
   const status = parseFileToolStatus(text);
   if (status === null) {
-    return (
-      <pre className="text-xs font-mono text-dim whitespace-pre-wrap break-words bg-panel border border-rule rounded-lg p-2 max-h-64 overflow-y-auto">
-        {text}
-      </pre>
-    );
+    return <PlainResultBody text={text} />;
   }
   if (status.ok) {
     return (

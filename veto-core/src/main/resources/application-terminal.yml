@@ -1,5 +1,4 @@
-# "terminal" profile — enables TCP for local terminal testing
+# "terminal" profile — enables the loopback WebSocket endpoint for local terminal testing
 veto:
   terminal:
     enabled: true
-    bind-address: tcp://127.0.0.1:5555

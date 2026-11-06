@@ -12,7 +12,7 @@ import org.springframework.web.util.UriComponentsBuilder;
 import top.focess.veto.vault.LoginSessionManager;
 import top.focess.veto.vault.LoginSessionManager.LoginSession;
 
-/** Authenticates the WebSocket handshake and binds its Veto user to the connection. */
+/** Authenticates terminal and browser WebSockets; remote terminals require a TLS connection. */
 @Component
 public final class VetoWebSocketAuthInterceptor implements HandshakeInterceptor {
 
@@ -33,8 +33,24 @@ public final class VetoWebSocketAuthInterceptor implements HandshakeInterceptor 
             @NonNull ServerHttpResponse response,
             @NonNull WebSocketHandler wsHandler,
             @NonNull Map<String, Object> attributes) {
+        String path = request.getURI().getPath();
+        boolean terminal = "/ws/veto/terminal".equals(path);
+        if (terminal) {
+            var remote = request.getRemoteAddress();
+            var address = remote == null ? null : remote.getAddress();
+            boolean local = address != null && address.isLoopbackAddress();
+            String scheme = request.getURI().getScheme();
+            if (!local && !"https".equalsIgnoreCase(scheme) && !"wss".equalsIgnoreCase(scheme)) {
+                response.setStatusCode(HttpStatus.FORBIDDEN);
+                return false;
+            }
+        }
+        if (!terminal && !"/ws/veto/bus".equals(path)) {
+            response.setStatusCode(HttpStatus.FORBIDDEN);
+            return false;
+        }
         String token = request.getHeaders().getFirst(TOKEN_HEADER);
-        if (token == null || token.isBlank()) {
+        if (!terminal && (token == null || token.isBlank())) {
             token =
                     UriComponentsBuilder.fromUri(request.getURI())
                             .build()

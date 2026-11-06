@@ -255,6 +255,10 @@ public final class ScriptHost implements AutoCloseable {
                     return future.get(
                             Math.max(1, deadline - System.nanoTime()), TimeUnit.NANOSECONDS);
                 } catch (Exception e) {
+                    log.log(
+                            Level.WARNING,
+                            "Script exchange failed ({0})",
+                            e.getClass().getSimpleName());
                     // Abort transport I/O before waiting for its worker to exit. Lifecycle cleanup
                     // is queued separately and may be waiting for this startup hook to return.
                     terminate(worker);

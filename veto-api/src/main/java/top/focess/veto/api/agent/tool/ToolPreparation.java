@@ -17,7 +17,10 @@ import top.focess.veto.api.process.ProcessHost;
  */
 public record ToolPreparation(@NonNull Intent intent, JsonValue.@NonNull ObjectValue facts) {
     /** Closed set of effects supported by the current preparation boundary. */
-    public sealed interface Intent permits ProcessIntent, InputIntent {}
+    public sealed interface Intent permits ProcessIntent, InputIntent, DisclosureIntent {}
+
+    /** Whether this operation authorizes exposing stored content to a model. */
+    public record DisclosureIntent(boolean modelReadable) implements Intent {}
 
     /**
      * Immutable request to launch a command chain.

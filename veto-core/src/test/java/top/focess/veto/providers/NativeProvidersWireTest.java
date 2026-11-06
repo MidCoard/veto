@@ -55,7 +55,7 @@ class NativeProvidersWireTest {
     @ParameterizedTest
     @EnumSource(
             value = ProviderType.class,
-            names = {"OPENAI", "DEEPSEEK", "GEMINI"})
+            names = {"OPENAI", "LOCAL", "DEEPSEEK", "GEMINI"})
     void nativeAndJsonChannelsAndMultiTurnHistory(@NonNull ProviderType type) throws Exception {
         var captured = new AtomicReference<String>();
         var reply = new AtomicReference<String>(wire(type, "", true));
@@ -79,7 +79,7 @@ class NativeProvidersWireTest {
         var translator = new VetoCapabilityTranslator();
         LlmClient client =
                 switch (type) {
-                    case OPENAI ->
+                    case OPENAI, LOCAL ->
                             new OpenAiLlmClient(
                                     OpenAIOkHttpClient.builder()
                                             .baseUrl(url)
@@ -256,7 +256,7 @@ class NativeProvidersWireTest {
                             .rawResponse());
             var truncated = MAPPER.readTree(wire(type, "partial", true));
             switch (type) {
-                case OPENAI ->
+                case OPENAI, LOCAL ->
                         ((com.fasterxml.jackson.databind.node.ObjectNode)
                                         truncated.path("choices").get(0))
                                 .put("finish_reason", "length");
@@ -322,7 +322,7 @@ class NativeProvidersWireTest {
             @NonNull ProviderType type, @NonNull String text, boolean nativeCalls) {
         var root = MAPPER.createObjectNode();
         switch (type) {
-            case OPENAI -> {
+            case OPENAI, LOCAL -> {
                 root.put("id", "test");
                 root.put("object", "chat.completion");
                 root.put("created", 0);

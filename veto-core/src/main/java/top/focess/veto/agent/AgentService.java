@@ -656,9 +656,17 @@ public class AgentService {
                                                 "Parent must be active before opening a child"));
         var base = parent.agent().binding();
         var authorized =
-                sessionPlugins.tools(session.getId(), Set.copyOf(toolEngine.getActiveTools(null)));
+                sessionPlugins.tools(
+                        session.getId(), Set.copyOf(toolEngine.getActiveTools(profile.tools())));
         var resolved =
-                AgentProfiles.resolve(id, userId, profile, authorized, base, modelTierRegistry);
+                AgentProfiles.resolve(
+                        id,
+                        userId,
+                        profile,
+                        authorized,
+                        base,
+                        modelTierRegistry,
+                        sessionPlugins.renderPrompt(namespace, profile.prompt()));
         var intentPersona = resolved.persona();
         AgentPersona scoped =
                 new AgentPersona(

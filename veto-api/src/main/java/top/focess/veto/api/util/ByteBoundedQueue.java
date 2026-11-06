@@ -117,7 +117,22 @@ public final class ByteBoundedQueue<E> {
         notifyAll();
     }
 
-    /** Ends admission and wakes all waiters; immediate closure also discards queued entries. */
+    /**
+     * Permanently stops accepting entries and wakes waiting producers and consumers. Producers
+     * waiting in offer return false. Consumers can still retrieve retained entries in FIFO order;
+     * once the closed queue is empty, poll and take return null without waiting.
+     *
+     * <p>This method does not drain the queue itself or wait for consumers to finish. It does not
+     * close the stored values or stop their processing. For example, a connection can retain
+     * already received input with close(true), but discard unsent output with close(false).
+     *
+     * <p>The shared monitor makes closure atomic with admission and wakes waiters after the state
+     * change. Repeated calls never reopen the queue; calling close(false) after close(true)
+     * discards any entries still retained.
+     *
+     * @param drain true to keep queued entries available for subsequent poll/take calls; false to
+     *     immediately discard queued entries and release their byte costs. Both reject new entries
+     */
     public synchronized void close(boolean drain) {
         closed = true;
         if (!drain) clear();

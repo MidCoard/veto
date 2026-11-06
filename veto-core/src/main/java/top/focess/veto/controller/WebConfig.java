@@ -8,14 +8,22 @@ import com.fasterxml.jackson.databind.type.LogicalType;
 import java.util.List;
 import org.jspecify.annotations.NonNull;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Import;
 import org.springframework.http.converter.HttpMessageConverter;
 import org.springframework.http.converter.json.MappingJackson2HttpMessageConverter;
 import org.springframework.web.servlet.config.annotation.CorsRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
+import top.focess.veto.bus.BusConfiguration;
 
 /** Strict HTTP JSON conversion and browser CORS configuration. */
 @Configuration
+@Import(BusConfiguration.class)
 public class WebConfig implements WebMvcConfigurer {
+    private final @NonNull BusConfiguration connections;
+
+    public WebConfig(@NonNull BusConfiguration connections) {
+        this.connections = connections;
+    }
 
     @Override
     public void extendMessageConverters(@NonNull List<HttpMessageConverter<?>> converters) {
@@ -38,12 +46,10 @@ public class WebConfig implements WebMvcConfigurer {
     public void addCorsMappings(@NonNull CorsRegistry registry) {
         registry.addMapping("/api/**")
                 .allowedOriginPatterns(
-                        "http://localhost:*",
-                        "https://localhost:*",
-                        "http://127.0.0.1:*",
-                        "https://127.0.0.1:*",
-                        "http://[::1]:*",
-                        "https://[::1]:*")
+                        connections
+                                .getWebsocket()
+                                .getAllowedOriginPatterns()
+                                .toArray(String[]::new))
                 .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS")
                 .allowedHeaders("Content-Type", "Accept-Language", "X-Veto-Session-Token")
                 .maxAge(3600);

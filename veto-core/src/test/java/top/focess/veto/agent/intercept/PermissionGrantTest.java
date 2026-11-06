@@ -23,7 +23,6 @@ import top.focess.veto.api.agent.tool.ParamCategory;
 import top.focess.veto.api.agent.tool.ToolCapability;
 import top.focess.veto.api.llm.ToolCall;
 import top.focess.veto.bus.SessionActions;
-import top.focess.veto.secret.detection.SecretMasker;
 
 /**
  * Tests for the session-scoped permission-grant system. Covers:
@@ -217,43 +216,6 @@ class PermissionGrantTest {
         // never-registered grant (returns false).
         PermissionGrant g = new PermissionGrant.CommandGrant("git", List.of("status"), List.of());
         assertFalse(registry.revokeGrant(agentId, g));
-    }
-
-    @Test
-    void maskingScrubsAwsKey() {
-        String result = SecretMasker.mask("Found AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE");
-        assertTrue(result.contains("[REDACTED_AWS_KEY]"));
-        assertFalse(result.contains("AKIAIOSFODNN7EXAMPLE"));
-    }
-
-    @Test
-    void maskingScrubsPrivateKeyBlock() {
-        String result =
-                SecretMasker.mask(
-                        "-----BEGIN RSA PRIVATE KEY-----\nMIIEowIBAAK...lots of bytes..."
-                                + "-----END RSA PRIVATE KEY-----");
-        assertTrue(result.contains("[REDACTED_PRIVATE_KEY]"));
-        assertFalse(result.contains("MIIEowIBAAK"));
-    }
-
-    @Test
-    void maskingScrubsDbUrl() {
-        String result = SecretMasker.mask("jdbc:postgresql://user:secret@host:5432/db");
-        assertTrue(result.contains("[REDACTED_DB_URL]"));
-    }
-
-    @Test
-    void maskingPreservesLongSourceIdentifiers() {
-        String method = "test_rejects_parent_traversal_without_writing";
-        assertEquals(method, SecretMasker.mask(method));
-    }
-
-    @Test
-    void maskingStillScrubsUnprefixedMixedApiKeyShape() {
-        String token = "AbCdEf0123456789AbCdEf0123456789AbCdEf01";
-        String result = SecretMasker.mask("credential=" + token);
-        assertTrue(result.contains("[REDACTED_API_KEY]"));
-        assertFalse(result.contains(token));
     }
 
     @Test

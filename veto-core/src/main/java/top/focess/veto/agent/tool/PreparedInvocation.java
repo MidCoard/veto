@@ -31,8 +31,10 @@ public final class PreparedInvocation {
             @NonNull ToolCall call,
             @NonNull ToolPreparation prepared,
             @NonNull ToolCapability capability) {
-        if (capability != ToolCapability.PROCESS_EXECUTION)
-            throw new SecurityException("Process intent requires process capability");
+        boolean disclosure = prepared.intent() instanceof ToolPreparation.DisclosureIntent;
+        if (capability
+                != (disclosure ? ToolCapability.PRIVILEGED : ToolCapability.PROCESS_EXECUTION))
+            throw new SecurityException("Prepared intent does not match its capability");
         this.plugin = plugin;
         this.invocation = invocation;
         this.call = call;
@@ -98,6 +100,8 @@ public final class PreparedInvocation {
     @SuppressWarnings(
             "resource") // WHY: the Running handle is owned by PluginProcessHosts, closed elsewhere
     public @NonNull String summary() {
+        if (intent instanceof ToolPreparation.DisclosureIntent disclosure)
+            return "model-readable=" + disclosure.modelReadable();
         if (intent instanceof ToolPreparation.ProcessIntent process)
             return "process commands="
                     + process.commands().size()

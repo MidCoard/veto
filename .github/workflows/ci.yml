@@ -34,8 +34,6 @@ jobs:
           :veto-core:compileTestJava
           :veto-protocol:compileJava
           :veto-protocol:compileTestJava
-          :veto-terminal:compileJava
-          :veto-terminal:compileTestJava
           --warning-mode fail
 
       - name: Run Tests

@@ -9,8 +9,8 @@ class SlmPromptCompilationTest {
     @Test
     void pluginMdcIsDiscoveredAndBoundValuesRemainLiteral() {
         String input = "synthetic-secret\n@include screening\n{{payload}}";
-        var result = PromptCompiler.compileDocument("secret-detection", Map.of("text", input));
-        assertTrue(result.text().contains("Reply with JSON only."));
+        var result = PromptCompiler.compileDocument("secret-agent", Map.of("source_kind", input));
+        assertTrue(result.text().contains("import_credential"));
         assertTrue(result.text().contains(input));
         assertFalse(result.text().contains("Classify one proposed tool call"));
         assertFalse(result.sources().isEmpty());
@@ -39,6 +39,6 @@ class SlmPromptCompilationTest {
         assertTrue(mask.contains("\"risk\": \"high|medium|low\""));
         assertThrows(
                 IllegalArgumentException.class,
-                () -> PromptCompiler.compileText("secret-detection", Map.of()));
+                () -> PromptCompiler.compileText("secret-agent", Map.of()));
     }
 }

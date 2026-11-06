@@ -23,7 +23,7 @@ import org.jspecify.annotations.NonNull;
  * @param credentialKey host credential reference, never plaintext secret material
  * @param options sampling, output, context, and deadline options
  * @param messages immutable compiled conversation; empty selects the prompt fallback
- * @param baseUrl optional operator-configured provider endpoint
+ * @param baseUrl operator-configured endpoint: network URL or LOCAL model file path
  * @param nativeToolsEnabled whether the adapter may send native tool definitions and calls
  * @param responseContract host-owned response validation contract
  */

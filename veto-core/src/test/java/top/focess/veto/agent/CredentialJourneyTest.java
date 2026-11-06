@@ -13,11 +13,12 @@ import java.time.Duration;
 import java.util.*;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.regex.Pattern;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.Mockito;
 import top.focess.veto.agent.capability.*;
 import top.focess.veto.agent.capability.ImportedCredentialLeases;
@@ -41,27 +42,30 @@ import top.focess.veto.api.llm.VetoResponse;
 import top.focess.veto.builtin.tools.ReadGitHubRepositoryTool;
 import top.focess.veto.bus.SessionActions;
 import top.focess.veto.integration.plugins.HostResourceConfiguration;
+import top.focess.veto.integration.plugins.PluginAgentHostFactory;
 import top.focess.veto.integration.plugins.PluginConfigurations;
+import top.focess.veto.integration.plugins.PluginHostServices;
 import top.focess.veto.integration.plugins.PluginManager;
 import top.focess.veto.integration.plugins.PluginTestSupport;
+import top.focess.veto.integration.plugins.SecretAgentHostFixture;
 import top.focess.veto.llm.core.*;
 import top.focess.veto.llm.core.ToolResultPresenter;
 import top.focess.veto.model.SessionEntity;
 import top.focess.veto.model.SessionRepository;
 import top.focess.veto.sandbox.*;
+import top.focess.veto.util.Nullness;
 import top.focess.veto.vault.*;
 import top.focess.veto.vault.TestUsers;
 
 class CredentialJourneyTest {
     private static final @NonNull String IMPORT_TOOL =
-            "plugin_top_focess_secret_protection__import_detected_credential";
+            "plugin_top_focess_secret_protection__import_credential";
 
     @ParameterizedTest
-    @CsvSource({"false,true", "true,true", "false,false", "true,false"})
+    @ValueSource(booleans = {true, false})
     @SuppressWarnings("unchecked") // Mockito's class-token overload cannot retain byte[].
     void fileImportAndAuthenticatedReadKeepSecretsOutOfModelAndHistory(
-            boolean usePlan, boolean approveUse, @TempDir @NonNull Path directory)
-            throws Exception {
+            boolean approveUse, @TempDir @NonNull Path directory) throws Exception {
         // Use the same physical workspace path as tool resolution, including on macOS where
         // the system temporary directory is reached through a symlink.
         Path root = directory.toRealPath();
@@ -81,6 +85,22 @@ class CredentialJourneyTest {
                         "top.focess.builtin:read_github_repository",
                                 "builtin_read_github_repository",
                         "top.focess.builtin:submit_plan", "builtin_submit_plan"));
+        var primaryId = UUID.randomUUID().toString();
+        var engineRef = new AtomicReference<ToolEngine>();
+        var services =
+                new HashMap<Class<?>, Object>(
+                        new HostResourceConfiguration()
+                                .pluginHostServices(
+                                        PluginTestSupport.providerOf(vault),
+                                        PluginTestSupport.providerOf(null))
+                                .services());
+        services.put(
+                PluginAgentHostFactory.class,
+                new SecretAgentHostFixture(
+                        primaryId,
+                        Workspace.single(root, PathMode.REAL),
+                        () -> Nullness.requireNonNull(engineRef.get()),
+                        List.of(token, pluginToken)));
         var plugins =
                 PluginTestSupport.manager(
                         PluginTestSupport.pluginPackages(),
@@ -89,10 +109,7 @@ class CredentialJourneyTest {
                         5000,
                         PluginTestSupport.providerOf(
                                 PluginTestSupport.configurationServices(
-                                        new HostResourceConfiguration()
-                                                .pluginHostServices(
-                                                        PluginTestSupport.providerOf(vault),
-                                                        PluginTestSupport.providerOf(null)))),
+                                        new PluginHostServices(services))),
                         pluginConfiguration);
         var sessionPlugins = PluginTestSupport.sessionPlugins(plugins);
         var eventManager = PluginTestSupport.eventManager(plugins);
@@ -159,6 +176,7 @@ class CredentialJourneyTest {
                     }
                 };
         engine.afterSingletonsInstantiated();
+        engineRef.set(engine);
         var compiler =
                 new PromptCompiler(
                         new VetoCapabilityTranslator(),
@@ -183,70 +201,29 @@ class CredentialJourneyTest {
                             "A plugin's final observation must be protected before the model sees"
                                     + " it");
                     int step = calls.getAndIncrement();
-                    if (step == 0) {
-                        if (!usePlan)
-                            return tool("view_file", Map.of("absolutePath", file.toString()));
-                        String program =
-                                """
-                    [{"id":"read","label":"Read","type":"tool","tool":"view_file","inputs":{"absolutePath":PATH},"outputs":{"text":"content"}},
-                     {"id":"reference","label":"Extract reference","type":"generate","prompt":"Extract the secret reference from $text","inputs":{"text":"$text"},"outputs":{"ref":"message"}},
-                     {"id":"import","label":"Import","type":"tool","tool":"plugin_top_focess_secret_protection__import_detected_credential","inputs":{"secret_ref":"$ref","service":"github","label":"Repository"},"outputs":{"receipt":"content"}},
-                     {"id":"credential","label":"Extract credential reference","type":"generate","prompt":"Extract the credential reference from $receipt","inputs":{"receipt":"$receipt"},"outputs":{"credential":"message"}},
-                     {"id":"repository","label":"Read repository","type":"tool","tool":"read_github_repository","inputs":{"credentialRef":"$credential","repositoryOwner":"example","repositoryName":"project"},"outputs":{"repository":"content"}},
-                     {"id":"answer","label":"Report","type":"generate","prompt":"Report $repository","inputs":{"repository":"$repository"},"outputs":{"answer":"message"}},
-                     {"id":"stop","label":"Finish","type":"STOP","result_binding":"answer"}]
-                    """;
-                        try {
-                            return new VetoResponse(
-                                    null,
-                                    java.util.List.of(
-                                            new ToolCall(
-                                                    "submit_plan",
-                                                    Map.of(
-                                                            "actions",
-                                                            mapper.readTree(
-                                                                    program.replace(
-                                                                            "PATH",
-                                                                            mapper
-                                                                                    .writeValueAsString(
-                                                                                            file
-                                                                                                    .toString())))))),
-                                    null);
-                        } catch (Exception error) {
-                            throw new AssertionError(error);
-                        }
-                    }
+                    if (step == 0)
+                        return tool("view_file", Map.of("absolutePath", file.toString()));
                     if (step == 1) {
-                        String ref = extract(observed, "s_[a-f0-9]{32}");
-                        return usePlan
-                                ? message(ref)
-                                : tool(
-                                        IMPORT_TOOL,
-                                        Map.of(
-                                                "secret_ref",
-                                                ref,
-                                                "service",
-                                                "github",
-                                                "label",
-                                                "Repository"));
-                    }
-                    if (step == 2) {
-                        String ref = extract(observed, "cred_[a-f0-9-]{36}");
+                        assertTrue(
+                                observed.contains("Plugin diagnostic: token=[SECRET_REF:cred_"),
+                                observed);
+                        String ref =
+                                extract(
+                                        observed.split("Plugin diagnostic:", 2)[0],
+                                        "cred_[a-f0-9-]{36}");
                         importedReferences.add(ref);
-                        return usePlan
-                                ? message(ref)
-                                : tool(
-                                        "read_github_repository",
-                                        Map.of(
-                                                "credentialRef",
-                                                ref,
-                                                "repositoryOwner",
-                                                "example",
-                                                "repositoryName",
-                                                "project"));
+                        return tool(
+                                "read_github_repository",
+                                Map.of(
+                                        "credentialRef",
+                                        ref,
+                                        "repositoryOwner",
+                                        "example",
+                                        "repositoryName",
+                                        "project"));
                     }
                     assertTrue(approveUse, "Refused use must not trigger another model call");
-                    assertEquals(3, step);
+                    assertEquals(2, step);
                     assertTrue(observed.contains("example/project"));
                     return message("Private repository read successfully");
                 };
@@ -273,7 +250,7 @@ class CredentialJourneyTest {
                     @Override
                     public @NonNull String preObservation(
                             @NonNull String agentId, @NonNull String rawObservation) {
-                        if (rawObservation.contains("[SECRET_REF:")) {
+                        if (rawObservation.contains("cred_")) {
                             protectedFileObservations.incrementAndGet();
                         } else if (rawObservation.contains("\"full_name\"")) {
                             protectedNetworkObservations.incrementAndGet();
@@ -312,7 +289,7 @@ class CredentialJourneyTest {
         var agent =
                 service.getOrCreateAgent(
                         session,
-                        UUID.randomUUID().toString(),
+                        primaryId,
                         new LlmBinding(
                                 ProviderType.DEEPSEEK,
                                 "scripted",
@@ -365,13 +342,13 @@ class CredentialJourneyTest {
             if (approveUse) {
                 assertTrue(result.success(), result.message());
                 assertEquals("Private repository read successfully", result.message());
-                assertEquals(4, calls.get());
+                assertEquals(3, calls.get());
                 verify(client, times(1)).send(any(), any());
             } else {
                 assertFalse(result.success(), result.message());
                 assertTrue(
                         result.message().contains("The tool was not executed"), result.message());
-                assertEquals(3, calls.get());
+                assertEquals(2, calls.get());
                 verifyNoInteractions(client);
             }
             assertEquals(1, importedReferences.size());
@@ -380,7 +357,7 @@ class CredentialJourneyTest {
                     importedReferences.getFirst(),
                     "github",
                     value -> assertEquals(token, new String(value)));
-            assertEquals(List.of(IMPORT_TOOL, "read_github_repository"), approvals);
+            assertEquals(List.of("read_github_repository"), approvals);
             assertTrue(
                     agent.history().stream()
                             .noneMatch(turn -> turn.payload().toString().contains(token)));

@@ -16,6 +16,46 @@ import top.focess.veto.memory.TurnRecordRepository;
 class SessionHistoryLoaderTest {
 
     @Test
+    void corruptHistoryCannotBecomeAnEmptyPayloadOrPartialReplay() {
+        UUID session = UUID.randomUUID();
+        String agent = "primary";
+        var mapper = new ObjectMapper();
+        var valid =
+                TurnRecordEntity.of(
+                        TurnRecord.userPrompt(1, "first"),
+                        session,
+                        UUID.randomUUID(),
+                        agent,
+                        mapper);
+        var corrupt = mock(TurnRecordEntity.class);
+        when(corrupt.getId()).thenReturn("corrupt-row");
+        when(corrupt.getTurnNumber()).thenReturn(2);
+        when(corrupt.getType()).thenReturn("REWIND");
+        var repo = mock(TurnRecordRepository.class);
+        when(repo.findBySessionIdAndAgentIdOrderByTurnNumberAsc(session.toString(), agent))
+                .thenReturn(List.of(valid, corrupt));
+        var loader = new SessionHistoryLoader(repo, mapper);
+
+        for (String payload : List.of("{broken", "null", "[]", "")) {
+            when(corrupt.getPayload()).thenReturn(payload);
+            var failure =
+                    assertThrows(
+                            IllegalStateException.class,
+                            () -> loader.load(session.toString(), agent));
+            assertEquals(
+                    "Cannot load turn record corrupt-row in session " + session,
+                    failure.getMessage());
+        }
+        when(corrupt.getPayload()).thenReturn("{}");
+        when(corrupt.getType()).thenReturn("UNKNOWN_TURN");
+        assertThrows(IllegalStateException.class, () -> loader.load(session.toString(), agent));
+        when(corrupt.getType()).thenReturn("ASSISTANT_RESPONSE");
+        when(corrupt.getLlmUsage()).thenReturn("{broken");
+        assertThrows(IllegalStateException.class, () -> loader.load(session.toString(), agent));
+        verify(repo, never()).save(any());
+    }
+
+    @Test
     void loadsTurnsInOrder() {
         UUID session = UUID.randomUUID();
         String agent = UUID.randomUUID().toString();

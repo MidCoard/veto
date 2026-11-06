@@ -88,7 +88,7 @@ class FrameSerializationTest {
             new Frame.DeclineVetoes(8, UUID.randomUUID()),
             new Frame.Input("test input", 2),
             new Frame.Cancel(4, 2),
-            new Frame.CancelResult(Frame.CancelStatus.ACCEPTED, 4),
+            new Frame.CancelResult(Frame.CancelStatus.CANCELLED, 4),
             new Frame.CancelResult(Frame.CancelStatus.REJECTED, 5),
             new Frame.CancelResult(Frame.CancelStatus.NO_ACTIVE_REQUEST, 6),
             new Frame.Bye(),

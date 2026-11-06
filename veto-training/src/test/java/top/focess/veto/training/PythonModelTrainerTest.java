@@ -3,8 +3,10 @@ package top.focess.veto.training;
 import static org.junit.jupiter.api.Assertions.*;
 
 import java.io.IOException;
+import java.nio.channels.FileChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
@@ -16,8 +18,61 @@ import java.util.concurrent.atomic.AtomicReference;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import top.focess.veto.training.ModelTrainer.Completed;
+import top.focess.veto.training.ModelTrainer.Paused;
 
 class PythonModelTrainerTest {
+    @Test
+    void pauseReturnsCheckpointWithoutExportAndResumeProducesArtifact(@TempDir @NonNull Path root)
+            throws Exception {
+        var trainer = trainer(root, Duration.ofSeconds(20));
+        var request = request(root, "pause");
+        var result =
+                trainer.train(
+                        request,
+                        line -> {
+                            if (line.equals("ready")) {
+                                try {
+                                    trainer.requestPause(request.outputDirectory());
+                                } catch (IOException e) {
+                                    throw new IllegalStateException(e);
+                                }
+                            }
+                        });
+        var paused = assertInstanceOf(Paused.class, result);
+        assertEquals(Path.of("checkpoint-2"), paused.checkpoint().getFileName());
+        assertFalse(Files.exists(request.outputDirectory().resolve("merged")));
+        assertFalse(Files.exists(request.outputDirectory().resolve("gguf")));
+        var completed =
+                assertInstanceOf(
+                        Completed.class, trainer.resume(request, paused.checkpoint(), line -> {}));
+        assertEquals("fixture", Files.readString(completed.gguf()));
+        assertFalse(Files.exists(request.outputDirectory().resolve("paused.checkpoint")));
+        assertThrows(IOException.class, () -> trainer.requestPause(request.outputDirectory()));
+    }
+
+    @Test
+    void rejectsIncompleteForeignAndConcurrentResume(@TempDir @NonNull Path root) throws Exception {
+        var trainer = trainer(root, Duration.ofSeconds(15));
+        var request = request(root, "resume");
+        var output = Files.createDirectory(request.outputDirectory());
+        var checkpoint = Files.createDirectory(output.resolve("checkpoint-2"));
+        assertThrows(IOException.class, () -> trainer.resume(request, checkpoint, line -> {}));
+        Files.writeString(checkpoint.resolve("complete.json"), "{}");
+        var foreign = Files.createDirectory(root.resolve("checkpoint-2"));
+        Files.writeString(foreign.resolve("complete.json"), "{}");
+        assertThrows(IOException.class, () -> trainer.resume(request, foreign, line -> {}));
+        try (var channel =
+                        FileChannel.open(
+                                output.resolve("training.lock"),
+                                StandardOpenOption.CREATE,
+                                StandardOpenOption.WRITE);
+                var lock = channel.lock()) {
+            assertTrue(lock.isValid());
+            assertThrows(IOException.class, () -> trainer.resume(request, checkpoint, line -> {}));
+        }
+    }
+
     @Test
     void taskConfigurationsShareTheJavaEngineButKeepArtifactsAndPromptFormatsSeparate(
             @TempDir @NonNull Path root) throws Exception {
@@ -45,7 +100,7 @@ class PythonModelTrainerTest {
             properties.setProperty(
                     "output.directory", root.resolve("outputs").resolve(name).toString());
             var request = TrainingCli.request(root, properties);
-            var result = trainer.train(request, line -> {});
+            var result = assertInstanceOf(Completed.class, trainer.train(request, line -> {}));
             artifacts.add(result.gguf());
             assertEquals(Path.of(name + "-q4_k_m.gguf"), result.gguf().getFileName());
             assertEquals(
@@ -66,6 +121,24 @@ class PythonModelTrainerTest {
         for (String mode : List.of("fail", "missing")) {
             assertThrows(IOException.class, () -> trainer.train(request(root, mode), line -> {}));
         }
+    }
+
+    @Test
+    void exportRetriesWithoutTrainingOrInputData(@TempDir @NonNull Path root) throws Exception {
+        var trainer = trainer(root, Duration.ofSeconds(15));
+        var request = request(root, "export");
+        var output = Files.createDirectory(request.outputDirectory());
+        Files.createDirectory(output.resolve("lora-adapter"));
+        Files.writeString(output.resolve("lora-adapter/adapter_config.json"), "{}");
+        Files.createDirectory(output.resolve("gguf"));
+        Files.writeString(output.resolve("gguf/model-q4_k_m.gguf"), "partial");
+        Files.delete(request.trainingData());
+        Files.delete(request.validationData());
+        var completed = trainer.export(request, line -> {});
+        assertEquals("fixture", Files.readString(completed.gguf()));
+        assertEquals("export", Files.readString(output.resolve("merged/mode")));
+        assertFalse(Files.exists(output.resolve("run.json")));
+        assertThrows(IOException.class, () -> trainer.resume(request, output, line -> {}));
     }
 
     @Test
@@ -170,6 +243,7 @@ class PythonModelTrainerTest {
     private static @NonNull PythonModelTrainer trainer(
             @NonNull Path root, @NonNull Duration timeout) throws Exception {
         Files.writeString(root.resolve("train.py"), "fixture");
+        Files.writeString(root.resolve("export.py"), "fixture");
         Files.writeString(root.resolve("convert_to_gguf.py"), "fixture");
         Files.writeString(root.resolve("convert_hf_to_gguf.py"), "fixture");
         var source = Worker.class.getProtectionDomain().getCodeSource();
@@ -192,7 +266,7 @@ class PythonModelTrainerTest {
                 root.resolve(mode),
                 "model",
                 new TrainingRequest.Options(
-                        1, 0.0001, 1, 1, 16, 32, 0.05, 256, TrainingRequest.PromptFormat.RAW));
+                        1, 0.0001, 1, 1, 16, 32, 0.05, 256, TrainingRequest.PromptFormat.RAW, 100));
     }
 
     /** A real child process replacing Python; no GPU, dependencies or model writes. */
@@ -230,15 +304,36 @@ class PythonModelTrainerTest {
                 }
                 System.out.println("pid=" + ProcessHandle.current().pid());
                 System.out.flush();
+                Files.writeString(output.resolve("run.json"), "{}");
+                if (model.equals("pause") && !arguments.contains("--resume-from-checkpoint")) {
+                    System.out.println("ready");
+                    System.out.flush();
+                    long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
+                    while (!Files.exists(output.resolve("pause.request"))) {
+                        if (System.nanoTime() > deadline)
+                            throw new IOException("Pause not requested");
+                        Thread.sleep(10);
+                    }
+                    var checkpoint = Files.createDirectory(output.resolve("checkpoint-2"));
+                    Files.writeString(checkpoint.resolve("complete.json"), "{}");
+                    Files.writeString(output.resolve("paused.checkpoint"), "checkpoint-2");
+                    return;
+                }
                 if (model.equals("sleep") || model.equals("listener")) Thread.sleep(60000);
                 Files.createDirectories(output.resolve("merged"));
                 Files.writeString(
                         output.resolve("format.txt"),
                         arguments.get(arguments.indexOf("--prompt-format") + 1));
                 Files.writeString(output.resolve("merged/mode"), model);
+            } else if (args[0].endsWith("export.py")) {
+                Files.createDirectories(output.resolve("merged"));
+                Files.writeString(output.resolve("merged/mode"), "export");
             } else {
                 var merged = Path.of(arguments.get(arguments.indexOf("--model-dir") + 1));
                 if (Files.readString(merged.resolve("mode")).equals("missing")) return;
+                if (Files.readString(merged.resolve("mode")).equals("export")
+                        && !arguments.contains("--retry"))
+                    throw new IOException("Export recovery must enable conversion retry");
                 Files.createDirectories(output);
                 String name = arguments.get(arguments.indexOf("--model-name") + 1);
                 Files.writeString(output.resolve(name + "-q4_k_m.gguf"), "fixture");

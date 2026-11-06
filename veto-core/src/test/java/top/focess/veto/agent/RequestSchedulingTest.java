@@ -46,30 +46,41 @@ import top.focess.veto.vault.TestUsers;
 
 class RequestSchedulingTest {
     @Test
-    void protectedInputRejectionOccursBeforeAdmission() {
+    void protectedInputRejectionSettlesWithoutPublishingInput() throws Exception {
         var runner = runner();
         var events = mock(EventManager.class);
         doAnswer(answerVoid((@NonNull BeforeTextCommitEvent event) -> event.setCancelled(true)))
                 .when(events)
                 .submit(any(BeforeTextCommitEvent.class));
         runner.attachEventManager(events);
-        assertThrows(
-                ProtectedInputException.class,
-                () -> runner.startTask(null, new AgentAction.UserPromptAction("protected input")));
-        assertFalse(runner.hasPendingWork());
-        verify(events).submit(any(BeforeTextCommitEvent.class));
+        var request = runner.startTask(null, new AgentAction.UserPromptAction("protected input"));
+        verify(events, never()).submit(any(BeforeTextCommitEvent.class));
+        var agent = new VetoAgent(runner.personaView(), runner);
+        try {
+            assertFalse(request.await(Duration.ofSeconds(5)).success());
+            assertTrue(request.settled().get(5, TimeUnit.SECONDS));
+            assertFalse(runner.hasPendingWork());
+            assertTrue(
+                    agent.history().stream()
+                            .noneMatch(turn -> turn.type() == TurnType.USER_PROMPT));
+            assertTrue(
+                    agent.history().stream()
+                            .flatMap(turn -> turn.payload().values().stream())
+                            .noneMatch(
+                                    value ->
+                                            value instanceof String text
+                                                    && text.contains("protected input")));
+            verify(events).submit(any(BeforeTextCommitEvent.class));
+        } finally {
+            agent.shutdown();
+            assertTrue(agent.awaitTermination(Duration.ofSeconds(5)));
+        }
     }
 
     @Test
-    void authorityGuardRunsAfterProtectionAndCanRejectWithoutEnqueueing() {
+    void authorityGuardRejectsBeforeEnqueueingOrStartingProtection() {
         var runner = runner();
         var events = mock(EventManager.class);
-        doAnswer(
-                        answerVoid(
-                                (@NonNull BeforeTextCommitEvent event) ->
-                                        event.setText("protected reference")))
-                .when(events)
-                .submit(any(BeforeTextCommitEvent.class));
         runner.attachEventManager(events);
         assertThrows(
                 IllegalStateException.class,
@@ -79,30 +90,33 @@ class RequestSchedulingTest {
                                 new AgentAction.UserPromptAction("raw secret"),
                                 Locale.GERMAN,
                                 commit -> {
-                                    verify(events).submit(any(BeforeTextCommitEvent.class));
+                                    verify(events, never())
+                                            .submit(any(BeforeTextCommitEvent.class));
                                     assertFalse(runner.hasPendingWork());
                                     throw new IllegalStateException(
-                                            "Authority revoked during protection");
+                                            "Authority revoked before admission");
                                 }));
         assertFalse(runner.hasPendingWork());
     }
 
     @Test
-    void queuedPromptIsProtectedBeforeAdmissionAndIgnoresEarlierCancellation() {
+    void queuedPromptProtectionBelongsToNewRequestAfterEarlierCancellation() throws Exception {
         var runner = runner();
         var previousAction = new AgentAction.UserPromptAction("previous");
         var previous = runner.startTask(null, previousAction);
-        assertTrue(runner.beginRequest(new QueuedRequest(previousAction, previous)));
-        previous.cancelled = true;
+        assertTrue(runner.requestCancellation(previous));
         var events = mock(EventManager.class);
-        doAnswer(
-                        answerVoid(
-                                (@NonNull BeforeTextCommitEvent event) ->
-                                        event.setText("protected reference")))
-                .when(events)
-                .submit(any(BeforeTextCommitEvent.class));
         runner.attachEventManager(events);
         var request = runner.startTask(null, new AgentAction.UserPromptAction("raw secret"));
+        doAnswer(
+                        answerVoid(
+                                (@NonNull BeforeTextCommitEvent event) -> {
+                                    assertSame(request, runner.currentRequest());
+                                    assertFalse(request.cancelled);
+                                    event.setCancelled(true);
+                                }))
+                .when(events)
+                .submit(any(BeforeTextCommitEvent.class));
         var value = ReflectionTestUtils.getField(runner, "actionQueue");
         if (!(value instanceof BlockingQueue<?> queue))
             throw new AssertionError("Missing action queue");
@@ -115,9 +129,29 @@ class RequestSchedulingTest {
                                                 && queued.action()
                                                         instanceof
                                                         AgentAction.UserPromptAction prompt
-                                                && prompt.prompt().equals("protected reference"));
+                                                && prompt.prompt().equals("raw secret"));
         assertTrue(found);
-        verify(events).submit(any(BeforeTextCommitEvent.class));
+        verify(events, never()).submit(any(BeforeTextCommitEvent.class));
+        var agent = new VetoAgent(runner.personaView(), runner);
+        try {
+            assertFalse(request.await(Duration.ofSeconds(5)).success());
+            assertTrue(request.settled().get(5, TimeUnit.SECONDS));
+            assertTrue(previous.settled().get(5, TimeUnit.SECONDS));
+            assertTrue(
+                    agent.history().stream()
+                            .noneMatch(turn -> turn.type() == TurnType.USER_PROMPT));
+            assertTrue(
+                    agent.history().stream()
+                            .flatMap(turn -> turn.payload().values().stream())
+                            .noneMatch(
+                                    item ->
+                                            item instanceof String text
+                                                    && text.contains("raw secret")));
+            verify(events).submit(any(BeforeTextCommitEvent.class));
+        } finally {
+            agent.shutdown();
+            assertTrue(agent.awaitTermination(Duration.ofSeconds(5)));
+        }
     }
 
     @ParameterizedTest
@@ -284,6 +318,8 @@ class RequestSchedulingTest {
         var gateway = mock(Gateway.class);
         when(gateway.readHistory()).thenReturn(new ReadHistory());
         var compiler = mock(PromptCompiler.class);
+        when(compiler.recordRuntimeSource(any(TurnRecord.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
         var tools = mock(ToolEngine.class);
         return new AgentRunner(
                 id,

@@ -49,7 +49,9 @@ def parse_args():
     parser.add_argument("--lora-alpha", type=int, default=32)
     parser.add_argument("--lora-dropout", type=float, default=0.05)
     parser.add_argument("--max-seq-length", type=int, default=1024)
-    parser.add_argument("--prompt-format", choices=("instruction", "raw"), default="instruction",
+    parser.add_argument("--checkpoint-steps", type=int, default=100)
+    parser.add_argument("--resume-from-checkpoint", type=str, default=None)
+    parser.add_argument("--prompt-format", choices=("instruction", "raw", "native_tools"), default="instruction",
                         help="Use raw for production-compiled MDC prompts")
     parser.add_argument("--hf-token", type=str, default=None,
                         help="HuggingFace token for gated models")
@@ -91,7 +93,7 @@ def setup_environment(args):
             print("[WARN] No GPU detected. Training will be very slow on CPU. "
                   "Consider a smaller model like Qwen2.5-0.5B.")
     except ImportError:
-        print("[FATAL] PyTorch not installed. Run: pip install torch>=2.4.0")
+        print("[FATAL] PyTorch not installed. Run: pip install torch>=2.6.0")
         sys.exit(1)
 
     # Check PEFT
@@ -155,6 +157,8 @@ def format_instruction(record: dict) -> str:
 
 def tokenize_function(examples, tokenizer, max_length: int, prompt_format="instruction"):
     """Tokenize instruction-output pairs."""
+    if prompt_format == "native_tools":
+        return tokenize_tool_messages(examples, tokenizer, max_length)
     prompts = [
         instruction if prompt_format == "raw" else f"### Instruction:\n{instruction}\n\n### Response:\n"
         for instruction in examples["instruction"]
@@ -189,6 +193,62 @@ def tokenize_function(examples, tokenizer, max_length: int, prompt_format="instr
     return tokenized
 
 
+def tokenize_tool_messages(examples, tokenizer, max_length):
+    """Use the model's native chat/tool template; supervise assistant turns only."""
+    result = {"input_ids": [], "attention_mask": [], "labels": []}
+    for messages, tools in zip(examples["messages"], examples["tools"], strict=True):
+        if not messages or messages[-1]["role"] != "assistant":
+            raise ValueError("Tool training records must end with an assistant turn")
+        rendered = tokenizer.apply_chat_template(messages, tools=tools, tokenize=False,
+                                                 add_generation_prompt=False)
+        ids = tokenizer.encode(rendered, add_special_tokens=False)
+        if len(ids) > max_length:
+            raise ValueError("Tool conversation exceeds sequence length; refusing target truncation")
+        labels = [-100] * len(ids)
+        for index, message in enumerate(messages):
+            if message["role"] != "assistant":
+                continue
+            prefix = tokenizer.apply_chat_template(messages[:index], tools=tools, tokenize=False,
+                                                   add_generation_prompt=True)
+            through = tokenizer.apply_chat_template(messages[:index + 1], tools=tools, tokenize=False,
+                                                    add_generation_prompt=False)
+            begin = tokenizer.encode(prefix, add_special_tokens=False)
+            end = tokenizer.encode(through, add_special_tokens=False)
+            if ids[:len(begin)] != begin or ids[:len(end)] != end:
+                raise ValueError("Chat template does not preserve assistant token boundaries")
+            labels[len(begin):len(end)] = ids[len(begin):len(end)]
+        if not any(label != -100 for label in labels):
+            raise ValueError("No assistant training target")
+        result["input_ids"].append(ids)
+        result["attention_mask"].append([1] * len(ids))
+        result["labels"].append(labels)
+    return result
+
+
+def select_supervised_logits(batch):
+    """Project only positions whose next tokens contribute to causal loss."""
+    import torch
+
+    shifted = torch.nn.functional.pad(batch["labels"], (0, 1), value=-100)[:, 1:]
+    positions = (shifted != -100).any(dim=0).nonzero(as_tuple=True)[0]
+    if positions.numel() == 0:
+        raise ValueError("No next-token training target")
+    return {**batch, "logits_to_keep": positions,
+            "shift_labels": shifted.index_select(1, positions).contiguous()}
+
+
+class NativeToolCollator:
+    """Keep full context while avoiding vocabulary logits for masked prompt tokens."""
+
+    def __init__(self, tokenizer):
+        from transformers import DataCollatorForSeq2Seq
+        self.collator = DataCollatorForSeq2Seq(
+            tokenizer, label_pad_token_id=-100, pad_to_multiple_of=8)
+
+    def __call__(self, features):
+        return select_supervised_logits(self.collator(features))
+
+
 def train(args):
     """Main training loop."""
     started = time.monotonic()
@@ -196,7 +256,7 @@ def train(args):
 
     import torch
     from transformers import (
-        AutoModelForCausalLM, AutoTokenizer, TrainingArguments, Trainer,
+        AutoModelForCausalLM, AutoTokenizer, TrainingArguments,
         BitsAndBytesConfig, EarlyStoppingCallback
     )
     from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
@@ -214,7 +274,8 @@ def train(args):
                               epoch=state.epoch or 0,
                               step=state.global_step,
                               max_steps=state.max_steps,
-                              loss=logs.get("loss", logs.get("eval_loss", None)),
+                              loss=logs.get("loss"),
+                              eval_loss=logs.get("eval_loss"),
                               learning_rate=logs.get("learning_rate", None))
 
         def on_epoch_begin(self, training_args, state, control, **kwargs):
@@ -237,7 +298,7 @@ def train(args):
     print(f"Loading tokenizer from {args.base_model} ...")
     tokenizer = AutoTokenizer.from_pretrained(
         args.base_model,
-        trust_remote_code=True,
+        trust_remote_code=False,
         token=args.hf_token,
     )
     if tokenizer.pad_token is None:
@@ -249,7 +310,7 @@ def train(args):
         args.base_model,
         quantization_config=bnb_config,
         device_map="auto",
-        trust_remote_code=True,
+        trust_remote_code=False,
         token=args.hf_token,
         torch_dtype=torch.bfloat16,
     )
@@ -269,16 +330,26 @@ def train(args):
     )
     model = get_peft_model(model, lora_config)
     model.print_trainable_parameters()
+    if args.prompt_format == "native_tools":
+        import inspect
+        if "logits_to_keep" not in inspect.signature(model.get_base_model().forward).parameters:
+            raise ValueError("Native tool training requires a model with logits_to_keep support")
+
+    from training_state import CheckpointControl, ResumableTrainer, prepare_run
+    signature, resume_checkpoint = prepare_run(args)
+    checkpoint_control = CheckpointControl(out_dir, signature, args.checkpoint_steps)
 
     # ── Load dataset ──
     eval_path = Path(args.eval_data_path) if args.eval_data_path else None
     datasets = load_dataset(Path(args.data_path), eval_path)
 
-    tokenized_datasets = datasets.map(
-        lambda x: tokenize_function(x, tokenizer, args.max_seq_length, args.prompt_format),
-        batched=True,
-        remove_columns=datasets["train"].column_names,
-    )
+    # Metadata may differ between splits; remove each split's own columns.
+    tokenized_datasets = type(datasets)({
+        name: split.map(
+            lambda x: tokenize_function(x, tokenizer, args.max_seq_length, args.prompt_format),
+            batched=True, remove_columns=split.column_names)
+        for name, split in datasets.items()
+    })
 
     # ── Training arguments ──
     run_name = f"veto-slm-{int(time.time())}"
@@ -299,25 +370,29 @@ def train(args):
         eval_strategy="epoch",
         save_total_limit=2,
         load_best_model_at_end=True,
+        restore_callback_states_from_checkpoint=True,
         metric_for_best_model="eval_loss",
         greater_is_better=False,
         bf16=torch.cuda.is_available() and torch.cuda.get_device_capability()[0] >= 8,
         fp16=not (torch.cuda.is_available() and torch.cuda.get_device_capability()[0] >= 8),
         report_to="none",
-        dataloader_num_workers=2,
+        # Records are already tokenized; Windows spawn would duplicate dataset/runtime memory.
+        dataloader_num_workers=0,
         remove_unused_columns=False,
         prediction_loss_only=True,
         eval_accumulation_steps=1,
     )
 
     # ── Trainer ──
-    trainer = Trainer(
+    trainer = ResumableTrainer(
         model=model,
         args=training_args,
         train_dataset=tokenized_datasets["train"],
         eval_dataset=tokenized_datasets.get("eval"),
         processing_class=tokenizer,
-        callbacks=(
+        data_collator=(NativeToolCollator(tokenizer)
+                       if args.prompt_format == "native_tools" else None),
+        callbacks=[checkpoint_control] + (
             [EarlyStoppingCallback(early_stopping_patience=1)]
             + ([StructuredProgressCallback()] if args.structured_output else [])
             if tokenized_datasets.get("eval") is not None
@@ -335,8 +410,12 @@ def train(args):
 
     emit_progress("phase", phase="training", message="Starting QLoRA fine-tuning...")
     training_started = time.monotonic()
-    train_result = trainer.train()
+    train_result = trainer.train(
+        resume_from_checkpoint=str(resume_checkpoint) if resume_checkpoint else None)
     training_seconds = time.monotonic() - training_started
+    if checkpoint_control.paused_checkpoint is not None:
+        emit_progress("paused", checkpoint=str(checkpoint_control.paused_checkpoint))
+        return None
     emit_progress("phase_complete", phase="training", message="Training complete")
 
     # ── Save ──
@@ -360,7 +439,7 @@ def train(args):
     clean_base = AutoModelForCausalLM.from_pretrained(
         args.base_model,
         device_map="cpu",
-        trust_remote_code=True,
+        trust_remote_code=False,
         token=args.hf_token,
         torch_dtype=torch.bfloat16 if torch.cuda.is_available() else torch.float32,
     )
@@ -407,4 +486,7 @@ def train(args):
 
 
 if __name__ == "__main__":
-    train(parse_args())
+    from training_state import worker_lock
+    arguments = parse_args()
+    with worker_lock(arguments.output_dir):
+        train(arguments)

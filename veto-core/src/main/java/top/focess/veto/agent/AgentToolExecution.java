@@ -23,7 +23,6 @@ import top.focess.veto.agent.intercept.VetoScenario;
 import top.focess.veto.agent.loop.PromptCompiler;
 import top.focess.veto.agent.tool.LocalToolDefinition;
 import top.focess.veto.agent.tool.NativeToolArgumentValidator;
-import top.focess.veto.agent.tool.NativeToolDefinition;
 import top.focess.veto.agent.tool.ToolCallContext;
 import top.focess.veto.agent.tool.ToolCallContextHolder;
 import top.focess.veto.agent.tool.ToolDefinition;
@@ -387,27 +386,30 @@ final class AgentToolExecution {
                 pluginObservation = plugin.preObservation(agentId, pluginObservation);
             }
             transformed = transformed.withContent(pluginObservation);
+            var resultOptions = transformed.options();
 
             // (g) final ingress defense, immediately before committing the observation to history.
-            String replacement = null;
-            var eventManager = runner.eventManager;
-            UUID currentUserId = userId;
-            if (transformed.success()
-                    && def instanceof NativeToolDefinition
-                    && def.capability() == ToolCapability.WORKSPACE_READ
-                    && eventManager != null) {
-                var event =
-                        new BeforeTextCommitEvent(
-                                new Scope.AgentScope(currentUserId, sessionId.toString(), agentId),
-                                BeforeTextCommitEvent.Phase.FILE_OBSERVATION,
-                                UUID.randomUUID().toString(),
-                                transformed.content());
-                eventManager.submit(event);
-                if (event.isCancelled())
-                    throw new IllegalStateException("File observation cancelled");
-                if (event.replaced()) replacement = event.text();
-            }
-            String observation = toolBoundary.defend(authorized, transformed, replacement);
+            String observation =
+                    toolBoundary.defend(
+                            authorized,
+                            transformed,
+                            text -> {
+                                var eventManager = runner.eventManager;
+                                if (eventManager == null) return null;
+                                var event =
+                                        new BeforeTextCommitEvent(
+                                                new Scope.AgentScope(
+                                                        userId, sessionId.toString(), agentId),
+                                                BeforeTextCommitEvent.Phase.OBSERVATION,
+                                                call.callId(),
+                                                text,
+                                                resultOptions);
+                                eventManager.submit(event);
+                                if (event.isCancelled())
+                                    throw new IllegalStateException(
+                                            "Tool observation protection failed");
+                                return event.replaced() ? event.text() : null;
+                            });
 
             ToolResult observed = transformed.withContent(observation);
             output.appendToolResponse(observed);

@@ -18,7 +18,7 @@ class SecretRevealTest {
                         "session",
                         "agent");
         String value = "SyntheticOnlyApiKey289174628394718239";
-        var capture = store.capture(scope, "input", value);
+        var capture = store.captureExact(scope, "input", value, value);
         String ref = capture.candidates().getFirst().reference();
         assertEquals(value, store.reveal(scope, ref).orElseThrow());
         for (var foreign :

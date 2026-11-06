@@ -24,6 +24,21 @@ import top.focess.veto.llm.egress.LlmEgress;
 import top.focess.veto.llm.provider.LLMProviderStrategy;
 
 class DefaultUniformLLMCallerTest {
+    @Test
+    void providerOwnsResolutionWithoutCallerKnowingItsTransport() {
+        var provider = mock(LLMProviderStrategy.class);
+        when(provider.supports(ProviderType.LOCAL)).thenReturn(true);
+        var request = request(ProviderType.LOCAL);
+        var resolved = new ResolvedRequest(request, "./models/example.gguf", "");
+        when(provider.resolve(any(), any())).thenReturn(resolved);
+        when(provider.execute(resolved)).thenReturn(new VetoResponse(null, null, "DONE"));
+        var egress = mock(LlmEgress.class);
+        var caller = new DefaultUniformLLMCaller(List.of(provider), egress, emptyPluginProviders());
+        assertEquals("DONE", caller.call(request).message());
+        verify(provider).execute(resolved);
+        verifyNoInteractions(egress);
+    }
+
     private static @NonNull PluginLlmProviders emptyPluginProviders() {
         var plugins = mock(PluginLlmProviders.class);
         when(plugins.require(any()))
@@ -33,7 +48,7 @@ class DefaultUniformLLMCallerTest {
 
     @Test
     void plainTextIsAcceptedWithoutCorrectionOrRetry() {
-        LLMProviderStrategy provider = mock(LLMProviderStrategy.class);
+        LLMProviderStrategy provider = mock(LLMProviderStrategy.class, CALLS_REAL_METHODS);
         when(provider.supports(ProviderType.DEEPSEEK)).thenReturn(true);
         when(provider.execute(any())).thenReturn(new VetoResponse(null, null, "Answer"));
         var caller =
@@ -70,7 +85,7 @@ class DefaultUniformLLMCallerTest {
 
     @Test
     void optionalSessionSelectsUnscopedOrExactSessionProvider() {
-        var provider = mock(LLMProviderStrategy.class);
+        var provider = mock(LLMProviderStrategy.class, CALLS_REAL_METHODS);
         var plugins = mock(PluginLlmProviders.class);
         var expected = new VetoResponse(null, null, "Answer");
         when(provider.execute(any())).thenReturn(expected);
@@ -113,8 +128,8 @@ class DefaultUniformLLMCallerTest {
 
     @Test
     void delegatesToSupportingProvider() {
-        LLMProviderStrategy s1 = mock(LLMProviderStrategy.class);
-        LLMProviderStrategy s2 = mock(LLMProviderStrategy.class);
+        LLMProviderStrategy s1 = mock(LLMProviderStrategy.class, CALLS_REAL_METHODS);
+        LLMProviderStrategy s2 = mock(LLMProviderStrategy.class, CALLS_REAL_METHODS);
         when(s1.supports(ProviderType.OPENAI)).thenReturn(false);
         when(s2.supports(ProviderType.OPENAI)).thenReturn(true);
         VetoResponse expected = new VetoResponse("thought", null, null);
@@ -129,7 +144,7 @@ class DefaultUniformLLMCallerTest {
 
     @Test
     void throwsWhenNoProviderSupportsType() {
-        LLMProviderStrategy s1 = mock(LLMProviderStrategy.class);
+        LLMProviderStrategy s1 = mock(LLMProviderStrategy.class, CALLS_REAL_METHODS);
         when(s1.supports(any())).thenReturn(false);
         DefaultUniformLLMCaller caller =
                 new DefaultUniformLLMCaller(
@@ -140,7 +155,7 @@ class DefaultUniformLLMCallerTest {
 
     @Test
     void retriesRetryableFailureThenSucceeds() {
-        LLMProviderStrategy s = mock(LLMProviderStrategy.class);
+        LLMProviderStrategy s = mock(LLMProviderStrategy.class, CALLS_REAL_METHODS);
         when(s.supports(ProviderType.OPENAI)).thenReturn(true);
         VetoResponse expected = new VetoResponse("ok", null, null);
         when(s.execute(any(ResolvedRequest.class)))
@@ -155,7 +170,7 @@ class DefaultUniformLLMCallerTest {
 
     @Test
     void doesNotRetryNonRetryableFailure() {
-        LLMProviderStrategy s = mock(LLMProviderStrategy.class);
+        LLMProviderStrategy s = mock(LLMProviderStrategy.class, CALLS_REAL_METHODS);
         when(s.supports(ProviderType.OPENAI)).thenReturn(true);
         when(s.execute(any(ResolvedRequest.class)))
                 .thenThrow(new ModelCapabilityException("permanent"));

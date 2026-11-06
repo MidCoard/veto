@@ -3,17 +3,12 @@ package top.focess.veto.api.llm;
 import org.jspecify.annotations.NonNull;
 
 /**
- * A {@link VetoRequest} after egress resolution. Only ever constructed inside the LLM module (by
- * the orchestrator) and handed to a provider — keeping the resolved secret off the public request
- * type and out of any audit/log surface.
+ * Provider-resolved request. Network resolution keeps plaintext credentials out of VetoRequest;
+ * LOCAL resolution carries a filesystem model endpoint and no credential.
  *
- * <p>{@code baseUrl} is the effective transport target chosen by the egress strategy: the
- * provider's own URL in direct mode, or the local broker URL in proxy mode. {@code apiKey} is
- * correspondingly the real secret (direct) or a low-value internal token (proxy).
- *
- * @param request the original VetoRequest
- * @param baseUrl the effective base URL for the call
- * @param apiKey the API key or internal token to use
+ * @param request original request
+ * @param baseUrl provider target: network URL or local model path
+ * @param apiKey resolved network secret/internal token, or empty for a local artifact
  */
 public record ResolvedRequest(
         @NonNull VetoRequest request, String baseUrl, @NonNull String apiKey) {

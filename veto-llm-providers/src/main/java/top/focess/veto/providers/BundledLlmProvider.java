@@ -31,6 +31,7 @@ final class BundledLlmProvider implements LlmProvider {
             throws Exception {
         LlmClient client =
                 switch (type) {
+                    case LOCAL -> throw new IllegalArgumentException("Use LocalLlmProvider");
                     case OPENAI ->
                             factory.openAi(request.baseUrl(), request.apiKey(), true, "OpenAI");
                     case DEEPSEEK ->

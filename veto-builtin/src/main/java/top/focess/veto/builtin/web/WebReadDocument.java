@@ -9,6 +9,10 @@ import java.util.Set;
 import java.util.regex.Pattern;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Element;
+import org.jsoup.nodes.Node;
+import org.jsoup.nodes.TextNode;
+import org.jsoup.select.NodeFilter;
+import org.jsoup.select.NodeTraversor;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.api.agent.tool.ToolErrorCode;
 import top.focess.veto.api.agent.tool.ToolErrors;
@@ -20,8 +24,6 @@ public final class WebReadDocument {
     private static final int SEGMENT_CHARS = 1200;
     private static final int MAX_SEGMENTS = 10000;
     private static final @NonNull Pattern SEARCH_WHITESPACE = Pattern.compile("(?U)\\s+");
-    private static final @NonNull Set<@NonNull String> TEXT_BLOCKS =
-            Set.of("h1", "h2", "h3", "h4", "h5", "h6", "p", "pre", "table", "li", "a");
     private final @NonNull List<@NonNull Segment> segments = new ArrayList<>();
     private final @NonNull Set<@NonNull String> inspected = new LinkedHashSet<>();
     private final @NonNull String url;
@@ -44,42 +46,72 @@ public final class WebReadDocument {
             doc.select("script,style,noscript,iframe,nav,footer,header,form").remove();
             Element main = doc.selectFirst("main,article,[role=main]");
             Element root = main == null ? doc.body() : main;
-            String section = doc.title().isBlank() ? "Document" : doc.title();
-            var blocks = root.getAllElements();
-            for (Element block : blocks) {
-                if (Thread.currentThread().isInterrupted())
-                    ToolErrors.failure(
-                            ToolErrorCode.LIFECYCLE.CANCELLED,
-                            "Cancelled: the web reader was cancelled.");
-                if (block.parents().stream()
-                        .anyMatch(p -> p != root && TEXT_BLOCKS.contains(p.tagName()))) continue;
-                if (block.tagName().matches("h[1-6]")) section = block.text();
-                boolean textBlock = TEXT_BLOCKS.contains(block.tagName());
-                Element readable = textBlock ? block.clone() : block;
-                if (textBlock) {
-                    for (Element link : readable.select("a[href]")) {
-                        String destination = link.absUrl("href");
-                        if (!destination.isBlank()) link.appendText(" (" + destination + ")");
-                    }
-                }
-                String text =
-                        TEXT_BLOCKS.contains(block.tagName())
-                                ? readable.wholeText()
-                                : readable.ownText();
-                if (block.tagName().equals("table")) {
-                    StringBuilder rows = new StringBuilder();
-                    for (Element row : readable.select("tr"))
-                        rows.append(String.join(" | ", row.select("th,td").eachText()))
-                                .append('\n');
-                    text = rows.toString();
-                }
-                add(section, text);
-            }
+            readHtml(root, doc.title().isBlank() ? "Document" : doc.title());
         } else add("Document", page.content());
         if (segments.isEmpty())
             ToolErrors.failure(
                     ToolErrorCode.VALIDATION.EMPTY_CONTENT,
                     "Empty content: the page has no readable content.");
+    }
+
+    /** Collects contiguous inline text, flushing before and after each nested block. */
+    private void readHtml(@NonNull Element root, @NonNull String title) {
+        NodeTraversor.filter(
+                new NodeFilter() {
+                    private @NonNull String section = title;
+                    private final @NonNull StringBuilder text = new StringBuilder();
+
+                    public @NonNull FilterResult head(@NonNull Node node, int depth) {
+                        if (Thread.currentThread().isInterrupted())
+                            ToolErrors.failure(
+                                    ToolErrorCode.LIFECYCLE.CANCELLED,
+                                    "Cancelled: the web reader was cancelled.");
+                        if (node instanceof TextNode value) {
+                            text.append(value.getWholeText());
+                        } else if (node instanceof Element element) {
+                            if (element.isBlock()) flush();
+                            if (element.tagName().matches("h[1-6]")) section = element.text();
+                            if (element.tagName().equals("table")
+                                    || element.tagName().equals("pre")) {
+                                for (Element link : element.select("a[href]")) {
+                                    String destination = link.absUrl("href");
+                                    if (!destination.isBlank())
+                                        link.appendText(" (" + destination + ")");
+                                }
+                            }
+                            if (element.tagName().equals("table")) {
+                                for (Element row : element.select("tr"))
+                                    text.append(String.join(" | ", row.select("th,td").eachText()))
+                                            .append('\n');
+                                return FilterResult.SKIP_CHILDREN;
+                            }
+                            if (element.tagName().equals("pre")) {
+                                text.append(element.wholeText());
+                                return FilterResult.SKIP_CHILDREN;
+                            }
+                            if (element.tagName().equals("br")) text.append('\n');
+                        }
+                        return FilterResult.CONTINUE;
+                    }
+
+                    public @NonNull FilterResult tail(@NonNull Node node, int depth) {
+                        if (node instanceof Element element) {
+                            if (element.tagName().equals("a")) {
+                                String destination = element.absUrl("href");
+                                if (!destination.isBlank())
+                                    text.append(" (").append(destination).append(')');
+                            }
+                            if (element.isBlock() || depth == 0) flush();
+                        }
+                        return FilterResult.CONTINUE;
+                    }
+
+                    private void flush() {
+                        add(section, text.toString());
+                        text.setLength(0);
+                    }
+                },
+                root);
     }
 
     private void add(@NonNull String section, @NonNull String text) {

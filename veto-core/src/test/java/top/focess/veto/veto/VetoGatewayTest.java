@@ -90,22 +90,22 @@ class VetoGatewayTest {
     }
 
     @Test
-    void testProcessOutboundRedactsIpsThroughThePluginMiddleware() throws Exception {
-        try (var plugins = PluginTestSupport.manager()) {
-            var gateway = new VetoGateway(config, llamaCppBridge, plugins, auditLogger);
-            String payload = "Server configured at 10.0.0.50 with SSH key";
-            VetoGateway.VetoResult result =
-                    gateway.processOutbound(payload, "dag-2", "req-2", "sandbox");
+    void testProcessOutboundAppliesContributedObservationTransform() {
+        String payload = "Server configured at 10.0.0.50 with SSH key";
+        when(emptyPlugins.applyObservationMiddleware(payload))
+                .thenReturn("Server configured at [REDACTED] with SSH key");
+        VetoGateway.VetoResult result =
+                vetoGateway.processOutbound(payload, "dag-2", "req-2", "sandbox");
 
-            assertEquals(VetoGateway.VetoDecision.REDACT, result.decision());
-            assertTrue(result.isAllowed()); // REDACT is still allowed (safe to send)
-            assertEquals(1, result.redactionCount());
-            assertFalse(result.processedPayload().contains("10.0.0.50"));
-        }
+        assertEquals(VetoGateway.VetoDecision.REDACT, result.decision());
+        assertTrue(result.isAllowed()); // REDACT is still allowed (safe to send)
+        assertEquals(1, result.redactionCount());
+        assertFalse(result.processedPayload().contains("10.0.0.50"));
+        verify(emptyPlugins).applyObservationMiddleware(payload);
     }
 
     @Test
-    void testProcessOutboundMasksMultipleSensitiveClassesThroughThePlugin() throws Exception {
+    void testSecretPluginDoesNotTransformScopeLessOutboundContent() throws Exception {
         try (var plugins = PluginTestSupport.manager()) {
             var gateway = new VetoGateway(config, llamaCppBridge, plugins, auditLogger);
             String payload =
@@ -113,14 +113,9 @@ class VetoGatewayTest {
             VetoGateway.VetoResult result =
                     gateway.processOutbound(payload, "dag-3", "req-3", "mcp");
 
-            assertEquals(VetoGateway.VetoDecision.REDACT, result.decision());
-            // redactionCount counts changed payload lines, not individual rule hits.
-            assertEquals(1, result.redactionCount());
-            assertFalse(result.processedPayload().contains("192.168.1.1"));
-            assertFalse(result.processedPayload().contains("admin@internal.corp"));
-            assertFalse(
-                    result.processedPayload()
-                            .contains("abcdefghijklmnopqrstuvwxyz0123456789ABCDEF"));
+            assertEquals(VetoGateway.VetoDecision.PASS, result.decision());
+            assertEquals(0, result.redactionCount());
+            assertEquals(payload, result.processedPayload());
         }
     }
 

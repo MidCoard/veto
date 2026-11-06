@@ -22,6 +22,7 @@ import org.springframework.transaction.support.DefaultTransactionStatus;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import top.focess.veto.agent.continuation.RequestContinuationStore;
 import top.focess.veto.agent.intercept.HitlRecordRepository;
+import top.focess.veto.bus.WebSocketServer;
 import top.focess.veto.command.PromptHandler;
 import top.focess.veto.controller.AuthController;
 import top.focess.veto.controller.dto.AuthCredentials;
@@ -32,7 +33,6 @@ import top.focess.veto.model.AgentInstanceRepository;
 import top.focess.veto.model.AgentPatternRepository;
 import top.focess.veto.model.SessionRepository;
 import top.focess.veto.security.SignupPolicy;
-import top.focess.veto.terminal.TcpServer;
 
 /**
  * Exercises real encrypted files and Spring commit/rollback callbacks with an isolated row store.
@@ -341,7 +341,7 @@ class AccountLifecycleTransactionsTest {
                             mock(PromptHandler.class),
                             events,
                             logins,
-                            new StaticListableBeanFactory().getBeanProvider(TcpServer.class));
+                            new StaticListableBeanFactory().getBeanProvider(WebSocketServer.class));
             accounts =
                     new UserAdminService(
                             users,

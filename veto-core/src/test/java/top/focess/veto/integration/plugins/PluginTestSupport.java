@@ -35,6 +35,7 @@ import top.focess.veto.api.plugin.contract.StandardContributionPoints;
 import top.focess.veto.bus.SessionActions;
 import top.focess.veto.event.EventManager;
 import top.focess.veto.integration.plugins.storage.ConfigurationStorageFixture;
+import top.focess.veto.integration.plugins.storage.PluginInvocationContext;
 import top.focess.veto.integration.plugins.storage.PluginStorageFactory;
 import top.focess.veto.model.SessionEntity;
 import top.focess.veto.model.SessionRepository;
@@ -225,8 +226,7 @@ public final class PluginTestSupport {
             BeforeTextCommitEvent.@NonNull Phase phase,
             Scope.@NonNull AgentScope scope,
             @NonNull String sourceId,
-            @NonNull String text)
-            throws PluginFailure {
+            @NonNull String text) {
         var event =
                 new BeforeTextCommitEvent(
                         new Scope.AgentScope(scope.userId(), scope.session(), scope.agent()),
@@ -234,12 +234,15 @@ public final class PluginTestSupport {
                         sourceId,
                         text);
         var registry = manager.registry();
-        registry.events()
-                .submit(
-                        event,
-                        registry.plugins().stream()
-                                .map(plugin -> plugin.identity().id())
-                                .collect(Collectors.toSet()));
+        var invocationScope = new PluginInvocationContext(scope.userId(), scope.session());
+        try (invocationScope) {
+            registry.events()
+                    .submit(
+                            event,
+                            registry.plugins().stream()
+                                    .map(plugin -> plugin.identity().id())
+                                    .collect(Collectors.toSet()));
+        }
         if (event.isCancelled()) throw new IllegalStateException("Text publication cancelled");
         return event.text();
     }

@@ -2,6 +2,7 @@ package top.focess.veto.session;
 
 import java.time.Instant;
 import java.util.ArrayDeque;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -40,10 +41,11 @@ import top.focess.veto.command.VetoCommandSender;
 import top.focess.veto.contract.Delta;
 import top.focess.veto.contract.Frame;
 import top.focess.veto.contract.FrameCodec;
+import top.focess.veto.i18n.Msg;
 import top.focess.veto.vault.UserEntity;
 
 /**
- * Backend protocol endpoint shared by TCP and WebSocket peers. Receives decoded frames from the
+ * Backend protocol endpoint shared by browser and terminal peers. Receives decoded frames from the
  * transport server and dispatches them to agent sessions. Owns the shared output queue and
  * serializes delivery on the server-owned executor; that executor also owns request preparation and
  * control handlers. The transport only writes complete Frames. This thread-safe connection's
@@ -143,9 +145,17 @@ public final class ProtocolConnection implements AutoCloseable {
 
     /** A command may change its own authority; revocation from another thread cannot do so. */
     public void setUser(UserEntity user) {
+        setIdentity(
+                user == null ? null : user.getUserId(), user == null ? null : user.getUsername());
+    }
+
+    /**
+     * Installs a server-validated login identity; callers must authenticate before invoking this.
+     */
+    public void setIdentity(UUID user, String username) {
         authority.writeLock().lock();
         try {
-            changeIdentity(user);
+            changeIdentity(user, username);
         } finally {
             authority.writeLock().unlock();
         }
@@ -158,22 +168,18 @@ public final class ProtocolConnection implements AutoCloseable {
     public void revokeUser(@NonNull UUID user) {
         authority.writeLock().lock();
         try {
-            if (user.equals(identity.user())) changeIdentity(null);
+            if (user.equals(identity.user())) changeIdentity(null, null);
         } finally {
             authority.writeLock().unlock();
         }
     }
 
     /** Caller owns the authority write gate; only the short state update needs this monitor. */
-    private void changeIdentity(UserEntity user) {
+    private void changeIdentity(UUID user, String username) {
         List<@NonNull ProtocolOperation> pending;
         ProtocolOperation current;
         synchronized (this) {
-            identity =
-                    new ConnectionIdentity(
-                            user == null ? null : user.getUserId(),
-                            user == null ? null : user.getUsername(),
-                            identity.version() + 1);
+            identity = new ConnectionIdentity(user, username, identity.version() + 1);
             current = execution.get();
             if (current != null) current.authority = identity;
             pending = List.copyOf(operations.values());
@@ -323,7 +329,7 @@ public final class ProtocolConnection implements AutoCloseable {
 
     private void execute(@NonNull ProtocolOperation operation) {
         synchronized (this) {
-            if (closed || operations.get(operation.seq) != operation) return;
+            if (closed || operations.get(operation.seq) != operation || operation.cancelled) return;
             operation.worker = Thread.currentThread();
         }
         execution.set(operation);
@@ -348,7 +354,7 @@ public final class ProtocolConnection implements AutoCloseable {
                 if (target == null) {
                     var terminal = requireSender();
                     response = requireRegistry().dispatch(terminal, request.raw());
-                    if (response instanceof Frame.TurnOutcome outcome)
+                    if (operation.handle == null && response instanceof Frame.TurnOutcome outcome)
                         operation.scope =
                                 requireRegistry().terminalOutcome(terminal, outcome).scope();
                 } else submitRequest(operation, request, target);
@@ -359,7 +365,7 @@ public final class ProtocolConnection implements AutoCloseable {
                             operation.scope,
                             null,
                             -1,
-                            "Protected input could not be processed; retry or use credential settings",
+                            Msg.get(locale, "error.agent.inputProtectionFailed"),
                             operation.seq,
                             null,
                             "PROTECTED_INPUT_UNAVAILABLE");
@@ -381,6 +387,9 @@ public final class ProtocolConnection implements AutoCloseable {
             synchronized (this) {
                 operation.worker = null;
             }
+            // The owned command worker has finished handling cancellation/shutdown. Its signal
+            // must not prevent the final protocol result from entering the output queue.
+            if (Thread.interrupted()) log.debug("Command interrupt consumed after execution");
         }
         var handle = operation.handle;
         if (handle == null) {
@@ -390,7 +399,7 @@ public final class ProtocolConnection implements AutoCloseable {
                 send(
                         new Frame.RequestAccepted(operation.seq, operation.scope, null),
                         operation.authority.version(),
-                        () -> true);
+                        () -> !operation.cancelled);
             finish(operation, response);
         } else {
             // Register only after acceptance and command/admission cleanup. Neither future alone
@@ -554,19 +563,22 @@ public final class ProtocolConnection implements AutoCloseable {
 
     private void finish(@NonNull ProtocolOperation operation, Frame.@NonNull ServerFrame response) {
         ProtocolOperation next = null;
-        CompletableFuture<Void> acknowledgement;
+        CompletableFuture<Void> decision;
+        List<Frame.@NonNull CancelResult> cancellations;
         boolean deferred;
         synchronized (this) {
-            acknowledgement = operation.cancelAcknowledged;
-            deferred = !acknowledgement.isDone();
+            if (operations.get(operation.seq) != operation) return;
+            decision = operation.cancellationDecided;
+            deferred = !decision.isDone();
+            cancellations = List.copyOf(operation.cancellationReplies);
             if (!deferred) {
-                if (operations.remove(operation.seq) != operation) return;
+                operations.remove(operation.seq);
                 queued.remove(operation);
             }
         }
         if (deferred) {
             var pendingResponse = response;
-            acknowledgement.thenRun(() -> finish(operation, pendingResponse));
+            decision.thenRun(() -> finish(operation, pendingResponse));
             return;
         }
         if (operation.input != null)
@@ -592,7 +604,12 @@ public final class ProtocolConnection implements AutoCloseable {
                             operation.seq,
                             error.username(),
                             error.code());
-        send(response, operation.authority.version(), () -> true);
+        // Cancellation owns the target's final outcome only after both execution and cleanup.
+        // Without a Cancel exchange (for example revoked input), retain normal settlement.
+        if (!operation.cancelled || cancellations.isEmpty())
+            send(response, operation.authority.version(), () -> true);
+        for (var cancellation : cancellations)
+            send(cancellation, operation.authority.version(), () -> true);
         synchronized (this) {
             if (active == operation) {
                 active = queued.pollFirst();
@@ -604,55 +621,72 @@ public final class ProtocolConnection implements AutoCloseable {
     }
 
     private void cancel(Frame.@NonNull Cancel request) {
-        var acknowledged = new CompletableFuture<Void>();
-        synchronized (this) {
-            var operation = operations.get(request.targetSeq());
-            if (operation != null) operation.cancelAcknowledged = acknowledged;
-        }
-        try {
-            send(new Frame.CancelResult(cancel(request.targetSeq()), request.seq()));
-        } finally {
-            acknowledged.complete(null);
-        }
-    }
-
-    private Frame.@NonNull CancelStatus cancel(long target) {
         ProtocolOperation operation;
-        RequestHandle handle;
-        Thread worker;
+        RequestHandle handle = null;
+        Thread worker = null;
+        var decided = new CompletableFuture<Void>();
+        Frame.CancelStatus immediate = null;
         synchronized (this) {
-            operation = operations.get(target);
-            if (operation == null) return Frame.CancelStatus.NO_ACTIVE_REQUEST;
-            if (!valid(operation)) return Frame.CancelStatus.REJECTED;
-            var input = operation.input;
-            if (input != null && !input.isDone()) {
-                input.completeExceptionally(new CancellationException("Input cancelled"));
-                return Frame.CancelStatus.ACCEPTED;
-            }
-            if (operation.cancelled) return Frame.CancelStatus.ACCEPTED;
-            handle = operation.handle;
-            worker = operation.worker;
-            if (handle == null) {
-                operation.cancelled = true;
+            operation = operations.get(request.targetSeq());
+            if (operation == null) immediate = Frame.CancelStatus.NO_ACTIVE_REQUEST;
+            else if (!valid(operation)) immediate = Frame.CancelStatus.REJECTED;
+            if (immediate == null && operation != null) {
+                if (operation.cancelled) {
+                    operation.cancellationReplies.add(
+                            new Frame.CancelResult(Frame.CancelStatus.CANCELLED, request.seq()));
+                    return;
+                }
+                // requestCancellation may complete the runner inline. Finish must see the
+                // admission decision before choosing either normal or cancelled settlement.
+                operation.cancellationDecided = decided;
+                handle = operation.handle;
+                worker = operation.worker;
+                if (handle == null) {
+                    operation.cancelled = true;
+                    operation.cancellationReplies.add(
+                            new Frame.CancelResult(Frame.CancelStatus.CANCELLED, request.seq()));
+                    // Serialize the signal with worker removal: never interrupt a reused worker.
+                    if (worker != null) worker.interrupt();
+                    if (operation.input != null)
+                        operation.input.completeExceptionally(new CancellationException());
+                }
             }
         }
-        if (handle == null) {
-            if (worker != null) worker.interrupt();
-            else
-                finish(
-                        operation,
-                        new Frame.Done(new Scope.GlobalScope(), null, -1, null, null, target));
-            return Frame.CancelStatus.ACCEPTED;
+        if (operation == null) {
+            send(new Frame.CancelResult(Frame.CancelStatus.NO_ACTIVE_REQUEST, request.seq()));
+            return;
+        }
+        if (immediate != null) {
+            send(new Frame.CancelResult(immediate, request.seq()));
+            return;
         }
         try {
-            if (!handle.requestCancellation()) return Frame.CancelStatus.REJECTED;
-            synchronized (this) {
-                operation.cancelled = true;
+            if (handle != null) {
+                boolean admitted = handle.requestCancellation();
+                synchronized (this) {
+                    if (admitted) {
+                        operation.cancelled = true;
+                        operation.cancellationReplies.add(
+                                new Frame.CancelResult(
+                                        Frame.CancelStatus.CANCELLED, request.seq()));
+                    } else if (handle.result().isDone()) {
+                        // Normal completion won. Publish it before reporting the retired target.
+                        operation.cancellationReplies.add(
+                                new Frame.CancelResult(
+                                        Frame.CancelStatus.NO_ACTIVE_REQUEST, request.seq()));
+                    } else immediate = Frame.CancelStatus.REJECTED;
+                }
             }
-            return Frame.CancelStatus.ACCEPTED;
         } catch (RuntimeException failure) {
-            return Frame.CancelStatus.REJECTED;
+            log.warn(
+                    "Cancellation could not be requested ({})", failure.getClass().getSimpleName());
+            immediate = Frame.CancelStatus.REJECTED;
+        } finally {
+            decided.complete(null);
         }
+        if (immediate != null) send(new Frame.CancelResult(immediate, request.seq()));
+        if (handle == null && worker == null)
+            finish(operation, new Frame.Done(operation.scope, null, -1, null, null, operation.seq));
     }
 
     public @NonNull CompletableFuture<String> input(
@@ -661,7 +695,8 @@ public final class ProtocolConnection implements AutoCloseable {
         if (operation == null) throw new IllegalStateException("No active command");
         var future = new CompletableFuture<String>();
         synchronized (this) {
-            if (!valid(operation)) throw new CancellationException("Connection authority expired");
+            if (!valid(operation) || operation.cancelled)
+                throw new CancellationException("Connection request is no longer active");
             if (operation.input != null && !operation.input.isDone())
                 throw new IllegalStateException("Input already pending");
             operation.input = future;
@@ -672,8 +707,10 @@ public final class ProtocolConnection implements AutoCloseable {
 
     private synchronized void receiveInput(Frame.@NonNull Input input) {
         var operation = operations.get(input.seq());
-        if (operation != null && valid(operation) && operation.input != null)
-            operation.input.complete(input.raw());
+        if (operation != null
+                && valid(operation)
+                && !operation.cancelled
+                && operation.input != null) operation.input.complete(input.raw());
     }
 
     private void resolveVeto(Frame.@NonNull VetoResult result) {
@@ -792,6 +829,24 @@ public final class ProtocolConnection implements AutoCloseable {
 
     public boolean sendSession(
             Frame.@NonNull ServerFrame frame, @NonNull BooleanSupplier attached) {
+        // The submitting connection receives its correlated outcome after runner settlement.
+        // Keep the uncorrelated session outcome for observers, without echoing it to its owner.
+        String requestId =
+                switch (frame) {
+                    case Frame.Done done -> done.requestId();
+                    case Frame.Error error -> error.requestId();
+                    default -> null;
+                };
+        if (requestId != null && frame instanceof Frame.TurnOutcome outcome && outcome.seq() == 0) {
+            synchronized (this) {
+                for (var operation : operations.values()) {
+                    var handle = operation.handle;
+                    if (handle != null
+                            && handle.requestId().equals(requestId)
+                            && operation.scope.equals(outcome.scope())) return true;
+                }
+            }
+        }
         return send(frame, identity.version(), attached);
     }
 
@@ -960,7 +1015,9 @@ public final class ProtocolConnection implements AutoCloseable {
         private @NonNull Scope scope = new Scope.GlobalScope();
         private CompletableFuture<String> input;
         private volatile boolean cancelled;
-        private @NonNull CompletableFuture<Void> cancelAcknowledged =
+        private final @NonNull List<Frame.@NonNull CancelResult> cancellationReplies =
+                new ArrayList<>();
+        private @NonNull CompletableFuture<Void> cancellationDecided =
                 CompletableFuture.completedFuture(null);
 
         private ProtocolOperation(

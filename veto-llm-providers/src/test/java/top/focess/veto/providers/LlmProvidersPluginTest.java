@@ -27,7 +27,7 @@ class LlmProvidersPluginTest {
         try (var plugin = new LlmProvidersPlugin(context, configuration)) {
             plugin.start();
             assertEquals(
-                    Set.of("openai", "deepseek", "anthropic", "gemini"),
+                    Set.of("openai", "deepseek", "anthropic", "gemini", "local"),
                     registrations.stream()
                             .map(value -> value.localId())
                             .collect(Collectors.toSet()));

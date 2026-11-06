@@ -4,7 +4,10 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.Map;
+import java.util.function.Function;
+import java.util.function.UnaryOperator;
 import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -28,9 +31,9 @@ import top.focess.veto.util.Nullness;
  * invalidates the {@link ReadHistory} entry for the written path (so the next read/write cycle
  * starts fresh).
  *
- * <p>The masking is best-effort and policy-independent (applies under both {@code FULL_ACCESS} and
- * {@code PROTECTED}); the user can turn it off by choosing a plain {@code ACCEPT_*} option (no
- * mask). The authoritative secrets control is the Vault.
+ * <p>Scoped plugin protection runs before text enters history. The per-call masking flag controls
+ * only the fallback for callers without a scoped replacement; it cannot bypass scoped credential
+ * capture. The Vault separately controls credential use.
  */
 @Component
 public class IngressDefense {
@@ -73,6 +76,28 @@ public class IngressDefense {
             @NonNull ToolResult result,
             boolean maskObservation,
             @NonNull ReadHistory readHistory) {
+        return maskAndFrame(call, def, result, maskObservation, readHistory, null);
+    }
+
+    /**
+     * Protects a scoped observation while retaining host metadata and write invalidation.
+     *
+     * @param call admitted call that produced the result
+     * @param def resolved tool definition
+     * @param result original tool result, including failure diagnostics
+     * @param maskObservation whether ordinary unscoped observation masking applies
+     * @param readHistory read snapshots to invalidate after successful writes
+     * @param protection scoped plugin transformation, or null for unscoped callers; a null return
+     *     means no listener replaced the text and the ordinary masking policy applies
+     * @return model-visible text, with only registered host execution metadata restored
+     */
+    public @NonNull String maskAndFrame(
+            @NonNull ToolCall call,
+            @NonNull ToolDefinition def,
+            @NonNull ToolResult result,
+            boolean maskObservation,
+            @NonNull ReadHistory readHistory,
+            Function<@NonNull String, @Nullable String> protection) {
         String body = result.content();
         String executionId = ExecutionReceipts.consume(call.callId());
         boolean preserveExecutionId = false;
@@ -96,18 +121,20 @@ public class IngressDefense {
             invalidateWritePath(call, def, readHistory);
         }
 
-        // apply accept_and_mask: scrub secrets from read / exec observations before they enter
-        // context. Default-on; the caller's flag is authoritative. Writes have no observation
-        // content to mask (they return void / success), so we skip them. The SLM semantic masker is
-        // the advisory layer over the session-less observation-middleware floor — it always
-        // applies the deterministic redaction and may additionally surface a HighRiskSignal.
-        if (maskObservation
-                && (def.capability() == ToolCapability.WORKSPACE_READ
-                        || def.capability() == ToolCapability.PROCESS_EXECUTION
-                        || def.capability() == ToolCapability.NETWORK_EGRESS
-                        || def.capability() == ToolCapability.REMOTE_UNKNOWN)) {
+        // Scoped capture replaces secrets with usable handles. Unscoped callers retain the
+        // ordinary masking policy. Advisory analysis must not remask already-protected handles.
+        String replacement = protection == null ? null : protection.apply(body);
+        UnaryOperator<@NonNull String> mask =
+                replacement == null ? plugins::applyObservationMiddleware : ignored -> replacement;
+        if (replacement != null
+                || (maskObservation
+                        && (def.capability() == ToolCapability.WORKSPACE_READ
+                                || def.capability() == ToolCapability.PROCESS_EXECUTION
+                                || def.capability() == ToolCapability.NETWORK_EGRESS
+                                || def.capability() == ToolCapability.REMOTE_UNKNOWN))) {
             if (semanticMasker != null) {
-                SemanticMasker.MaskResult masked = semanticMasker.maskWithSignal(body, call, def);
+                SemanticMasker.MaskResult masked =
+                        semanticMasker.maskWithSignal(body, call, def, mask);
                 body = masked.masked();
                 var highRisk = masked.highRisk();
                 if (highRisk != null) {
@@ -117,7 +144,7 @@ public class IngressDefense {
                     reportHighRisk(highRisk);
                 }
             } else {
-                body = plugins.applyObservationMiddleware(body);
+                body = mask.apply(body);
             }
         }
 
@@ -165,26 +192,6 @@ public class IngressDefense {
             @NonNull ReadHistory readHistory) {
         boolean mask = true;
         return maskAndFrame(call, def, result, mask, readHistory);
-    }
-
-    /**
-     * Assesses the original observation for risk while publishing a listener-supplied replacement.
-     * This preserves opaque references that ordinary pattern masking would redact as raw tokens.
-     */
-    public @NonNull String frameReplacementObservation(
-            @NonNull ToolCall call,
-            @NonNull ToolDefinition def,
-            @NonNull ToolResult result,
-            @NonNull String replacement) {
-        if (semanticMasker != null) {
-            var assessed =
-                    semanticMasker.maskWithSignal(
-                            result.content(), call, def, ignored -> replacement);
-            var highRisk = assessed.highRisk();
-            if (highRisk != null) reportHighRisk(highRisk);
-            return RefusalObservation.neutralize(assessed.masked());
-        }
-        return RefusalObservation.neutralize(replacement);
     }
 
     private void invalidateWritePath(

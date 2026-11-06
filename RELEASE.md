@@ -1,17 +1,17 @@
 # Veto @VETO_VERSION@ — local release
 
 This guide is for the assembled local release bundle. You need JDK 25 and a running
-PostgreSQL database. For local secret detection, provide a compatible llama.cpp
-`llama-server` on `PATH`. The bundle includes the secret-detection model and plugin;
+PostgreSQL database. For the local Secret Agent, provide a compatible llama.cpp
+`llama-server` on `PATH`. The bundle includes the Secret Agent model and plugin;
 it does not include a JDK, database, web UI or the separate advisory screening model. Veto is under active development; this bundle is not a certification
 of hostile-code isolation on your operating system.
 
 ## Contents
 
 - `core/veto-core.jar`: backend server.
-- `terminal/veto-terminal-@VETO_VERSION@.zip`: terminal client distribution.
+- `terminal/veto-terminal` (Windows: `veto-terminal.exe`): native terminal, with its README and licenses.
 - `start-core.bat` and `start-core.sh`: backend launchers using Java from `PATH`.
-- `models/veto-secret-slm.gguf`: ready-to-use local secret-detection model.
+- `models/veto-secret-agent.gguf`: ready-to-use local Secret Agent model.
 - `plugins/top.focess.secret-protection/`: secret-protection plugin and libraries.
 - `config/application.yml`: bundled model routing.
 - `VERSION` and `LICENSE`: version and licensing information.
@@ -19,7 +19,7 @@ of hostile-code isolation on your operating system.
 Secret protection is included. Additional optional plugin packages can be installed
 under `plugins/` before starting the backend. No Python environment, model setup
 or model download is needed for the included secret model. Local inference starts
-when the plugin receives its local-model service; check startup logs for availability.
+when the plugin processes the first primary-Agent input; check logs for availability.
 
 ## Start the backend
 
@@ -47,31 +47,45 @@ $env:VETO_AUDIT_DIR = Join-Path (Get-Location).Path "audit"
 .\start-core.bat
 ```
 
-Keep the console open and check the startup log for readiness. The default REST
-and application WebSocket port is 8443; terminal IPC uses `tcp://127.0.0.1:5555`.
-Configuration may override these defaults. Create the initial administrator using
+Keep the console open and check the startup log for readiness. REST, browser and
+terminal WebSockets share port 8443. The terminal uses
+`ws://127.0.0.1:8443/ws/veto/terminal`; configure its `--address https://veto.example.com`
+to choose a remote server. Create the initial administrator using
 the separately deployed UI or `/api/auth/setup`; subsequent signup defaults to
 invite-only.
 
 ## Start the terminal or web UI
 
-Extract the terminal ZIP, then open a second terminal in its extracted distribution
-directory. Pass an absolute workspace path:
+Open a second terminal in the bundle directory. The terminal is built for the bundle's
+OS/architecture and needs no Java or Bun installation. Pass an absolute workspace path:
 
 macOS/Linux:
 
 ```sh
-sh bin/veto-terminal --workspace /absolute/path/to/workspace
+./terminal/veto-terminal --workspace /absolute/path/to/workspace
 ```
 
 Windows PowerShell:
 
 ```powershell
-.\bin\veto-terminal.bat --workspace C:\path\to\workspace
+.\terminal\veto-terminal.exe --workspace C:\path\to\workspace
 ```
 
 The web UI is distributed separately in the
 [veto-ui repository](https://github.com/MidCoard/veto-ui).
+
+The terminal endpoint is enabled by `veto.terminal.enabled=true` and requires a
+server-issued login token. The terminal prompts for credentials over the HTTP API
+and saves its protected token separately for each server. Client restart restores
+the login while the backend remains running. `/server` changes server, `/login`
+changes account and `/logout` revokes the login; no commands are replayed.
+Remote access requires trusted HTTPS/WSS, using native TLS or a TLS reverse proxy
+with a private backend listener. Never publish the plaintext backend listener.
+The remote workspace path belongs to the backend machine.
+Browser connections use `/ws/veto/bus`. Set
+`veto.bus.websocket.allowed-origin-patterns` to the deployed Web UI origin for
+both REST CORS and WebSocket admission; defaults permit only loopback origins.
+Exclude tokens and passwords from access logs.
 
 ## Operating boundaries
 

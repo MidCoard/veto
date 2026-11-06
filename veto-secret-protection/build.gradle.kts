@@ -38,7 +38,7 @@ dependencies {
 }
 
 tasks.register<JavaExec>("secretSft") {
-    description = "Export synthetic SFT prompts or evaluate a secret GGUF with production contracts."
+    description = "Export annotated native tool conversations with production prompt and schema."
     classpath = sft.runtimeClasspath
     mainClass.set("top.focess.veto.secret.training.SecretSftTool")
     workingDir(rootProject.projectDir)
@@ -49,9 +49,6 @@ tasks.register<JavaExec>("secretSft") {
     doFirst {
         scratch.mkdirs()
         args(project.providers.gradleProperty("secretSftInput").get(), project.providers.gradleProperty("secretSftOutput").get())
-        if (project.hasProperty("secretSftModel")) {
-            args(project.providers.gradleProperty("secretSftModel").get(), project.providers.gradleProperty("secretSftExecutable").get())
-        }
     }
 }
 tasks.check { dependsOn(sft.classesTaskName) }

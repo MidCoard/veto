@@ -22,17 +22,11 @@ import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
+import top.focess.veto.api.llm.LocalModelRuntime;
 
-/**
- * gateway LlamaCpp Bridge — interface to llama.cpp for local SLM inference. Manages the llama.cpp
- * subprocess lifecycle and provides grammar-constrained decoding using GBNF grammars. The SLM
- * (quantized 1B-3B model) acts as the intent firewall and semantic redactor.
- *
- * <p>Uses llama-server's OpenAI-compatible HTTP API ({@code POST /v1/completions}) for inference,
- * which is more reliable than raw stdin/stdout and supports concurrent requests.
- */
+/** Host-owned llama.cpp runtime shared by file-backed providers and core grammar inference. */
 @Component
-public class LlamaCppBridge {
+public class LlamaCppBridge implements LocalModelRuntime {
 
     private static final @NonNull Logger log =
             LoggerFactory.getLogger("top.focess.veto.veto.LlamaCppBridge");
@@ -41,24 +35,55 @@ public class LlamaCppBridge {
     private final @NonNull GBNFGrammarEngine grammarEngine;
 
     private volatile Process llamaProcess;
+    private Thread outputReader;
     private volatile int serverPort = -1;
-    private final @NonNull Map<@NonNull String, @NonNull LlamaCppBridge> pluginBridges =
+    private final @NonNull Map<@NonNull ModelInstance, @NonNull LlamaCppBridge> models =
             new HashMap<>();
 
-    /**
-     * Resolve only host-configured plugin routes. An unavailable dedicated model stays unavailable.
-     */
-    public synchronized @NonNull LlamaCppBridge forPlugin(@NonNull String pluginId) {
-        String path = config.getPluginModelPaths().get(pluginId);
-        if (path == null) return this;
-        var existing = pluginBridges.get(pluginId);
-        if (existing != null) return existing;
-        var settings = config.forModel(path);
-        var dedicated = new LlamaCppBridge(settings, new GBNFGrammarEngine(settings));
-        pluginBridges.put(pluginId, dedicated);
-        if (!dedicated.start())
-            log.warn("Dedicated local model unavailable for plugin '{}'", pluginId);
-        return dedicated;
+    private record ModelInstance(@NonNull Path path, int contextTokens) {}
+
+    /** Opens a filesystem artifact through the same runtime used for core intent inference. */
+    @Override
+    public synchronized @NonNull String endpoint(@NonNull String modelPath, int contextTokens) {
+        if (contextTokens < 512 || contextTokens > 131072)
+            throw new IllegalArgumentException("Invalid local model context size");
+        if (modelPath.contains("://"))
+            throw new IllegalArgumentException("Local model endpoint must be a filesystem path");
+        Path path;
+        try {
+            path = config.resolvePath(modelPath).toRealPath();
+        } catch (IOException failure) {
+            throw new IllegalArgumentException("Local model file unavailable", failure);
+        }
+        var filename = path.getFileName();
+        if (!Files.isRegularFile(path)
+                || filename == null
+                || !filename.toString().endsWith(".gguf"))
+            throw new IllegalArgumentException("Local model endpoint must be a GGUF file");
+        LlamaCppBridge bridge;
+        if (isPrimaryArtifact(path) && contextTokens == config.getNCtx()) {
+            bridge = this;
+        } else {
+            var key = new ModelInstance(path, contextTokens);
+            bridge =
+                    models.computeIfAbsent(
+                            key,
+                            ignored -> {
+                                var settings = config.forModel(path.toString(), contextTokens);
+                                return new LlamaCppBridge(
+                                        settings, new GBNFGrammarEngine(settings));
+                            });
+        }
+        if (!bridge.start()) throw new IllegalStateException("Local model unavailable");
+        return "http://127.0.0.1:" + bridge.serverPort + "/v1";
+    }
+
+    private boolean isPrimaryArtifact(@NonNull Path path) {
+        try {
+            return Files.isSameFile(path, config.resolvePath(config.getModelPath()));
+        } catch (IOException unavailable) {
+            return false;
+        }
     }
 
     private final @NonNull HttpClient httpClient =
@@ -71,10 +96,7 @@ public class LlamaCppBridge {
         this.grammarEngine = grammarEngine;
     }
 
-    /**
-     * Start the llama.cpp subprocess with the configured model. The process is started with GBNF
-     * grammar-constrained decoding. Parses the server port from startup output for HTTP API access.
-     */
+    /** Starts llama.cpp with native chat templates. Completion calls supply their own grammar. */
     @PostConstruct
     public synchronized boolean start() {
         if (isAvailable()) {
@@ -99,16 +121,10 @@ public class LlamaCppBridge {
         }
 
         try {
-            // Build the llama.cpp command with grammar-constrained decoding
-            String gbnfGrammar = grammarEngine.loadVetoOutputGrammar();
-            Path grammarFile = Files.createTempFile("veto-grammar-", ".gbnf");
-            grammarFile.toFile().deleteOnExit();
-            Files.writeString(grammarFile, gbnfGrammar);
-
             // Use a fixed port for reliability (0 = random, but we need to discover it)
             int port = findAvailablePort();
 
-            ProcessBuilder pb = llamaServerProcess(resolved.toString(), grammarFile, port);
+            ProcessBuilder pb = llamaServerProcess(resolved.toString(), port);
 
             pb.redirectErrorStream(true);
             Process process = pb.start();
@@ -128,17 +144,16 @@ public class LlamaCppBridge {
 
         } catch (IOException | InterruptedException failure) {
             if (failure instanceof InterruptedException) {
-                Thread.currentThread().interrupt();
                 log.info("gateway LlamaCpp: Startup interrupted");
             } else
                 log.error("gateway LlamaCpp: Failed to start llama.cpp. Is it installed?", failure);
             stopMain();
+            if (failure instanceof InterruptedException) Thread.currentThread().interrupt();
             return false;
         }
     }
 
-    private @NonNull ProcessBuilder llamaServerProcess(
-            @NonNull String modelPath, @NonNull Path grammarFile, int port) {
+    private @NonNull ProcessBuilder llamaServerProcess(@NonNull String modelPath, int port) {
         return new ProcessBuilder(
                 resolveExecutablePath(),
                 "--model",
@@ -149,8 +164,7 @@ public class LlamaCppBridge {
                 String.valueOf(config.getNGpuLayers()),
                 "--temp",
                 String.valueOf(config.getTemperature()),
-                "--grammar-file",
-                grammarFile.toAbsolutePath().toString(),
+                "--jinja",
                 "--port",
                 String.valueOf(port),
                 "--cont-batching");
@@ -213,31 +227,6 @@ public class LlamaCppBridge {
         return result;
     }
 
-    /** Literal caller-owned grammar; cancellation propagates to the local HTTP request. */
-    public @NonNull CompletableFuture<String> inferWithGrammar(
-            @NonNull String prompt, @NonNull String grammar) {
-        if (!isAvailable())
-            return CompletableFuture.failedFuture(
-                    new IllegalStateException("Local model unavailable"));
-        var transport = requestCompletion(prompt, grammar, Duration.ofSeconds(2));
-        var result =
-                transport.thenApply(
-                        response -> {
-                            if (response.statusCode() != 200)
-                                throw new IllegalStateException(
-                                        "Local model completion unavailable");
-                            return extractContentFromResponse(response.body());
-                        });
-        result.whenComplete(
-                (value, failure) -> {
-                    if (result.isCancelled())
-                        log.debug(
-                                "Local inference HTTP request cancelled: {}",
-                                transport.cancel(true));
-                });
-        return result;
-    }
-
     private @NonNull CompletableFuture<@NonNull HttpResponse<@NonNull String>> requestCompletion(
             @NonNull String prompt, @NonNull String grammar, @NonNull Duration timeout) {
         String body =
@@ -261,11 +250,11 @@ public class LlamaCppBridge {
         }
     }
 
-    /** Gracefully stop the llama.cpp subprocess. */
+    /** Stops owned model processes and joins their output readers before returning. */
     @PreDestroy
     public synchronized void stop() {
-        pluginBridges.values().forEach(LlamaCppBridge::stop);
-        pluginBridges.clear();
+        models.values().forEach(LlamaCppBridge::stop);
+        models.clear();
         stopMain();
     }
 
@@ -281,8 +270,15 @@ public class LlamaCppBridge {
                     process.destroyForcibly();
                 }
             } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
                 process.destroyForcibly();
+            }
+        }
+        while (outputReader != null) {
+            try {
+                outputReader.join();
+                outputReader = null;
+            } catch (InterruptedException ignored) {
+                // Shutdown has already stopped the producer; finish joining the owned reader.
             }
         }
         log.info("gateway LlamaCpp: Stopped");
@@ -338,23 +334,27 @@ public class LlamaCppBridge {
     }
 
     private void drainProcessOutput(@NonNull Process process) {
-        Thread.ofVirtual()
-                .name("veto-llamacpp-output")
-                .start(
-                        () -> {
-                            try (BufferedReader reader =
-                                    new BufferedReader(
-                                            new InputStreamReader(process.getInputStream()))) {
-                                String line;
-                                while ((line = reader.readLine()) != null) {
-                                    log.debug("gateway llama-server: {}", line);
-                                }
-                            } catch (IOException e) {
-                                if (process.isAlive()) {
-                                    log.debug("gateway llama-server output stream closed", e);
-                                }
-                            }
-                        });
+        // Native process-pipe reads pin virtual-thread carriers on Windows.
+        outputReader =
+                Thread.ofPlatform()
+                        .name("veto-llamacpp-output")
+                        .start(
+                                () -> {
+                                    try (BufferedReader reader =
+                                            new BufferedReader(
+                                                    new InputStreamReader(
+                                                            process.getInputStream()))) {
+                                        String line;
+                                        while ((line = reader.readLine()) != null) {
+                                            log.debug("gateway llama-server: {}", line);
+                                        }
+                                    } catch (IOException e) {
+                                        if (process.isAlive()) {
+                                            log.debug(
+                                                    "gateway llama-server output stream closed", e);
+                                        }
+                                    }
+                                });
     }
 
     /** Extract the generated content from the OpenAI completions response JSON. */

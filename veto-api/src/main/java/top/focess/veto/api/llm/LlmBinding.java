@@ -9,7 +9,8 @@ import org.jspecify.annotations.NonNull;
  * @param model provider-specific model identifier
  * @param credentialKey opaque host credential reference, not secret material
  * @param options generation limits and sampling options
- * @param baseUrl optional endpoint override; {@code null} selects the provider default
+ * @param baseUrl provider endpoint (HTTP URL or LOCAL model file path); {@code null} selects the
+ *     provider default
  */
 public record LlmBinding(
         @NonNull ProviderType provider,

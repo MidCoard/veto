@@ -16,6 +16,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import jakarta.websocket.Session;
+import java.net.URI;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
@@ -44,6 +45,7 @@ import top.focess.veto.api.agent.AgentResult;
 import top.focess.veto.api.llm.ProviderType;
 import top.focess.veto.api.llm.ToolResultPresentationMode;
 import top.focess.veto.api.plugin.Scope;
+import top.focess.veto.command.CommandRegistry;
 import top.focess.veto.command.SessionCommandService;
 import top.focess.veto.contract.Frame;
 import top.focess.veto.contract.FrameCodec;
@@ -68,7 +70,11 @@ class WebSocketRequestTest {
     private final @NonNull String token = tokens.createLoginSession(TestUsers.ALICE, "alice");
     private final @NonNull WebSocketServer handler =
             new WebSocketServer(
-                    sessions, commands, tokens, TestAgentSessions.create(repository, agents));
+                    sessions,
+                    commands,
+                    tokens,
+                    TestAgentSessions.create(repository, agents),
+                    mock(CommandRegistry.class));
     private final @NonNull StandardWebSocketSession socket = mock(StandardWebSocketSession.class);
     private final @NonNull VetoAgent primary = mock(VetoAgent.class);
     private final @NonNull VetoAgent child = mock(VetoAgent.class);
@@ -83,6 +89,7 @@ class WebSocketRequestTest {
         when(nativeSession.getUserProperties()).thenReturn(new HashMap<>());
         when(socket.getNativeSession()).thenReturn(nativeSession);
         when(socket.getId()).thenReturn("request-client");
+        when(socket.getUri()).thenReturn(URI.create("ws://localhost/ws/veto/bus"));
         when(socket.isOpen()).thenReturn(true);
         when(socket.getAttributes())
                 .thenReturn(
@@ -166,8 +173,7 @@ class WebSocketRequestTest {
     }
 
     @Test
-    void websocketCancellationTargetsOneRequestAndAcknowledgesBeforeInlineSettlement()
-            throws Exception {
+    void websocketCancellationSettlesOnlyItsTargetWithoutAnotherOutcome() throws Exception {
         var first = request("first");
         var second = request("second");
         when(primary.submitRequest(eq("first"), any(), any(), isNull(), any()))
@@ -191,8 +197,7 @@ class WebSocketRequestTest {
         send(new Frame.Cancel(4, 2));
         var cancelled = assertInstanceOf(Frame.CancelResult.class, receive());
         assertEquals(4, cancelled.seq());
-        assertEquals(Frame.CancelStatus.ACCEPTED, cancelled.status());
-        assertEquals(2, assertInstanceOf(Frame.Done.class, receive()).seq());
+        assertEquals(Frame.CancelStatus.CANCELLED, cancelled.status());
         verify(second, never()).requestCancellation();
         send(new Frame.Heartbeat());
         assertInstanceOf(Frame.HeartbeatAck.class, receive());

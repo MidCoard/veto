@@ -1,12 +1,13 @@
 import { toolFieldLabel, toolValueLabel } from './toolLabels';
 import React from './runtime';
 import { useI18n } from './runtime';
+import { ExpandableText, TEXT_PREVIEW_CHARACTERS } from './ExpandableText';
 
 const surface = 'rounded-lg border border-rule bg-panel p-3 text-xs space-y-2 max-h-80 overflow-auto';
 const pre = 'whitespace-pre-wrap break-words font-mono text-xs';
 
 export function ResultText({ text }: { text: string }) {
-  return <pre className={`${surface} ${pre} text-dim`}>{text}</pre>;
+  return <ExpandableText text={text} className={`${surface} ${pre} text-dim`} />;
 }
 
 /** Only HTTP(S) results become links; tool output remains untrusted text. */
@@ -26,12 +27,13 @@ function LegacyWebFetchResult({ text }: { text: string }) {
   if (!match) return <ResultText text={text} />;
   return <div className={surface}>
     <div className="flex gap-2"><span className="font-mono">{match[1]}</span><SourceLink url={match[2]} /></div>
-    <pre className={pre}>{match[3]}</pre>
+    <ExpandableText text={match[3]} className={pre} />
   </div>;
 }
 
 export function WebSearchResult({ text }: { text: string }) {
   const { t } = useI18n();
+  if (text.length > TEXT_PREVIEW_CHARACTERS) return <ResultText text={text} />;
   if (text === '(no results)') return <p className="text-xs text-dim">{t('tool.noResults')}</p>;
   const header = /^Found (\d+) results:\r?\n\r?\n/.exec(text);
   const sourceAt = text.lastIndexOf('\nSources:\n');
@@ -46,7 +48,7 @@ export function WebSearchResult({ text }: { text: string }) {
       <div className="text-dim break-all">{m[3]}</div>
       <p className="whitespace-pre-wrap">{m[4].trim()}</p>
     </li>)}</ol>
-    <details><summary className="cursor-pointer text-dim">{t('tool.rawResult')}</summary><pre className={pre}>{text}</pre></details>
+    <details><summary className="cursor-pointer text-dim">{t('tool.rawResult')}</summary><ExpandableText text={text} className={pre} /></details>
   </div>;
 }
 
@@ -66,6 +68,7 @@ function webReadEvidence(value: unknown): value is WebReadEvidence {
 
 export function WebFetchResult({ text }: { text: string }) {
   const { t } = useI18n();
+  if (text.length > TEXT_PREVIEW_CHARACTERS) return <ResultText text={text} />;
   let value: unknown;
   try {
     value = JSON.parse(text);
@@ -94,12 +97,14 @@ export function WebFetchResult({ text }: { text: string }) {
       <h4 className="text-dim">{t('tool.webRead.limitations')}</h4>
       <ul className="list-disc pl-4 space-y-1">{value.limitations.map((item, index) => <li className="whitespace-pre-wrap break-words" key={index}>{item}</li>)}</ul>
     </section>}
-    <details><summary className="cursor-pointer text-dim">{t('tool.rawResult')}</summary><pre className={pre}>{text}</pre></details>
+    <details><summary className="cursor-pointer text-dim">{t('tool.rawResult')}</summary><ExpandableText text={text} className={pre} /></details>
   </div>;
 }
 
 export function Fields({ values, literal = false }: { values: Record<string, unknown>; literal?: boolean }) {
   const { t } = useI18n();
+  const text = JSON.stringify(values, null, 2);
+  if (text.length > TEXT_PREVIEW_CHARACTERS) return <ResultText text={text} />;
   return <dl className="space-y-2">{Object.entries(values).map(([key, value]) => <div key={key}>
     <dt className="font-mono text-dim">{literal ? key : toolFieldLabel(t, key)}</dt>
     <dd className="whitespace-pre-wrap break-words text-paper">{value === null ? '—' : typeof value === 'boolean' ? t(value ? 'tool.yes' : 'tool.no') : Array.isArray(value) ? <ul className="space-y-1">{value.map((item, index) => <li key={index}>{object(item) ? <Fields values={item} literal={literal} /> : String(item)}</li>)}</ul> : object(value) ? <Fields values={value} literal={literal} /> : literal ? String(value) : toolValueLabel(t, key, String(value))}</dd>
@@ -109,6 +114,7 @@ export function Fields({ values, literal = false }: { values: Record<string, unk
 /** JSON output is validated before selecting a semantic view; malformed bodies stay readable. */
 export function StructuredToolResult({ toolName, text }: { toolName: string; text: string }) {
   const { t } = useI18n();
+  if (text.length > TEXT_PREVIEW_CHARACTERS) return <ResultText text={text} />;
   let value: unknown;
   try { value = JSON.parse(text); } catch { return <ResultText text={text} />; }
   if (!object(value)) return <ResultText text={text} />;

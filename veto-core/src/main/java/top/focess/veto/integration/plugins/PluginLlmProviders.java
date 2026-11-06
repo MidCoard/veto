@@ -84,7 +84,14 @@ public final class PluginLlmProviders {
                         .findFirst()
                         .orElse(null);
         if (pinned == null)
-            throw unavailable(type, "the provider plugin was not selected for this session");
+            throw new ModelCapabilityException(
+                    "Model provider "
+                            + type
+                            + " requires plugin '"
+                            + required.id()
+                            + "', which was not selected for this session. Create a new session with this plugin selected: /session create <pattern> <name> "
+                            + required.id()
+                            + ". Existing session plugin selections cannot be changed.");
         if (!pinned.version().equals(required.version())
                 || !pinned.revision().equals(required.revision()))
             throw unavailable(

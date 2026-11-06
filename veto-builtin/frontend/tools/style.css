@@ -376,6 +376,19 @@
 .veto-tools .filter {
     filter: var(--tw-blur) var(--tw-brightness) var(--tw-contrast) var(--tw-grayscale) var(--tw-hue-rotate) var(--tw-invert) var(--tw-saturate) var(--tw-sepia) var(--tw-drop-shadow)
 }
+.veto-tools .hover\:text-paper:hover {
+    --tw-text-opacity: 1;
+    color: rgb(var(--paper) / var(--tw-text-opacity, 1))
+}
 .veto-tools .hover\:underline:hover {
     text-decoration-line: underline
+}
+.veto-tools .focus-visible\:outline:focus-visible {
+    outline-style: solid
+}
+.veto-tools .focus-visible\:outline-2:focus-visible {
+    outline-width: 2px
+}
+.veto-tools .focus-visible\:outline-accent:focus-visible {
+    outline-color: rgb(var(--accent) / 1)
 }

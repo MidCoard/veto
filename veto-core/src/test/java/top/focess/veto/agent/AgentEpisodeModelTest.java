@@ -24,6 +24,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.regex.Pattern;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
@@ -37,6 +38,7 @@ import top.focess.veto.agent.continuation.RequestContinuationRepository;
 import top.focess.veto.agent.continuation.RequestContinuationStore;
 import top.focess.veto.agent.intercept.HitlRecordRepository;
 import top.focess.veto.agent.intercept.HitlRegistry;
+import top.focess.veto.agent.loop.PromptCompiler;
 import top.focess.veto.agent.screening.DeployerPolicyConfiguration;
 import top.focess.veto.agent.screening.ProtectedSetResolver;
 import top.focess.veto.agent.tool.AgentToolDefinition;
@@ -61,8 +63,6 @@ import top.focess.veto.api.llm.VetoResponse;
 import top.focess.veto.api.llm.exceptions.LlmException;
 import top.focess.veto.api.llm.exceptions.ModelSchemaException;
 import top.focess.veto.api.plugin.Scope;
-import top.focess.veto.api.plugin.agent.AgentProfile;
-import top.focess.veto.api.plugin.agent.IsolatedAgent;
 import top.focess.veto.api.plugin.contract.AgentConfiguration;
 import top.focess.veto.api.plugin.contract.JsonValue;
 import top.focess.veto.builtin.group.GroupRegistry;
@@ -77,6 +77,7 @@ import top.focess.veto.event.EventManager;
 import top.focess.veto.integration.plugins.PluginDataCleanup;
 import top.focess.veto.integration.plugins.PluginManager;
 import top.focess.veto.integration.plugins.PluginTestSupport;
+import top.focess.veto.integration.plugins.SecretAgentHostFixture;
 import top.focess.veto.integration.plugins.SessionPlugins;
 import top.focess.veto.integration.plugins.storage.ScopedPluginStorage;
 import top.focess.veto.llm.core.UniformLLMCaller;
@@ -177,11 +178,14 @@ class AgentEpisodeModelTest {
         if (!(owned instanceof AgentRunner runner)) throw new AssertionError("Missing runner");
         runner.setExecutionPolicy(
                 new AgentExecutionPolicy(
-                        new IsolatedAgent.Terminal(
+                        new AgentExecutionPolicy.Terminal(
                                 "finish",
                                 limit >= 4 ? 2 : 1,
-                                new AgentProfile.Prompt(
-                                        "reader-completion", new JsonValue.ObjectValue(Map.of()))),
+                                "reader-completion.mdc",
+                                remaining ->
+                                        PromptCompiler.compileMessage(
+                                                "reader-completion",
+                                                Map.of("tool", "finish", "remaining", remaining))),
                         () -> {}));
         try {
             var result =
@@ -305,10 +309,13 @@ class AgentEpisodeModelTest {
     }
 
     @Test
-    void ordinaryProviderFailureRetainsItsDiagnosticObservation() throws Exception {
+    void ordinaryProviderFailureRetainsExecutionErrorWithoutFabricatingToolResult()
+            throws Exception {
+        var attempts = new AtomicInteger();
         var service =
                 serviceWith(
                         (request, modelSessionId) -> {
+                            attempts.incrementAndGet();
                             throw new LlmException("provider unavailable", false);
                         });
         try {
@@ -320,13 +327,11 @@ class AgentEpisodeModelTest {
                             TestUsers.OWNER);
             var agent = requireAgent(service.agent("ordinary-provider-error"));
             assertFalse(request.await(EPISODE_TIMEOUT).success());
-            assertTrue(
+            assertEquals(1, attempts.get(), "A provider failure must not enter schema correction");
+            assertNull(agent.executionWaitReason());
+            assertFalse(
                     agent.history().stream()
-                            .anyMatch(
-                                    turn ->
-                                            turn.type() == TurnType.TOOL_RESPONSE
-                                                    && String.valueOf(turn.payload().get("content"))
-                                                            .contains("provider unavailable")));
+                            .anyMatch(turn -> turn.type() == TurnType.TOOL_RESPONSE));
             assertTrue(
                     agent.history().stream()
                             .anyMatch(turn -> turn.type() == TurnType.EXECUTION_ERROR));
@@ -344,7 +349,7 @@ class AgentEpisodeModelTest {
 
         String session = UUID.randomUUID().toString();
         String agentId = UUID.randomUUID().toString();
-        try (var plugins = PluginTestSupport.manager()) {
+        try (var plugins = SecretAgentHostFixture.manager(agentId, List.of("synthetic-token"))) {
 
             AgentService service =
                     serviceWith(
@@ -380,7 +385,7 @@ class AgentEpisodeModelTest {
                                 .orElseThrow();
                 if (!(userTurn.payload().get("content") instanceof String captured))
                     throw new AssertionError("Expected captured user content");
-                assertTrue(captured.contains("[SECRET_REF:s_"), captured);
+                assertTrue(captured.contains("[SECRET_REF:cred_"), captured);
                 assertFalse(captured.contains("synthetic-token"));
                 assertEquals(1, requests.size());
                 assertTrue(
@@ -430,13 +435,13 @@ class AgentEpisodeModelTest {
     }
 
     private static @NonNull String extractReference(@NonNull String text) {
-        var matcher = java.util.regex.Pattern.compile("s_[a-f0-9]{32}").matcher(text);
+        var matcher = Pattern.compile("cred_[a-f0-9]{32}").matcher(text);
         if (!matcher.find()) throw new AssertionError("Expected reference is missing");
         return matcher.group();
     }
 
     @Test
-    void ordinaryReferenceValidationFailurePermitsProviderAndUserHistory() throws Exception {
+    void referenceValidationFailurePreventsProviderAndUserHistory() throws Exception {
         AtomicInteger calls = new AtomicInteger();
         List<@NonNull VetoRequest> requests = new CopyOnWriteArrayList<>();
         UniformLLMCaller caller =
@@ -447,7 +452,8 @@ class AgentEpisodeModelTest {
                 };
 
         String session = UUID.randomUUID().toString();
-        try (var plugins = PluginTestSupport.manager()) {
+        String agentId = UUID.randomUUID().toString();
+        try (var plugins = SecretAgentHostFixture.manager(agentId, List.of("synthetic-token"))) {
 
             AgentService service =
                     serviceWith(
@@ -460,19 +466,15 @@ class AgentEpisodeModelTest {
                 Agent agent =
                         service.getOrCreateAgent(
                                 session,
-                                UUID.randomUUID().toString(),
+                                agentId,
                                 binding("You are a helpful assistant."),
                                 List.of(),
                                 TestUsers.OWNER,
                                 null);
                 String input = "password=synthetic-token [SECRET_REF:forged]";
-                assertTrue(agent.submitRequest(input).await(EPISODE_TIMEOUT).success());
-                assertEquals(1, calls.get());
-                VetoRequest delivered = requests.getFirst();
-                boolean originalInputDelivered = false;
-                for (ChatMessage message : delivered.messages())
-                    if (message.content().contains(input)) originalInputDelivered = true;
-                assertTrue(originalInputDelivered);
+                assertFalse(agent.submitRequest(input).await(EPISODE_TIMEOUT).success());
+                assertEquals(0, calls.get());
+                assertTrue(requests.isEmpty());
                 boolean originalInputRecorded = false;
                 boolean answerRecorded = false;
                 for (TurnRecord turn : agent.history()) {
@@ -481,13 +483,13 @@ class AgentEpisodeModelTest {
                         originalInputRecorded = true;
                     if (turn.payload().toString().contains("Done.")) answerRecorded = true;
                 }
-                assertTrue(originalInputRecorded);
-                assertTrue(answerRecorded);
+                assertFalse(originalInputRecorded);
+                assertFalse(answerRecorded);
                 assertTrue(
                         agent.submitRequest("Please continue with safe text.")
                                 .await(EPISODE_TIMEOUT)
                                 .success());
-                assertEquals(2, calls.get());
+                assertEquals(1, calls.get());
             } finally {
                 service.remove(session);
             }
@@ -1070,7 +1072,10 @@ class AgentEpisodeModelTest {
                                 Mockito.any(),
                                 Mockito.any(),
                                 Mockito.anyString()))
-                .thenAnswer(call -> new AgentConfiguration.Intent(call.getArgument(4), transition));
+                .thenAnswer(
+                        call ->
+                                new SessionPlugins.Configuration(
+                                        call.getArgument(4), transition, null));
 
         var service =
                 serviceWith(

@@ -55,7 +55,12 @@ class ToolContractIntegrityTest {
                         .count(),
                 tools.size(),
                 "every contributed handler must be checked");
-        assertEquals(38, tools.size());
+        assertEquals(39, tools.size());
+        assertEquals(
+                1,
+                tools.stream().filter(tool -> tool.getName().equals("import_credential")).count());
+        assertEquals(
+                1, tools.stream().filter(tool -> tool.getName().equals("read_credential")).count());
     }
 
     private final @NonNull ObjectMapper mapper = new ObjectMapper();

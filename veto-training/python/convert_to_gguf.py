@@ -42,6 +42,8 @@ def main():
     parser.add_argument("--model-name", required=True)
     parser.add_argument("--quantize-type", choices=["q2_k", "q3_k_m", "q4_k_m", "q5_k_m", "q8_0", "f16"], default="q4_k_m")
     parser.add_argument("--log-file", type=Path, default=TRAINING_WORK / "conversion.jsonl")
+    parser.add_argument("--retry", action="store_true",
+                        help="Replace only incomplete expected outputs from a failed conversion")
     args = parser.parse_args()
     if not re.fullmatch(r"[a-zA-Z0-9][a-zA-Z0-9_-]*", args.model_name):
         raise ValueError("model-name must be a plain artifact name")
@@ -53,8 +55,13 @@ def main():
     executable = quantizer(args.llama_cpp_dir) if args.quantize_type != "f16" else None
     f16 = args.output_dir / f"{args.model_name}-f16.gguf"
     final = args.output_dir / f"{args.model_name}-{args.quantize_type}.gguf"
-    if f16.exists() or final.exists():
+    existing = [path for path in (f16, final) if path.exists() or path.is_symlink()]
+    if existing and not args.retry:
         raise FileExistsError("Use a fresh conversion directory; existing models are never reused")
+    for path in existing:
+        if path.is_symlink() or not path.is_file():
+            raise ValueError("Conversion outputs must be regular files")
+        path.unlink()
     args.output_dir.mkdir(parents=True, exist_ok=True)
     subprocess.run([sys.executable, str(converter), str(args.model_dir), "--outfile", str(f16), "--outtype", "f16"], check=True)
     if not f16.is_file() or not f16.stat().st_size:

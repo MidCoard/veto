@@ -293,7 +293,7 @@ final class DeepSeekLlmClient implements LlmClient {
             @NonNull String type,
             @NonNull String name,
             @NonNull String description,
-            @NonNull Map<String, Object> parameters,
+            @NonNull Map<String, ?> parameters,
             boolean strict) {}
 
     private record Reasoning(@NonNull String effort) {}

@@ -480,19 +480,16 @@ public final class AgentRunner {
         return startTask(callback, action, binding, locale, RequestHandle.Admission.DIRECT);
     }
 
-    /** Protects input before the caller's authority guard admits the final queue mutation. */
+    /** Admits cancellable work; the worker protects text before publishing it to history. */
     public @NonNull RequestHandle startTask(
             Consumer<AgentResult> callback,
             @NonNull AgentAction action,
             @NonNull LlmBinding binding,
             @NonNull Locale locale,
             RequestHandle.@NonNull Admission admission) {
-        AgentAction prepared =
-                action instanceof AgentAction.UserPromptAction prompt
-                        ? new AgentAction.UserPromptAction(
-                                hooks.captureSubmittedPrompt(prompt.prompt()))
-                        : action;
-        var handle = admission.enqueue(() -> enqueue(callback, prepared, binding, locale));
+        // Content processing may invoke a child Agent or wait for HITL. Admit the request first
+        // so cancellation owns that work; ModelSession protects input before recording it.
+        var handle = admission.enqueue(() -> enqueue(callback, action, binding, locale));
         output.events.executionChanged();
         return handle;
     }

@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
 import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 import top.focess.veto.api.agent.tool.ToolDocumentation;
 import top.focess.veto.api.agent.tool.ToolResultFormat;
 
@@ -30,13 +31,13 @@ import top.focess.veto.api.agent.tool.ToolResultFormat;
 public record ToolDefinition(
         @NonNull String name,
         @NonNull String description,
-        @NonNull Map<String, Object> inputSchema,
+        @NonNull Map<String, ?> inputSchema,
         @NonNull List<@NonNull String> examples,
         @NonNull ToolDocumentation documentation,
         @NonNull List<@NonNull String> returnExamples,
         @NonNull List<@NonNull ToolResultFormat> resultFormats) {
 
-    /** Copies and orders schema and prompt-side collections. */
+    /** Copies and orders collections, preserving JSON nulls in schema defaults and enum values. */
     public ToolDefinition {
         inputSchema = ordered(inputSchema);
         examples = List.copyOf(examples);
@@ -59,26 +60,25 @@ public record ToolDefinition(
                 "inputSchema", tool.inputSchema());
     }
 
-    private static @NonNull Map<String, Object> ordered(@NonNull Map<?, ?> source) {
-        Map<String, Object> result = new TreeMap<>();
+    private static @NonNull Map<String, ?> ordered(@NonNull Map<?, ?> source) {
+        Map<String, @Nullable Object> result = new TreeMap<>();
         source.forEach(
                 (key, value) -> {
-                    if (!(key instanceof String name) || value == null)
+                    if (!(key instanceof String name))
                         throw new IllegalArgumentException("Invalid schema entry");
                     result.put(name, orderedValue(value));
                 });
         return Collections.unmodifiableMap(result);
     }
 
-    private static @NonNull Object orderedValue(@NonNull Object value) {
+    private static Object orderedValue(Object value) {
         if (value instanceof Map<?, ?> map) return ordered(map);
         if (value instanceof List<?> list) {
-            List<Object> result = new ArrayList<>();
+            List<@Nullable Object> result = new ArrayList<>();
             for (Object item : list) {
-                if (item == null) throw new IllegalArgumentException("Null schema array entry");
                 result.add(orderedValue(item));
             }
-            return List.copyOf(result);
+            return Collections.unmodifiableList(result);
         }
         return value;
     }

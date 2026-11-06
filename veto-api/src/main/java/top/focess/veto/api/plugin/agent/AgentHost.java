@@ -40,6 +40,11 @@ public interface AgentHost {
          */
         @NonNull String id();
 
+        /** Returns the authenticated session's primary agent identity. */
+        default @NonNull String primaryAgentId() {
+            throw new SecurityException("Primary agent identity unavailable");
+        }
+
         /**
          * Creates or restores this plugin's child identity without replaying interrupted work.
          *

@@ -7,8 +7,8 @@ cloud reasoning model and the host machine. The model proposes tool calls; Veto 
 arguments, screens their intent and risk, asks for human approval when required, executes approved
 calls locally, and records the resulting turns and decisions.
 
-This repository contains the Java backend, the shared wire protocol, and the interactive terminal.
-The web client lives in the separate [veto-ui](https://github.com/MidCoard/veto-ui) repository.
+This repository contains the Java backend and the Java wire-protocol contract and transports.
+The web client and TypeScript terminal live in [veto-ui](https://github.com/MidCoard/veto-ui).
 
 ## Current status
 
@@ -18,8 +18,8 @@ Veto is under active development. The following paths are implemented in this re
 - installed plugins for file, search, command, web, memory, skill, and group tools;
 - deterministic tool screening, local-SLM advisory screening, permission grants, and HITL vetoes;
 - session history, model-tier profiles, and per-user vault storage;
-- REST, WebSocket, gRPC, and local TCP transport surfaces;
-- an interactive terminal client;
+- REST APIs and a shared WebSocket transport for browser and terminal clients;
+- backend support for the interactive terminal client;
 - local release packaging of the secret-protection plugin and its detection model;
 - an official AgentDojo bridge for security and utility evaluation.
 
@@ -70,7 +70,6 @@ veto/
 |-- veto-protocol/   Frame contracts, codecs, and protocol transports
 |-- veto-nullness-checker/ Build-only Checker Framework extension for non-null Java class literals
 |-- veto-core/       Spring Boot backend, agent runtime, security gateway and host services
-|-- veto-terminal/   JLine/Mordant application, client interaction state, themes and logging
 |-- veto-api/        Shared authoring contract: tool/capability annotations, contribution registration model, standard contract interfaces, and the experimental Java plugin lifecycle
 |-- veto-builtin/    Workspace tools and create_group, registered through veto-api
 |-- veto-llm-providers/  Cloud LLM SDK adapters, registered through veto-api
@@ -101,8 +100,8 @@ Important `veto-core` packages:
 | `vault` | Authentication lifecycle and encrypted per-user notes/credentials |
 | `veto` | llama.cpp bridge, grammar enforcement, the outbound veto gateway, and gateway-level model services |
 | `controller` | REST API controllers used by veto-ui and benchmark bridges |
-| `terminal` | Backend side of the TCP terminal protocol |
-| `bus` | WebSocket/gRPC event and routing infrastructure |
+| `command` | Interactive terminal commands and account/session operations |
+| `bus` | Shared WebSocket admission, transport and connection lifecycle |
 | `observability` | Audit chain and runtime events |
 
 ## Requirements
@@ -149,7 +148,6 @@ Useful focused commands:
 ```powershell
 .\gradlew.bat :veto-core:test
 .\gradlew.bat :veto-protocol:test
-.\gradlew.bat :veto-terminal:build
 ```
 
 ## Run locally
@@ -198,9 +196,8 @@ Default listeners:
 | Surface | Default |
 | --- | --- |
 | REST and application WebSocket | `http://127.0.0.1:8443` |
-| terminal TCP | `tcp://127.0.0.1:5555` |
-| routing WebSocket service | port `9090`, path `/ws/veto/bus` |
-| gRPC routing service | port `9091` |
+| browser WebSocket | `ws://127.0.0.1:8443/ws/veto/bus` (login token required) |
+| local terminal WebSocket | `ws://127.0.0.1:8443/ws/veto/terminal` |
 
 On first use, create the initial administrator through the UI or `/api/auth/setup`. The default
 signup mode is `invite`; anonymous signup remains closed after bootstrap unless configuration is
@@ -208,20 +205,51 @@ changed.
 
 ### 3. Start the terminal
 
-Run this in a second terminal. Pass the workspace explicitly so the backend does not infer the
-terminal process directory:
+The full-screen TypeScript terminal lives in [veto-ui/terminal](https://github.com/MidCoard/veto-ui/tree/master/terminal).
+Install Bun 1.4.4, then run from that directory in a second terminal. Enable
+`veto.terminal.enabled=true` on the backend. Local workspaces default to the current directory:
 
 ```powershell
-.\gradlew.bat :veto-terminal:run --args="--workspace <workspace-root>"
+bun install --frozen-lockfile
+bun start --workspace <workspace-root>
 ```
 
 Additional terminal options:
 
 ```text
---address, -a    backend TCP address; default tcp://127.0.0.1:5555
---workspace, -w  absolute workspace root
---debug, -d      verbose terminal logging
+--address, -a    backend origin, e.g. https://veto.example.com (saved per user)
+--workspace, -w  workspace path on the backend (local default: current directory)
+--debug, -d      expand tool output
 ```
+
+The terminal bundles to a native executable with `bun run build`; it needs no JVM at runtime.
+On Windows, run the built distribution directly:
+
+```powershell
+.\build\veto-terminal.exe --workspace <workspace-root>
+```
+
+Keep the accompanying license files with the executable. The retired Java terminal
+and its Gradle `installDist` launcher are no longer supported.
+For `localRelease`, supply `-PterminalDistribution=<absolute-path-to-veto-ui/terminal/build>`.
+Build the terminal on the release target platform first.
+
+The terminal signs in through the HTTP authentication API before opening
+`/ws/veto/terminal` with its token header. It saves the selected server and protects
+the token per server origin (Windows DPAPI; owner-only files on Unix). Restarting
+the client restores a valid login; restarting the backend still invalidates tokens.
+Use `/server` to switch servers, `/login` to change accounts and `/logout` to revoke
+the login. While disconnected, R reconnects and S selects a server. Commands are
+never replayed automatically.
+
+Remote servers require HTTPS/WSS with a trusted certificate; plaintext HTTP/WS is
+allowed only on loopback. A remote workspace is a path on that server, not on the
+terminal machine. Configure native server TLS or a TLS reverse proxy with a private
+backend listener. Do not expose a plaintext backend listener publicly. Browser
+connections use the token-authenticated `/ws/veto/bus`; configure
+`veto.bus.websocket.allowed-origin-patterns` with the deployed Web UI origin for
+both REST CORS and WebSocket admission. Defaults permit only loopback UI origins.
+Tokens and passwords must not appear in proxy access logs.
 
 ### 4. Start veto-ui
 
@@ -255,8 +283,8 @@ configuration classes.
 
 | Property | Default | Meaning |
 | --- | --- | --- |
-| `server.port` | `8443` | REST server port |
-| `veto.terminal.bind-address` | `tcp://127.0.0.1:5555` | terminal TCP bind address |
+| `server.port` | `8443` | Shared REST and WebSocket port |
+| `veto.terminal.enabled` | `true` | Register the token-authenticated terminal WebSocket endpoint |
 | `veto.security.deployer-policy` | `FULL_ACCESS` | `FULL_ACCESS`, `PROTECTED`, `SANDBOXED`, or `TENANT` |
 | `veto.security.screening-mode` | `STRICT` | `STRICT`, `BALANCED`, or `PERMISSIVE` |
 | `veto.security.signup.mode` | `invite` | `solo`, `public`, or `invite` |
@@ -392,22 +420,13 @@ Script activation requires an installed package and a Node executable; Node is n
 
 These APIs are experimental and are not a stable cross-client compatibility contract.
 
-## AgentDojo evaluation
+## Agent evaluation
 
-The bridge under `veto-core/benchmarks/agentdojo` runs the upstream AgentDojo `v1.2.2` workspace
-suite through a live Veto session and exposes AgentDojo tools over MCP. The default command runs a
-small two-user-task by two-injection-task integration subset; it is not the complete benchmark.
-
-```powershell
-$env:VETO_TEST_PASSWORD = "<test-user-password>"
-veto-core\benchmarks\agentdojo\.venv\Scripts\python.exe `
-  veto-core\benchmarks\agentdojo\veto_agentdojo_benchmark.py `
-  --username <user> --pattern <pattern>
-```
-
-Use `--user-tasks all --injection-tasks all` for the full selected workspace matrix. Reports keep
-baseline utility, attacked utility, attack success, and defense success separate. Do not compare a
-small integration subset with a complete published benchmark score.
+[The Inspect runner](veto-core/benchmarks/README.md) evaluates the real Veto agent over
+WebSocket. It checks file artifacts and user interactions, and runs official AgentDojo
+workspace tasks through Veto's MCP gateway. Clean utility, attacked utility, attack
+success and infrastructure errors are reported separately. The default is a small
+integration slice, not a complete benchmark or a security certification.
 
 ## Local release bundle
 
@@ -419,7 +438,7 @@ Build a versioned local distribution under the ignored `release/` directory:
 
 The local bundle contains the core JAR, terminal distribution, secret-protection plugin and
 model, model routing, launch scripts, licenses and version metadata. Packaging verifies the
-local model against `config/secret-model.sha256`. The standalone training module is excluded.
+local model against `config/secret-agent-model.sha256`. The standalone training module is excluded.
 The bundle README is rendered from [the release guide](RELEASE.md), which
 contains bundle-specific startup instructions rather than source-build commands. `release/`
 is generated output and must not be committed.

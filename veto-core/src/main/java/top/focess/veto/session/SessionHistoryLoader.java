@@ -1,5 +1,6 @@
 package top.focess.veto.session;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.ArrayList;
@@ -7,8 +8,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.jspecify.annotations.NonNull;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 import top.focess.veto.agent.RecordUsage;
 import top.focess.veto.agent.TurnRecord;
@@ -25,8 +24,6 @@ import top.focess.veto.util.Nullness;
 @Component
 public class SessionHistoryLoader {
 
-    private static final @NonNull Logger log =
-            LoggerFactory.getLogger("top.focess.veto.session.SessionHistoryLoader");
     private static final TypeReference<Map<String, Object>> PAYLOAD_TYPE = new TypeReference<>() {};
 
     private final @NonNull TurnRecordRepository repo;
@@ -48,7 +45,8 @@ public class SessionHistoryLoader {
      * Loads one agent's turn stream within a session (the per-agent replay path). A group's Leader
      * and each Mate each own a distinct stream; the caller resolves the agent id (the {@code
      * primary_agent_id} for a Leader) so only that agent's turns are replayed into its runner.
-     * Served by the composite index without a full-table scan.
+     * Served by the composite index without a full-table scan. A corrupt record rejects the entire
+     * load: partial history cannot safely restore execution state or REWIND positions.
      */
     public @NonNull List<TurnRecord> load(@NonNull String sessionId, @NonNull String agentId) {
         List<TurnRecordEntity> rows =
@@ -61,7 +59,9 @@ public class SessionHistoryLoader {
         List<TurnRecord> out = new ArrayList<>(rows.size());
         for (TurnRecordEntity row : rows) {
             try {
-                Map<String, Object> payload = deserializePayload(row.getPayload());
+                Map<String, Object> payload = mapper.readValue(row.getPayload(), PAYLOAD_TYPE);
+                if (payload == null)
+                    throw new IllegalArgumentException("Expected an object payload");
                 TurnType type = canonicalType(row.getType());
                 if ("SYSTEM_PROMPT".equals(row.getType())) {
                     payload = canonicalAgentInitPayload(payload);
@@ -75,25 +75,13 @@ public class SessionHistoryLoader {
                                 row.getLlmUsage() == null
                                         ? RecordUsage.decode(payload.get("llmUsage"))
                                         : RecordUsage.read(row.getLlmUsage())));
-            } catch (Exception e) {
-                // A single bad row must not abort replay of the rest.
-                log.warn(
-                        "Skipping unparseable turn record {} in session {}",
-                        row.getId(),
-                        sessionId,
-                        e);
+            } catch (JsonProcessingException | IllegalArgumentException invalid) {
+                throw new IllegalStateException(
+                        "Cannot load turn record " + row.getId() + " in session " + sessionId,
+                        invalid);
             }
         }
         return out;
-    }
-
-    private @NonNull Map<String, Object> deserializePayload(String json) {
-        if (json == null || json.isEmpty()) return Map.of();
-        try {
-            return mapper.readValue(json, PAYLOAD_TYPE);
-        } catch (Exception e) {
-            return Map.of();
-        }
     }
 
     private static @NonNull TurnType canonicalType(@NonNull String storedType) {

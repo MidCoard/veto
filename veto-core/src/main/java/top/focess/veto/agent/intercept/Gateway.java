@@ -29,6 +29,7 @@ import top.focess.veto.agent.workspace.Workspace;
 import top.focess.veto.api.agent.screening.Danger;
 import top.focess.veto.api.agent.screening.Relevance;
 import top.focess.veto.api.agent.tool.ToolCapability;
+import top.focess.veto.api.agent.tool.ToolPreparation;
 import top.focess.veto.api.agent.workflow.ActionContext;
 import top.focess.veto.api.llm.ToolCall;
 
@@ -193,7 +194,10 @@ public class Gateway {
                 dangerComputation.compute(
                         def, call, workspace, policy, protectedSet, executionPermit);
         Optional<SlmScreening> advisory =
-                slmScreeningProvider.screen(call, def, activeTask, thought, executionContext);
+                prepared != null && prepared.intent() instanceof ToolPreparation.DisclosureIntent
+                        ? Optional.empty()
+                        : slmScreeningProvider.screen(
+                                call, def, activeTask, thought, executionContext);
         Danger danger =
                 advisory.map(screening -> maxDanger(deterministicDanger, screening.danger()))
                         .orElse(deterministicDanger);

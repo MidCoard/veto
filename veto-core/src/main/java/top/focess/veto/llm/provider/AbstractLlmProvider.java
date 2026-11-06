@@ -172,7 +172,7 @@ public abstract class AbstractLlmProvider implements LLMProviderStrategy {
      * passed to the model are visible without dumping the full system prompt. Falls back to the
      * map's {@code toString} if serialization fails.
      */
-    private @NonNull String describeInputSchema(@NonNull Map<String, Object> inputSchema) {
+    private @NonNull String describeInputSchema(@NonNull Map<String, ?> inputSchema) {
         try {
             return objectMapper.writeValueAsString(inputSchema);
         } catch (Exception e) {

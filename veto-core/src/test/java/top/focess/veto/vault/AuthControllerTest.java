@@ -25,6 +25,7 @@ import org.springframework.beans.factory.support.StaticListableBeanFactory;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
+import top.focess.veto.bus.WebSocketServer;
 import top.focess.veto.command.PromptHandler;
 import top.focess.veto.controller.AuthController;
 import top.focess.veto.controller.dto.AuthCredentials;
@@ -33,7 +34,6 @@ import top.focess.veto.controller.dto.CreateUserRequest;
 import top.focess.veto.controller.dto.RestResponse;
 import top.focess.veto.event.EventManager;
 import top.focess.veto.security.SignupPolicy;
-import top.focess.veto.terminal.TcpServer;
 
 class AuthControllerTest {
 
@@ -114,7 +114,7 @@ class AuthControllerTest {
                         mock(PromptHandler.class),
                         events,
                         sessions,
-                        new StaticListableBeanFactory().getBeanProvider(TcpServer.class));
+                        new StaticListableBeanFactory().getBeanProvider(WebSocketServer.class));
         var controller = controller(users, sessions, vault, lifecycle);
         try {
             vault.createVault(userId, "test-password");
@@ -176,7 +176,7 @@ class AuthControllerTest {
                         mock(PromptHandler.class),
                         mock(EventManager.class),
                         sessions,
-                        new StaticListableBeanFactory().getBeanProvider(TcpServer.class));
+                        new StaticListableBeanFactory().getBeanProvider(WebSocketServer.class));
         when(lifecycle.locks()).thenReturn(revoker.locks());
         try (var pool = Executors.newFixedThreadPool(2)) {
             var setup =
@@ -342,7 +342,7 @@ class AuthControllerTest {
                         mock(PromptHandler.class),
                         mock(EventManager.class),
                         sessions,
-                        new StaticListableBeanFactory().getBeanProvider(TcpServer.class));
+                        new StaticListableBeanFactory().getBeanProvider(WebSocketServer.class));
         var opening = new CountDownLatch(1);
         var release = new CountDownLatch(1);
         when(vault.login("alice", "test-password"))

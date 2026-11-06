@@ -1,12 +1,10 @@
 package top.focess.veto.agent;
 
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import top.focess.veto.agent.identity.AgentPersona;
 import top.focess.veto.agent.loop.CompiledPrompt;
 import top.focess.veto.agent.loop.PromptCompiler;
@@ -19,9 +17,6 @@ import top.focess.veto.api.llm.ResponseContract;
 import top.focess.veto.api.llm.ToolResultPresentationMode;
 import top.focess.veto.api.llm.VetoRequest;
 import top.focess.veto.api.llm.exceptions.ModelSchemaException;
-import top.focess.veto.api.plugin.agent.AgentProfile;
-import top.focess.veto.api.plugin.agent.IsolatedAgent;
-import top.focess.veto.api.plugin.contract.JsonValues;
 import top.focess.veto.model.tier.ModelTier;
 import top.focess.veto.model.tier.ModelTierRegistry;
 import top.focess.veto.util.Nullness;
@@ -32,7 +27,7 @@ final class ModelRequests {
     private final @NonNull Workspace workspace;
     private final @NonNull AgentPersona persona;
     private final @NonNull LlmBinding binding;
-    private final AgentProfile.Prompt prompt;
+    private final String prompt;
     private final @NonNull ToolResultPresentationMode toolResultPresentation;
     private final @NonNull UUID userId;
     private final ModelTierRegistry modelTierRegistry;
@@ -42,7 +37,7 @@ final class ModelRequests {
             @NonNull Workspace workspace,
             @NonNull AgentPersona persona,
             @NonNull LlmBinding binding,
-            AgentProfile.Prompt prompt,
+            String prompt,
             @NonNull ToolResultPresentationMode presentation,
             @NonNull UUID userId,
             ModelTierRegistry tiers,
@@ -58,20 +53,17 @@ final class ModelRequests {
     }
 
     @NonNull VetoRequest completionRequest(
-            @NonNull VetoRequest request, IsolatedAgent.Terminal terminal, long remaining) {
+            @NonNull VetoRequest request, AgentExecutionPolicy.Terminal terminal, long remaining) {
         if (terminal == null) return request;
         String tool = terminal.tool();
-        String resource = terminal.prompt().resource();
-        Map<String, @Nullable Object> data =
-                new LinkedHashMap<>(JsonValues.toMap(terminal.prompt().data()));
-        data.put("tool", tool);
-        data.put("remaining", remaining);
+        var guidance = terminal.prompt().apply(remaining);
         List<ChatMessage> messages = new ArrayList<>(request.messages());
         messages.removeIf(
                 message ->
                         message.promptSources().stream()
-                                .anyMatch(source -> source.source().equals(resource + ".mdc")));
-        messages.add(PromptCompiler.compileMessage(resource, data));
+                                .anyMatch(
+                                        source -> source.source().equals(terminal.promptSource())));
+        messages.add(guidance);
         VetoRequest scoped =
                 new VetoRequest(
                         request.systemPrompt(),
@@ -156,7 +148,7 @@ final class ModelRequests {
     }
 
     @NonNull VetoRequest scopeResponseRequest(@NonNull VetoRequest request) {
-        return promptCompiler.scopeProfileRequest(
+        return promptCompiler.scopeRequest(
                 request, persona, workspace, prompt, toolResultPresentation);
     }
 
@@ -171,7 +163,7 @@ final class ModelRequests {
         if (scopedInvocation) inputBudgetOverride = Long.MAX_VALUE;
         else if (binding.options().contextWindowTokens() != null)
             inputBudgetOverride = binding.options().inputBudget();
-        return promptCompiler.compileProfile(
+        return promptCompiler.compile(
                 persona,
                 workspace,
                 prompt,

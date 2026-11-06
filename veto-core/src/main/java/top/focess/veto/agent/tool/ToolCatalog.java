@@ -10,6 +10,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import org.jspecify.annotations.NonNull;
+import top.focess.veto.api.agent.tool.ToolSecurity;
 import top.focess.veto.api.plugin.PluginState;
 import top.focess.veto.api.plugin.contribution.Contribution;
 import top.focess.veto.api.plugin.contribution.ContributionCatalog;
@@ -101,6 +102,10 @@ final class ToolCatalog {
         List<ToolDefinition> definitions = new ArrayList<>();
         for (RegisteredTool registration : registrations) {
             ToolDefinition definition = registration.definition();
+            if (whitelist == null && definition instanceof NativeToolDefinition nativeTool) {
+                var security = nativeTool.toolClass().getAnnotation(ToolSecurity.class);
+                if (security != null && security.explicitSelectionOnly()) continue;
+            }
             if (registration instanceof RegisteredTool.Plugin plugin
                     && !pluginAvailable(plugin.runtime())) continue;
             if (registration instanceof RegisteredTool.Local local) {

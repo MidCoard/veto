@@ -3,7 +3,7 @@ package top.focess.veto.training;
 import java.nio.file.Path;
 import org.jspecify.annotations.NonNull;
 
-/** Task inputs; outputDirectory must not already exist. Test data is evaluated separately. */
+/** Task inputs; fresh training requires a new output directory. Resume reuses its original run. */
 public record TrainingRequest(
         @NonNull String baseModel,
         @NonNull Path trainingData,
@@ -31,7 +31,8 @@ public record TrainingRequest(
             int loraAlpha,
             double loraDropout,
             int sequenceLength,
-            @NonNull PromptFormat promptFormat) {
+            @NonNull PromptFormat promptFormat,
+            int checkpointSteps) {
         public Options {
             if (epochs <= 0
                     || !Double.isFinite(learningRate)
@@ -43,7 +44,8 @@ public record TrainingRequest(
                     || !Double.isFinite(loraDropout)
                     || loraDropout < 0
                     || loraDropout >= 1
-                    || sequenceLength <= 0) {
+                    || sequenceLength <= 0
+                    || checkpointSteps <= 0) {
                 throw new IllegalArgumentException("Invalid training options");
             }
         }
@@ -51,6 +53,7 @@ public record TrainingRequest(
 
     public enum PromptFormat {
         RAW,
-        INSTRUCTION
+        INSTRUCTION,
+        NATIVE_TOOLS
     }
 }

@@ -35,6 +35,7 @@ import top.focess.veto.agent.workspace.*;
 import top.focess.veto.api.agent.ToolCallEvent;
 import top.focess.veto.api.agent.tool.AgentTool;
 import top.focess.veto.api.agent.workflow.ActionContext;
+import top.focess.veto.api.event.BeforeTextCommitEvent;
 import top.focess.veto.api.llm.LlmBinding;
 import top.focess.veto.api.llm.LlmOptions;
 import top.focess.veto.api.llm.ProviderType;
@@ -50,15 +51,18 @@ import top.focess.veto.builtin.response.AnswerWithCitationsTool;
 import top.focess.veto.builtin.workspace.ViewFileTool;
 import top.focess.veto.bus.SessionActions;
 import top.focess.veto.integration.plugins.PluginConfigurations;
+import top.focess.veto.integration.plugins.PluginHostServices;
 import top.focess.veto.integration.plugins.PluginManager;
 import top.focess.veto.integration.plugins.PluginTestSupport;
 import top.focess.veto.integration.plugins.ProcessHostFixture;
+import top.focess.veto.integration.plugins.SecretAgentHostFixture;
 import top.focess.veto.llm.core.*;
 import top.focess.veto.llm.core.ToolResultPresenter;
 import top.focess.veto.model.tier.ModelBinding;
 import top.focess.veto.model.tier.ModelTier;
 import top.focess.veto.model.tier.ModelTierRegistry;
 import top.focess.veto.sandbox.*;
+import top.focess.veto.util.Nullness;
 import top.focess.veto.vault.TestUsers;
 
 class PlanExecutionTest {
@@ -152,7 +156,11 @@ class PlanExecutionTest {
                             }
                             assertTrue(
                                     request.messages().stream()
-                                            .anyMatch(m -> m.content().contains("[SECRET_REF:s_")));
+                                            .anyMatch(
+                                                    m ->
+                                                            m.content()
+                                                                    .contains(
+                                                                            "[SECRET_REF:cred_")));
                             return message("Reference received");
                         },
                         new HitlRegistry(null, Mockito.mock(SessionActions.class)),
@@ -184,7 +192,7 @@ class PlanExecutionTest {
                                             turn.type() == TurnType.TOOL_RESPONSE
                                                     && turn.payload()
                                                             .toString()
-                                                            .contains("[SECRET_REF:s_")));
+                                                            .contains("[SECRET_REF:cred_")));
         } finally {
             service.remove(session);
         }
@@ -599,6 +607,18 @@ class PlanExecutionTest {
                         "top.focess.builtin:submit_plan", "builtin_submit_plan",
                         "top.focess.builtin:answer_with_citations",
                                 "builtin_answer_with_citations"));
+        var primary = new AtomicReference<String>();
+        var engineRef = new AtomicReference<ToolEngine>();
+        var hostServices =
+                new HashMap<Class<?>, Object>(ProcessHostFixture.services(sandbox).services());
+        hostServices.putAll(
+                SecretAgentHostFixture.services(
+                                new SecretAgentHostFixture(
+                                        () -> Nullness.requireNonNull(primary.get()),
+                                                Workspace.single(root, PathMode.REAL),
+                                        () -> Nullness.requireNonNull(engineRef.get()),
+                                                List.of("ghp_" + "A1".repeat(18))))
+                        .services());
         var plugins =
                 PluginTestSupport.manager(
                         PluginTestSupport.pluginPackages(),
@@ -607,11 +627,21 @@ class PlanExecutionTest {
                         5000,
                         PluginTestSupport.providerOf(
                                 PluginTestSupport.configurationServices(
-                                        ProcessHostFixture.services(sandbox))),
+                                        new PluginHostServices(hostServices))),
                         config);
         MANAGERS.add(plugins);
         var sessionPlugins = PluginTestSupport.sessionPlugins(plugins);
-        var eventManager = PluginTestSupport.eventManager(plugins);
+        var eventManager = spy(PluginTestSupport.eventManager(plugins));
+        doAnswer(
+                        invocation -> {
+                            BeforeTextCommitEvent event = invocation.getArgument(0);
+                            if (event == null)
+                                throw new IllegalArgumentException("Missing ingress event");
+                            primary.set(event.scope().agent());
+                            return invocation.callRealMethod();
+                        })
+                .when(eventManager)
+                .submit(any(BeforeTextCommitEvent.class));
         var context = mock(ApplicationContext.class);
         when(context.getBeansOfType(AgentTool.class))
                 .thenReturn(
@@ -648,6 +678,7 @@ class PlanExecutionTest {
                     }
                 };
         ReflectionTestUtils.invokeMethod(engine, "init");
+        engineRef.set(engine);
         PromptCompiler compiler =
                 spy(
                         new PromptCompiler(
@@ -1032,7 +1063,7 @@ class PlanExecutionTest {
                                                             || presentation == null)
                                                         throw new AssertionError(
                                                                 "Missing compilation context");
-                                                    return bounded.compileProfile(
+                                                    return bounded.compile(
                                                             persona,
                                                             workspace,
                                                             invocation.getArgument(2),
@@ -1042,7 +1073,7 @@ class PlanExecutionTest {
                                                             invocation.getArgument(6));
                                                 })
                                         .when(compiler)
-                                        .compileProfile(
+                                        .compile(
                                                 any(),
                                                 any(),
                                                 any(),

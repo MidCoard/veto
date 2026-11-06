@@ -1,99 +1,76 @@
 package top.focess.veto.secret;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.Map;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.api.agent.screening.Danger;
 import top.focess.veto.api.agent.tool.Doc;
-import top.focess.veto.api.agent.tool.NativeTool;
+import top.focess.veto.api.agent.tool.PreparedTool;
 import top.focess.veto.api.agent.tool.ToolCapability;
 import top.focess.veto.api.agent.tool.ToolDoc;
+import top.focess.veto.api.agent.tool.ToolPreparation;
 import top.focess.veto.api.agent.tool.ToolResultFormat;
 import top.focess.veto.api.agent.tool.ToolSecurity;
 import top.focess.veto.api.credentials.VaultAccess;
-import top.focess.veto.secret.references.SecretCandidateStore;
+import top.focess.veto.api.plugin.PluginHost;
+import top.focess.veto.api.plugin.contract.JsonValue;
 
-/**
- * In-process plugin tool executed through the host's internal tool state exactly like a core native
- * tool: the host reflects {@link Args} into the input schema, validates and deserializes the call,
- * and invokes {@link #execute(Args)}. The PRIVILEGED effect keeps every call behind approval-level
- * Gateway screening.
- */
+/** Imports exact source values selected by the plugin's local-model Agent. */
 @ToolSecurity(
         capability = ToolCapability.PRIVILEGED,
-        defaultDanger = Danger.DANGEROUS,
-        requiresSemanticScreening = true)
+        defaultDanger = Danger.SAFE,
+        explicitSelectionOnly = true)
 @ToolDoc(
-        resultFormats = {ToolResultFormat.JSON},
         description =
                 """
-                Import a session-registered SECRET_REF into the userId's encrypted vault after approval.\
-                """,
+        Import one exact credential from the current source; public disclosure requires approval.
+        """,
         behavior =
                 """
-                Resolves the referenced secret candidate captured earlier in this session, checks the \
-                approved tool invocation, and writes the credential into the userId's encrypted vault exactly \
-                once. The plaintext secret never passes through the model or the tool arguments; only the \
-                opaque reference, target service, and a human label are supplied.\
-                """,
+        Store an exact source value and return its credential reference.\
+        """,
         whenToUse =
                 """
-                Use it when the user has explicitly approved persisting a detected credential that was masked \
-                as a SECRET_REF during this session, so it can be reused later without re-exposing the \
-                plaintext.\
-                """,
+        For each distinct credential in the current source, including public values.\
+        """,
         whenNotToUse =
                 """
-                Do not use it to store a secret the user pasted in plaintext, to import a reference the user \
-                has not approved, or as a general key-value store. Leave unapproved candidates masked.\
-                """,
+        Do not import placeholders, credential references, or invented values.\
+        """,
         resultContract =
                 """
-                Success returns JSON with `credential_ref` (the stable vault handle), `service`, `label`, and \
-                `status` (`created`). Failures return a plaintext diagnostic without echoing the secret \
-                value.\
-                """,
+        Successful output is a cred_ identifier. Failure contains a diagnostic and stores no authorized reference.\
+        """,
         errorsAndEdgeCases =
                 """
-                Import is idempotent per reference: re-importing the same SECRET_REF returns the existing \
-                vault handle rather than duplicating it. An unknown, expired, or cross-session reference is \
-                refused, and unavailable vault access surfaces as a failure. Cancellation before the \
-                irreversible vault write aborts the import.\
-                """,
+        Preserve the exact case and complete private-key block. Metadata must not contain the secret.\
+        """,
         security =
                 """
-                Crosses the host trust boundary and writes to the encrypted vault; every call requires \
-                explicit approval. Never accepts plaintext secret material, only an opaque session-scoped \
-                reference.\
-                """,
+        Only the active Secret Agent may import. PRIVATE is the default; PUBLIC requests disclosure approval.\
+        """,
+        resultFormats = {ToolResultFormat.PLAINTEXT},
         examples = {
-            "{\"secret_ref\":\"SECRET_REF_1\",\"service\":\"github\",\"label\":\"ci-token\"}",
-            "{\"secret_ref\":\"SECRET_REF_2\",\"service\":\"aws\",\"label\":\"deploy-key\"}",
-            "{\"secret_ref\":\"SECRET_REF_3\",\"service\":\"github\",\"label\":\"webhook-secret\"}"
+            "{\"value\":\"AbC123!\",\"visibility\":\"PRIVATE\",\"service\":\"database\",\"label\":\"Login\"}",
+            "{\"value\":\"AbC123!\",\"visibility\":\"PUBLIC\",\"service\":\"database\",\"label\":\"Login\"}",
+            "{\"value\":\"absent-value\",\"visibility\":\"PRIVATE\",\"service\":\"database\",\"label\":\"Login\"}"
         },
         returnExamples = {
-            "{\"credential_ref\":\"cred_01HXX\",\"service\":\"github\",\"label\":\"ci-token\",\"status\":\"created\"}",
-            "{\"credential_ref\":\"cred_01HXY\",\"service\":\"aws\",\"label\":\"deploy-key\",\"status\":\"created\"}",
-            "{\"credential_ref\":\"cred_01HXZ\",\"service\":\"github\",\"label\":\"webhook-secret\",\"status\":\"created\"}"
+            "cred_example_private",
+            "cred_example_public",
+            "Tool execution failed: Credential must be an exact nonempty source value"
         })
-public final class ImportCredentialTool extends NativeTool<ImportCredentialTool.Args> {
-    private static final @NonNull ObjectMapper RESULTS = new ObjectMapper();
-    private final @NonNull SecretCandidateStore candidates;
+public final class ImportCredentialTool extends PreparedTool<ImportCredentialTool.Args> {
+    private final @NonNull SecretAgent agent;
     private final @NonNull VaultAccess vault;
 
-    ImportCredentialTool(@NonNull SecretCandidateStore candidates, @NonNull VaultAccess vault) {
-        this.candidates = candidates;
+    ImportCredentialTool(@NonNull SecretAgent agent, @NonNull VaultAccess vault) {
+        this.agent = agent;
         this.vault = vault;
     }
 
     @Override
-    public @NonNull ToolCapability getCapability() {
-        return ToolCapability.PRIVILEGED;
-    }
-
-    @Override
     public @NonNull String getName() {
-        return "import_detected_credential";
+        return "import_credential";
     }
 
     @Override
@@ -102,40 +79,46 @@ public final class ImportCredentialTool extends NativeTool<ImportCredentialTool.
     }
 
     @Override
-    public @NonNull String execute(@NonNull Args args) throws Exception {
-        var authorized =
-                vault.open(
-                        Map.of(
-                                "secret_ref", args.secret_ref(),
-                                "service", args.service(),
-                                "label", args.label()));
-        // Re-check after the (potentially blocking) host authorization so a caller that cancelled
-        // while awaiting approval does not reach the irreversible vault write.
-        if (Thread.currentThread().isInterrupted())
-            throw new IllegalStateException("Credential import cancelled");
-        var receipt =
-                candidates.importOnce(
-                        authorized.scope(),
-                        args.secret_ref(),
-                        args.service(),
-                        args.label(),
-                        authorized);
-        return RESULTS.writeValueAsString(
-                new Result(receipt.credentialRef(), receipt.service(), receipt.label(), "created"));
+    public @NonNull ToolPreparation prepare(
+            @NonNull Args args, PluginHost.@NonNull Invocation invocation) {
+        return new ToolPreparation(
+                new ToolPreparation.DisclosureIntent(args.visibility() == Visibility.PUBLIC),
+                new JsonValue.ObjectValue(Map.of()));
     }
 
-    /** Tool arguments; the host reflects this record into the input schema. */
-    public record Args(
-            @NonNull @Doc("Opaque SECRET_REF captured earlier in this session; never plaintext.")
-                    String secret_ref,
-            @NonNull @Doc("Target service the credential belongs to, e.g. github or aws.")
-                    String service,
-            @NonNull @Doc("Human-readable label stored alongside the vault entry.") String label) {}
+    @Override
+    public @NonNull String execute(@NonNull Args args) {
+        var handle =
+                vault.open(
+                        Map.of(
+                                "value",
+                                args.value(),
+                                "visibility",
+                                args.visibility().name(),
+                                "service",
+                                args.service(),
+                                "label",
+                                args.label()));
+        return agent.importValue(
+                handle,
+                args.value(),
+                args.visibility() == Visibility.PUBLIC,
+                args.service(),
+                args.label());
+    }
 
-    /** Tool result; the host serializes this record back to JSON. */
-    public record Result(
-            @NonNull String credential_ref,
-            @NonNull String service,
-            @NonNull String label,
-            @NonNull String status) {}
+    /** Whether the primary model may read the imported value. */
+    public enum Visibility {
+        PRIVATE,
+        PUBLIC
+    }
+
+    /** Exact value and nonsecret descriptive metadata. */
+    public record Args(
+            @NonNull @Doc("Exact source substring; include complete private-key delimiters.")
+                    String value,
+            @NonNull @Doc("PRIVATE by default; PUBLIC only for explicit model-readable disclosure.")
+                    Visibility visibility,
+            @NonNull @Doc("Short service name without secret material.") String service,
+            @NonNull @Doc("Short nonsecret label.") String label) {}
 }

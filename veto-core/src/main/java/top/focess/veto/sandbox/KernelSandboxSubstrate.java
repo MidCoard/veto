@@ -402,6 +402,7 @@ public class KernelSandboxSubstrate {
             return null;
         }
         WinNT.HANDLE job = null;
+        WinNT.HANDLE completionPort = null;
         WinNT.HANDLE processHandle = null;
         try {
             job = kernel.CreateJobObjectW(null, null);
@@ -419,6 +420,28 @@ public class KernelSandboxSubstrate {
                 return null;
             }
             JobObjectExtendedLimitInformation info = extendedLimits(profile);
+            completionPort =
+                    kernel.CreateIoCompletionPort(WinNT.INVALID_HANDLE_VALUE, null, null, 1);
+            if (completionPort == null) {
+                log.warn(
+                        "KernelSandboxSubstrate: completion port creation failed: {}",
+                        kernel32.GetLastError());
+                return null;
+            }
+            var association = new JobObjectAssociateCompletionPort();
+            association.CompletionPort = completionPort;
+            association.write();
+            // Associate before attachment/releasing the bootstrap so every descendant is covered.
+            if (!kernel.SetInformationJobObject(
+                    job,
+                    JobObjectInfoClass.JobObjectAssociateCompletionPort,
+                    association,
+                    association.size())) {
+                log.warn(
+                        "KernelSandboxSubstrate: Job completion port association failed: {}",
+                        kernel32.GetLastError());
+                return null;
+            }
             if (!kernel.SetInformationJobObject(
                     job, JobObjectInfoClass.JobObjectExtendedLimitInformation, info, info.size())) {
                 log.warn(
@@ -485,8 +508,10 @@ public class KernelSandboxSubstrate {
                     "KernelSandboxSubstrate: attached Windows Job Object to pid {} "
                             + "(memory={} MiB, cpu={}%, processes={})",
                     pid, profile.maxMemoryMb(), profile.maxCpuPercent(), profile.maxProcesses());
-            WindowsJobLease result = new WindowsJobLease(kernel, kernel32, job, pid);
+            WindowsJobLease result =
+                    new WindowsJobLease(kernel, kernel32, job, completionPort, pid);
             job = null;
+            completionPort = null;
             return result;
         } catch (Throwable t) {
             log.warn("KernelSandboxSubstrate: Windows attach failed: {}", safe(t.getMessage()));
@@ -497,6 +522,9 @@ public class KernelSandboxSubstrate {
             }
             if (job != null) {
                 kernel32.CloseHandle(job);
+            }
+            if (completionPort != null) {
+                kernel32.CloseHandle(completionPort);
             }
         }
     }
@@ -554,6 +582,21 @@ public class KernelSandboxSubstrate {
 
     /** Minimal JNA interface for the Windows kernel32 calls we need. */
     public interface WindowsKernel32 extends Library {
+        /**
+         * Creates or associates a completion port. Null existingPort and completionKey create a
+         * private port when file is INVALID_HANDLE_VALUE; returns null on failure.
+         */
+        WinNT.HANDLE CreateIoCompletionPort(
+                WinNT.HANDLE file,
+                WinNT.HANDLE existingPort,
+                Pointer completionKey,
+                int concurrency);
+
+        /**
+         * Opens a process with the requested access; returns null and sets last-error on failure.
+         */
+        WinNT.HANDLE OpenProcess(int access, boolean inheritHandle, int pid);
+
         /** Win32 {@code CreateJobObjectW}: creates the Job Object for one sandboxed tree. */
         WinNT.HANDLE CreateJobObjectW(Pointer lpJobAttributes, String lpName);
 
@@ -590,6 +633,13 @@ public class KernelSandboxSubstrate {
     }
 
     // --- Windows job-object structs (JOBOBJECT_EXTENDED_LIMIT_INFORMATION, WinNT.h) ---
+
+    /** Win32 {@code JOBOBJECT_ASSOCIATE_COMPLETION_PORT}; one private port per Job. */
+    @Structure.FieldOrder({"CompletionKey", "CompletionPort"})
+    public static class JobObjectAssociateCompletionPort extends Structure {
+        public Pointer CompletionKey;
+        public WinNT.HANDLE CompletionPort;
+    }
 
     /** Win32 {@code JOBOBJECT_BASIC_ACCOUNTING_INFORMATION}. */
     @Structure.FieldOrder({
@@ -696,6 +746,7 @@ public class KernelSandboxSubstrate {
     public static final class JobObjectInfoClass {
         public static final int JobObjectBasicAccountingInformation = 1;
         public static final int JobObjectBasicUiRestrictions = 4;
+        public static final int JobObjectAssociateCompletionPort = 7;
         public static final int JobObjectExtendedLimitInformation = 9;
         public static final int JobObjectCpuRateControlInformation = 15;
 

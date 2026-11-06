@@ -1,10 +1,11 @@
 package top.focess.veto.api.event;
 
 import org.jspecify.annotations.NonNull;
+import top.focess.veto.api.agent.tool.ToolResultOptions;
 import top.focess.veto.api.plugin.Scope;
 
 /**
- * Synchronous text boundary before user input or file content is committed or exposed to a model.
+ * Synchronous text boundary before user input or tool content is committed or exposed to a model.
  * Listeners may replace {@link #text()}; final action cancellation stops publication; ordinary
  * listener failures are contained. {@link #prevent()} controls propagation only.
  */
@@ -15,8 +16,8 @@ public final class BeforeTextCommitEvent extends WorkflowEvent implements Cancel
         INPUT,
         /** File content while an admitted workspace read prepares its result. */
         FILE_CAPTURE,
-        /** File tool result before final ingress defense and history publication. */
-        FILE_OBSERVATION
+        /** Tool result before history publication, after host-owned metadata is isolated. */
+        OBSERVATION
     }
 
     private final @NonNull Phase phase;
@@ -24,6 +25,7 @@ public final class BeforeTextCommitEvent extends WorkflowEvent implements Cancel
     private @NonNull String text;
     private boolean replaced;
     private boolean cancelled;
+    private final @NonNull ToolResultOptions options;
 
     /**
      * Creates a host-attributed text event for one selected session and agent.
@@ -38,10 +40,26 @@ public final class BeforeTextCommitEvent extends WorkflowEvent implements Cancel
             @NonNull Phase phase,
             @NonNull String sourceId,
             @NonNull String text) {
+        this(scope, phase, sourceId, text, ToolResultOptions.DEFAULT);
+    }
+
+    /** Creates a text boundary with options supplied by the host's executed tool result. */
+    public BeforeTextCommitEvent(
+            Scope.@NonNull AgentScope scope,
+            @NonNull Phase phase,
+            @NonNull String sourceId,
+            @NonNull String text,
+            @NonNull ToolResultOptions options) {
         super(scope);
         this.phase = phase;
         this.sourceId = sourceId;
         this.text = text;
+        this.options = options;
+    }
+
+    /** Returns options for unchanged tool content; transformations revoke processor bypass. */
+    public @NonNull ToolResultOptions options() {
+        return replaced ? ToolResultOptions.DEFAULT : options;
     }
 
     /**

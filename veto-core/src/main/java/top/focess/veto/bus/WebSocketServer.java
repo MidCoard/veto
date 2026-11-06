@@ -21,6 +21,7 @@ import org.springframework.web.socket.TextMessage;
 import org.springframework.web.socket.WebSocketSession;
 import org.springframework.web.socket.adapter.NativeWebSocketSession;
 import org.springframework.web.socket.handler.TextWebSocketHandler;
+import top.focess.veto.command.CommandRegistry;
 import top.focess.veto.command.SessionCommandService;
 import top.focess.veto.contract.Frame;
 import top.focess.veto.session.AgentSessions;
@@ -43,6 +44,7 @@ public final class WebSocketServer extends TextWebSocketHandler {
     private final @NonNull SessionService sessions;
     private final @NonNull SessionCommandService commands;
     private final @NonNull LoginSessionManager loginSessions;
+    private final @NonNull CommandRegistry registry;
     private final @NonNull ConcurrentHashMap<@NonNull String, @NonNull WebSocketPeer> connections =
             new ConcurrentHashMap<>();
     private final @NonNull ExecutorService workers =
@@ -54,15 +56,24 @@ public final class WebSocketServer extends TextWebSocketHandler {
             @NonNull SessionService sessions,
             @NonNull SessionCommandService commands,
             @NonNull LoginSessionManager loginSessions,
-            @NonNull AgentSessions runtime) {
+            @NonNull AgentSessions runtime,
+            @NonNull CommandRegistry registry) {
         this.sessions = sessions;
         this.commands = commands;
         this.loginSessions = loginSessions;
         this.runtime = runtime;
+        this.registry = registry;
     }
 
     @Override
     public void afterConnectionEstablished(@NonNull WebSocketSession socket) throws IOException {
+        var uri = socket.getUri();
+        String path = uri == null ? null : uri.getPath();
+        boolean terminal = "/ws/veto/terminal".equals(path);
+        if (!terminal && !"/ws/veto/bus".equals(path)) {
+            socket.close(CloseStatus.POLICY_VIOLATION.withReason("unknown endpoint"));
+            return;
+        }
         var login = login(socket);
         if (login == null) {
             socket.close(CloseStatus.POLICY_VIOLATION.withReason("authentication required"));
@@ -87,7 +98,7 @@ public final class WebSocketServer extends TextWebSocketHandler {
                                 runtime,
                                 sessions,
                                 commands,
-                                null,
+                                terminal ? registry : null,
                                 login.userId(),
                                 () ->
                                         loginSessions
@@ -119,6 +130,7 @@ public final class WebSocketServer extends TextWebSocketHandler {
                                         log.debug("WS: Connection '{}' closed", socket.getId());
                                 },
                                 locale);
+                protocol.setIdentity(login.userId(), login.username());
                 connections.put(socket.getId(), new WebSocketPeer(transport, protocol));
                 return;
             }
@@ -188,6 +200,16 @@ public final class WebSocketServer extends TextWebSocketHandler {
                                         !connection.protocol().isClosed()
                                                 && connection.transport().socket.isOpen())
                         .count();
+    }
+
+    /**
+     * Revokes connection-owned identity after account tokens have been revoked. Terminal sockets
+     * stay open so the logout command can finish and the user can log in again.
+     *
+     * @param userId account whose current connection identity must be detached
+     */
+    public void revokeUser(@NonNull UUID userId) {
+        for (var connection : connections.values()) connection.protocol().revokeUser(userId);
     }
 
     private LoginSession login(@NonNull WebSocketSession socket) {

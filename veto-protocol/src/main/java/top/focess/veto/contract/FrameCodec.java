@@ -34,7 +34,11 @@ import org.slf4j.LoggerFactory;
  * Frame}. Codec thread safety does not make those payloads thread-safe.
  */
 public final class FrameCodec {
-    /** Maximum bytes in one complete UTF-8 JSON Frame, shared by TCP and WebSocket. */
+    /**
+     * Maximum bytes in one complete UTF-8 JSON frame, excluding WebSocket headers. This is neither
+     * a socket packet size nor a queue backlog budget. Decoding enforces it here; senders check the
+     * encoded size before IO or queue admission.
+     */
     public static final int MAX_ENCODED_FRAME_BYTES = 64 * 1024 * 1024;
 
     private static final @NonNull Logger log =
@@ -77,7 +81,14 @@ public final class FrameCodec {
 
     private FrameCodec() {}
 
-    /** Encodes UTF-8 JSON; serialization failures surface as UncheckedIOException. */
+    /**
+     * Serializes a complete frame, including its JSON type discriminator. Encoding does not enforce
+     * the transport byte limit or split the result; the sender checks the resulting size.
+     *
+     * @param frame value with a stable payload for the duration of serialization
+     * @return newly allocated UTF-8 JSON bytes, without socket headers
+     * @throws UncheckedIOException if the value cannot be serialized
+     */
     public static byte @NonNull [] encode(@NonNull Frame frame) {
         try {
             return JSON.writeValueAsBytes(frame);
@@ -86,7 +97,14 @@ public final class FrameCodec {
         }
     }
 
-    /** Encodes the same wire representation directly as text. */
+    /**
+     * Serializes the same JSON representation directly as text, for text-based transports. Like
+     * {@link #encode(Frame)}, it leaves the encoded-size check to the sender.
+     *
+     * @param frame value with a stable payload for the duration of serialization
+     * @return JSON text; its UTF-8 encoded size, not String.length(), determines the wire byte cost
+     * @throws UncheckedIOException if the value cannot be serialized
+     */
     public static @NonNull String encodeString(@NonNull Frame frame) {
         try {
             return JSON.writeValueAsString(frame);
@@ -95,7 +113,14 @@ public final class FrameCodec {
         }
     }
 
-    /** Decodes UTF-8 JSON; malformed input returns null without logging payload contents. */
+    /**
+     * Decodes one complete frame and validates the shared wire schema. Rejection logs size and
+     * exception type, never payload contents. Callers decide how to terminate or reject bad input.
+     *
+     * @param payload complete UTF-8 JSON without a transport header; do not mutate during decoding
+     * @return decoded frame, or null for JSON null, malformed/invalid data or an exceeded byte
+     *     limit
+     */
     public static Frame decode(byte @NonNull [] payload) {
         if (payload.length > MAX_ENCODED_FRAME_BYTES) {
             log.warn("Rejected protocol payload ({} bytes, size limit exceeded)", payload.length);
@@ -112,7 +137,15 @@ public final class FrameCodec {
         }
     }
 
-    /** Decodes text under the same UTF-8 byte budget and validation as the byte transport. */
+    /**
+     * Decodes text under the same UTF-8 byte budget and schema as {@link #decode(byte[])}. The
+     * initial character-count check only avoids an unnecessary allocation for obviously large
+     * inputs; UTF-8 bytes determine the actual limit.
+     *
+     * @param payload complete JSON text from a text transport
+     * @return decoded frame, or null for JSON null, malformed/invalid data or an exceeded byte
+     *     limit
+     */
     public static Frame decode(@NonNull String payload) {
         if (payload.length() > MAX_ENCODED_FRAME_BYTES) {
             log.warn(
@@ -125,6 +158,14 @@ public final class FrameCodec {
 
     /** JavaTimeModule otherwise also accepts numeric epochs, outside the shared wire schema. */
     private static final class StringInstantDeserializer extends JsonDeserializer<Instant> {
+        /**
+         * Restricts timestamps to the JSON string representation shared with browser clients.
+         *
+         * @param parser parser positioned at the timestamp value
+         * @param context Jackson context used by its ISO instant parser
+         * @return parsed, non-null timestamp
+         * @throws IOException if the value is not a valid, nonempty timestamp string
+         */
         @Override
         public @NonNull Instant deserialize(
                 @NonNull JsonParser parser, @NonNull DeserializationContext context)

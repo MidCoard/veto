@@ -2,6 +2,7 @@ package top.focess.veto.api.llm;
 
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Pattern;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.api.llm.exceptions.ModelSchemaException;
 
@@ -14,6 +15,11 @@ import top.focess.veto.api.llm.exceptions.ModelSchemaException;
  */
 public record ResponseContract(
         @NonNull Mode mode, @NonNull String completionTool, boolean completionOnly) {
+    private static final @NonNull Pattern TEXT_TOOL_CALL =
+            Pattern.compile(
+                    "<tool_call>\\s*<invoke\\s+name=(['\"])([^'\"]+)\\1\\s*>.*</invoke>\\s*</tool_call>",
+                    Pattern.DOTALL);
+
     /** The kind of response accepted from a model invocation. */
     public enum Mode {
         /** Ordinary text and available native tools. */
@@ -99,7 +105,8 @@ public record ResponseContract(
      * @param request request defining available native tools
      * @param text decoded assistant text, or {@code null} when absent
      * @param calls decoded native tool names
-     * @throws ModelSchemaException if the response violates the mode or calls unavailable tools
+     * @throws ModelSchemaException if the response violates the mode, calls unavailable tools, or
+     *     substitutes a complete text envelope for an available native call
      */
     public void validate(@NonNull VetoRequest request, String text, @NonNull List<String> calls) {
         String answer = text == null ? "" : text.strip();
@@ -129,7 +136,17 @@ public record ResponseContract(
                     throw new ModelSchemaException(
                             "This generation requires exactly one native control call and no accompanying text");
             }
-            case ORDINARY -> {}
+            case ORDINARY -> {
+                if (!request.nativeToolsEnabled() || !calls.isEmpty()) return;
+                var invocation = TEXT_TOOL_CALL.matcher(answer);
+                if (invocation.matches()
+                        && request.tools().stream()
+                                .anyMatch(tool -> tool.name().equals(invocation.group(2))))
+                    throw new ModelSchemaException(
+                            "A textual tool-call envelope does not execute a tool. No tool ran;"
+                                    + " invoke the available tool through the native tool-call channel."
+                                    + " If showing an example, put the XML in a code fence.");
+            }
         }
     }
 }

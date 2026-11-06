@@ -53,6 +53,30 @@ class ConversionTest(unittest.TestCase):
             self.assertFalse((root / "models").exists())
             self.assertIn('"status": "completed"', (root / "result.jsonl").read_text())
 
+    def test_explicit_retry_replaces_only_expected_partial_outputs(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "merged").mkdir()
+            (root / "convert_hf_to_gguf.py").touch()
+            (root / "llama-quantize.exe").touch()
+            output = root / "output"
+            output.mkdir()
+            (output / "secret-f16.gguf").write_bytes(b"partial")
+            (output / "secret-q4_k_m.gguf").write_bytes(b"partial")
+            retained = output / "other.gguf"
+            retained.write_bytes(b"retained")
+            def run(command, check):
+                target = command[command.index("--outfile") + 1] if "--outfile" in command else command[2]
+                Path(target).write_bytes(b"new")
+            args = ["convert", "--model-dir", str(root / "merged"), "--output-dir", str(output),
+                    "--llama-cpp-dir", str(root), "--model-name", "secret", "--log-file", str(root / "result.jsonl"),
+                    "--retry"]
+            with patch("sys.argv", args), patch("subprocess.run", side_effect=run):
+                main()
+            self.assertEqual(b"new", (output / "secret-f16.gguf").read_bytes())
+            self.assertEqual(b"new", (output / "secret-q4_k_m.gguf").read_bytes())
+            self.assertEqual(b"retained", retained.read_bytes())
+
     def test_report_paths_are_relative(self):
         self.assertEqual("../models/model.gguf", relative_log_path("models/model.gguf", "logs/run.jsonl"))
 

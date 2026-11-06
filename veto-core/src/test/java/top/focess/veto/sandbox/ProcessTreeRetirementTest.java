@@ -6,6 +6,7 @@ import static org.mockito.Mockito.*;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
@@ -282,6 +283,13 @@ class ProcessTreeRetirementTest {
                                     handle,
                                     new Command("cmd.exe", List.of("/c", "echo", "retired")),
                                     workspace));
+            // A dead PID or zero Job count alone does not prove native handles released cwd.
+            // Delete immediately, without a grace period or a cleanup retry.
+            List<@NonNull Path> retiredPaths;
+            try (var paths = Files.walk(workspace)) {
+                retiredPaths = paths.sorted(Comparator.reverseOrder()).toList();
+            }
+            for (var path : retiredPaths) Files.delete(path);
         } finally {
             process.destroyForcibly();
             substrate.deprovision(handle);

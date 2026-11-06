@@ -5,7 +5,7 @@ import org.jspecify.annotations.NonNull;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.context.annotation.Configuration;
 
-/** Origin policy for the authenticated browser WebSocket endpoint. */
+/** Shared browser origin policy for REST and WebSocket endpoints. */
 @Configuration
 @ConfigurationProperties(prefix = "veto.bus")
 public class BusConfiguration {
@@ -20,7 +20,7 @@ public class BusConfiguration {
         this.websocket = websocket;
     }
 
-    /** Allowed origins for /ws/veto/bus on the application's HTTP port. */
+    /** Allowed browser origins for REST and WebSockets on the application's HTTP port. */
     public static class WebSocketConfig {
         private @NonNull List<@NonNull String> allowedOriginPatterns =
                 List.of(

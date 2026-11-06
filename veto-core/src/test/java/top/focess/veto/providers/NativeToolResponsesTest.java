@@ -27,6 +27,64 @@ import top.focess.veto.observability.AuditLogger;
 class NativeToolResponsesTest {
 
     @Test
+    void ordinaryTextToolEnvelopeRequiresANativeCallInsteadOfFinishing() {
+        for (String quote : List.of("\"", "'")) {
+            String text =
+                    "<tool_call>\n<invoke name="
+                            + quote
+                            + "read"
+                            + quote
+                            + "><path>notes.txt</path></invoke>\n</tool_call>";
+            var failure =
+                    assertThrows(
+                            ModelSchemaException.class,
+                            () -> NativeToolResponses.normalize(request(), text, List.of()));
+            String message = failure.getMessage();
+            assertTrue(
+                    message != null
+                            && message.contains("No tool ran")
+                            && message.contains("native tool-call channel"));
+        }
+    }
+
+    @Test
+    void ordinaryXmlAndExamplesRemainText() {
+        String envelope = "<tool_call><invoke name=\"read\">{}</invoke></tool_call>";
+        for (String text :
+                List.of(
+                        "<document><name>read</name></document>",
+                        "Example: " + envelope,
+                        "```xml\n" + envelope + "\n```",
+                        envelope.replace("read", "unavailable"),
+                        "<tool_call><invoke name=\"read\">"))
+            assertEquals(text, NativeToolResponses.normalize(request(), text, List.of()));
+        assertEquals(
+                envelope, NativeToolResponses.normalize(request(List.of()), envelope, List.of()));
+        var disabled =
+                new VetoRequest(
+                        "System",
+                        "Explain XML",
+                        List.of(tool),
+                        ProviderType.GEMINI,
+                        "test",
+                        "key",
+                        LlmOptions.defaults(),
+                        List.of(),
+                        null,
+                        false,
+                        ResponseContract.ordinary());
+        assertEquals(envelope, NativeToolResponses.normalize(disabled, envelope, List.of()));
+        assertEquals(
+                envelope,
+                NativeToolResponses.normalize(
+                        request(),
+                        envelope,
+                        List.of(
+                                new NativeToolResponses.Call(
+                                        "read", mapper.createObjectNode(), "native-id"))));
+    }
+
+    @Test
     void predicateContractRejectsExplanationsAndToolsAtTheProviderBoundary() {
         var request = request().withResponseContract(ResponseContract.predicate());
         for (String valid : List.of("true", "false", " true\n"))

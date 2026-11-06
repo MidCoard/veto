@@ -18,8 +18,8 @@ import org.springframework.context.support.ResourceBundleMessageSource;
  *
  * <p>The locale comes from {@link LocaleContextHolder}: on request threads it is the {@code
  * Accept-Language} value resolved by the {@code localeResolver} bean ({@link I18nConfig}); on
- * non-request threads (TCP handlers, agent virtual threads, tests) no locale is set and the message
- * falls back to English - the base bundle.
+ * non-request threads (protocol workers, agent virtual threads, tests) no locale is set and the
+ * message falls back to English - the base bundle.
  */
 public final class Msg {
 

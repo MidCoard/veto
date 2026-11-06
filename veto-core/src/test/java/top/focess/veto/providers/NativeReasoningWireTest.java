@@ -143,7 +143,7 @@ class NativeReasoningWireTest {
                                     "test",
                                     MAPPER,
                                     ProviderTestPrompts.PROMPTS);
-                    case OPENAI ->
+                    case OPENAI, LOCAL ->
                             new OpenAiLlmClient(
                                     OpenAIOkHttpClient.builder()
                                             .baseUrl(url)
@@ -207,7 +207,7 @@ class NativeReasoningWireTest {
                 }
                 case DEEPSEEK ->
                         assertEquals("high", body.path("reasoning").path("effort").asText());
-                case OPENAI -> {
+                case OPENAI, LOCAL -> {
                     assertEquals("medium", body.path("reasoning_effort").asText());
                     assertFalse(body.has("temperature"));
                     assertFalse(body.has("top_p"));
@@ -349,7 +349,7 @@ class NativeReasoningWireTest {
                  {"type":"function_call","call_id":"n1","name":"read_file","arguments":"{}"},
                  {"type":"function_call","call_id":"n2","name":"read_file","arguments":"{}"}]}
                 """;
-            case OPENAI ->
+            case OPENAI, LOCAL ->
                     """
                 {"id":"r","object":"chat.completion","created":0,"model":"gpt-5","choices":[{"index":0,"finish_reason":"stop","message":{"role":"assistant","content":"Answer."}}]}
                 """;

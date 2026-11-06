@@ -3,12 +3,9 @@ package top.focess.veto.agent.intercept;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
-import java.io.IOException;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import org.jspecify.annotations.NonNull;
-import org.junit.jupiter.api.AfterAll;
-import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import top.focess.veto.agent.tool.NativeToolDefinition;
 import top.focess.veto.api.agent.screening.Danger;
@@ -16,7 +13,6 @@ import top.focess.veto.api.agent.tool.ParamCategory;
 import top.focess.veto.api.agent.tool.ToolCapability;
 import top.focess.veto.api.llm.ToolCall;
 import top.focess.veto.integration.plugins.PluginManager;
-import top.focess.veto.integration.plugins.PluginTestSupport;
 import top.focess.veto.veto.LlamaCppBridge;
 
 /**
@@ -26,20 +22,16 @@ import top.focess.veto.veto.LlamaCppBridge;
  */
 class SemanticMaskerTimeoutTest {
 
-    @SuppressWarnings("nullness:initialization.static.field.uninitialized") // Set in @BeforeAll.
-    private static @NonNull PluginManager plugins;
-
-    @BeforeAll
-    static void startPlugins() throws IOException {
-        plugins = PluginTestSupport.manager();
-    }
-
-    @AfterAll
-    static void stopPlugins() {
-        plugins.close();
-    }
-
     private static @NonNull SemanticMasker masker(@NonNull LlamaCppBridge bridge) {
+        var plugins = mock(PluginManager.class);
+        when(plugins.applyObservationMiddleware(anyString()))
+                .thenAnswer(
+                        invocation -> {
+                            String text = invocation.getArgument(0, String.class);
+                            if (text == null)
+                                throw new IllegalArgumentException("Missing observation");
+                            return text.replace("ABCD", "[TEST_PROTECTED]");
+                        });
         return new SemanticMasker(bridge, plugins);
     }
 
@@ -57,9 +49,9 @@ class SemanticMaskerTimeoutTest {
     }
 
     @Test
-    void slmHangFallsBackToDeterministicMaskingWithinTimeout() throws Exception {
+    void slmHangStillAppliesObservationMiddlewareWithinTimeout() throws Exception {
         // Bridge stub whose infer() returns a future that never completes — simulates a wedged
-        // SLM / native crash. The masker must time out, fall back to SecretMasker, and not
+        // SLM / native crash. The masker must time out, apply observation middleware, and not
         // block the caller beyond the configured SLM_TIMEOUT_MS.
         LlamaCppBridge bridge = mock(LlamaCppBridge.class);
         when(bridge.isAvailable()).thenReturn(true);
@@ -79,8 +71,8 @@ class SemanticMaskerTimeoutTest {
         assertNotNull(result.masked());
         assertNull(result.highRisk(), "no SLM verdict (hang) → no high-risk signal");
         assertTrue(
-                result.masked().contains("[REDACTED_"),
-                "must still apply deterministic SecretMasker as fallback on timeout");
+                result.masked().contains("[TEST_PROTECTED]"),
+                "must still apply observation middleware on timeout");
         assertTrue(
                 elapsed < SemanticMasker.SLM_TIMEOUT_MS + 1_000L,
                 "masker must not block beyond the SLM timeout (took " + elapsed + "ms)");
@@ -103,7 +95,7 @@ class SemanticMaskerTimeoutTest {
     }
 
     @Test
-    void slmUnavailableFallsBackToDeterministic() {
+    void slmUnavailableStillAppliesObservationMiddleware() {
         LlamaCppBridge bridge = mock(LlamaCppBridge.class);
         when(bridge.isAvailable()).thenReturn(false);
         SemanticMasker masker = masker(bridge);
@@ -113,6 +105,6 @@ class SemanticMaskerTimeoutTest {
                         new ToolCall("read_file", Map.of("path", "/tmp/x"), "c1"),
                         readToolDef());
         assertNull(result.highRisk());
-        assertTrue(result.masked().contains("[REDACTED_"));
+        assertTrue(result.masked().contains("[TEST_PROTECTED]"));
     }
 }

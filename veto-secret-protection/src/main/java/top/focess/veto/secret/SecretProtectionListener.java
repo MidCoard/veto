@@ -8,7 +8,6 @@ import top.focess.veto.api.event.Listener;
 import top.focess.veto.api.event.SessionDeletedEvent;
 import top.focess.veto.api.event.UserAuthenticatedEvent;
 import top.focess.veto.api.event.UserLogoutEvent;
-import top.focess.veto.secret.detection.SlmSecretDetector;
 import top.focess.veto.secret.references.SecretCandidateStore;
 
 /**
@@ -18,32 +17,23 @@ import top.focess.veto.secret.references.SecretCandidateStore;
  */
 public final class SecretProtectionListener implements Listener {
     private final @NonNull SecretCandidateStore candidates;
-    private final @NonNull SlmSecretDetector detector;
+    private final @NonNull SecretAgent agent;
 
     /** Creates the listener over the candidate store it scopes. */
-    public SecretProtectionListener(
-            @NonNull SecretCandidateStore candidates, @NonNull SlmSecretDetector detector) {
+    SecretProtectionListener(@NonNull SecretCandidateStore candidates, @NonNull SecretAgent agent) {
         this.candidates = candidates;
-        this.detector = detector;
+        this.agent = agent;
     }
 
     /** Protects text before the host commits it, preserving captured reference markers. */
     @EventHandler
-    public void onTextCommit(@NonNull BeforeTextCommitEvent event) {
-        var scope = event.scope();
-        switch (event.phase()) {
-            case INPUT ->
-                    event.setText(candidates.capture(scope, event.sourceId(), event.text()).text());
-            case FILE_CAPTURE ->
-                    event.setText(
-                            candidates.captureFile(scope, event.sourceId(), event.text()).text());
-            case FILE_OBSERVATION -> {
-                var output = new StringBuilder();
-                for (var segment : candidates.referenceSegments(scope, event.text()))
-                    output.append(
-                            segment.reference() ? segment.text() : detector.mask(segment.text()));
-                event.setText(output.toString());
-            }
+    public void onTextCommit(@NonNull BeforeTextCommitEvent event) throws Exception {
+        try {
+            agent.protect(event);
+        } catch (Throwable failure) {
+            // The event bus contains listener failures; cancellation must still stop publication.
+            event.setCancelled(true);
+            throw failure;
         }
     }
 
@@ -55,15 +45,18 @@ public final class SecretProtectionListener implements Listener {
     @EventHandler
     public void onUserLogout(@NonNull UserLogoutEvent event) {
         candidates.closeUser(event.scope().userId());
+        agent.discardUser(event.scope().userId());
     }
 
     @EventHandler
     public void onSessionDeleted(@NonNull SessionDeletedEvent event) {
         candidates.retireSession(event.scope().userId(), event.scope().session());
+        agent.discardSession(event.scope());
     }
 
     @EventHandler
     public void onAgentTerminated(@NonNull AgentTerminatedEvent event) {
         candidates.discardAgent(event.scope());
+        agent.discard(event.scope());
     }
 }

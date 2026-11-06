@@ -50,7 +50,8 @@ public class AuthService {
             boolean setupNeeded,
             boolean vaultLocked,
             int activeSessions,
-            @NonNull Optional<LoginSession> login) {}
+            @NonNull Optional<LoginSession> login,
+            String role) {}
 
     public @NonNull Login setup(String username, String password) {
         username = validateUsername(username);
@@ -79,6 +80,8 @@ public class AuthService {
 
     public @NonNull UserEntity loginTerminal(
             @NonNull VetoCommandSender sender, String username, String password) {
+        if (sender.isLoggedIn())
+            throw reject(AuthException.Kind.CONFLICT, "error.auth.alreadyLoggedIn");
         username = requiredCredential(username);
         password = requiredCredential(password);
         try (var _ = lifecycle.locks().shared()) {
@@ -137,11 +140,15 @@ public class AuthService {
     }
 
     public @NonNull Status status(String token) {
+        var login = sessions.validateToken(token == null ? "" : token);
         return new Status(
                 !users.anyUserExists(),
                 !vault.isUnlocked(),
                 sessions.activeLoginSessionCount(),
-                sessions.validateToken(token == null ? "" : token));
+                login,
+                login.flatMap(value -> users.findByUserId(value.userId()))
+                        .map(UserEntity::getRole)
+                        .orElse(null));
     }
 
     public @NonNull UserEntity createUser(

@@ -34,8 +34,12 @@ class ProtectedProviderBodyTest {
         String fileValue = "ghp_SYNTHETIC0913INVALIDFILE00000000000000000";
         var store = new SecretCandidateStore();
         var scope = new Scope.AgentScope(TestUsers.ALICE, "test-session", "test-agent");
-        String user = store.capture(scope, "browser-substitute", "token=" + userValue).text();
-        String file = store.captureFile(scope, "file-substitute", "token=" + fileValue).text();
+        String user =
+                store.captureExact(scope, "browser-substitute", "token=" + userValue, userValue)
+                        .text();
+        String file =
+                store.captureExact(scope, "file-substitute", "token=" + fileValue, fileValue, true)
+                        .text();
         var source =
                 PromptDocument.compile(
                         "wire-test",

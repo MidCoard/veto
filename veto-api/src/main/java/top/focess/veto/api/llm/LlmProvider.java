@@ -2,7 +2,7 @@ package top.focess.veto.api.llm;
 
 import org.jspecify.annotations.NonNull;
 
-/** Provider transport adapter invoked after host credential and egress resolution. */
+/** Provider adapter owning target resolution and model transport. */
 public interface LlmProvider {
     /**
      * Identifies the provider protocol handled by this adapter.
@@ -17,6 +17,12 @@ public interface LlmProvider {
      * @return the provider's default endpoint, or {@code null} when none exists
      */
     String defaultBaseUrl();
+
+    /** Resolves this provider's target; network providers use the host credential/egress policy. */
+    default @NonNull ResolvedRequest resolve(
+            @NonNull VetoRequest request, @NonNull LlmRequestResolver network) {
+        return network.resolve(request, defaultBaseUrl());
+    }
 
     /**
      * Sends one fully resolved request and returns undecoded provider output plus accounting data.

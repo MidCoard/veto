@@ -38,6 +38,40 @@ class DefaultModelTierServiceTest {
     @MockitoBean @NonNull CredentialExistenceChecker credentialChecker;
 
     @Test
+    void localBindingUsesFileEndpointWithoutVaultCredential() {
+        service.createProfile(TestUsers.ALICE, "default");
+        when(credentialChecker.exists(any(UUID.class), anyString())).thenReturn(false);
+        service.setFields(
+                TestUsers.ALICE,
+                "default",
+                ModelTier.LOCAL,
+                Map.of(
+                        ModelTierField.PROVIDER,
+                        "LOCAL",
+                        ModelTierField.MODEL,
+                        "example",
+                        ModelTierField.BASE_URL,
+                        "./models/example.gguf",
+                        ModelTierField.CREDENTIAL_KEY,
+                        "",
+                        ModelTierField.CONTEXT_WINDOW_TOKENS,
+                        "16384"));
+        var binding = service.resolve(TestUsers.ALICE, ModelTier.LOCAL);
+        assertEquals(ProviderType.LOCAL, binding.provider());
+        assertEquals("./models/example.gguf", binding.baseUrl());
+        assertEquals("", binding.credentialKey());
+        assertThrows(
+                IllegalArgumentException.class,
+                () ->
+                        service.setField(
+                                TestUsers.ALICE,
+                                "default",
+                                ModelTier.LOCAL,
+                                ModelTierField.CREDENTIAL_KEY,
+                                "network-key"));
+    }
+
+    @Test
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
     void failedBatchRollsBackEarlierFieldsAndValidBatchPersistsTogether() {
         UUID userId = UUID.fromString("97a0b6da-dbbb-59f6-89a1-40353637c5d1");

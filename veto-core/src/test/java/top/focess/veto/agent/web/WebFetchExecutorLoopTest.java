@@ -31,6 +31,9 @@ import top.focess.veto.agent.capability.DestinationTestGrants;
 import top.focess.veto.agent.capability.NetworkEgressCapabilityImpl;
 import top.focess.veto.agent.identity.AgentPersona;
 import top.focess.veto.agent.identity.Role;
+import top.focess.veto.agent.intercept.IngressDefense;
+import top.focess.veto.agent.intercept.IngressDefenseTestSupport;
+import top.focess.veto.agent.intercept.SemanticMasker;
 import top.focess.veto.agent.tool.CapabilityTestCalls;
 import top.focess.veto.agent.tool.ToolCallContextHolder;
 import top.focess.veto.agent.translation.VetoCapabilityTranslator;
@@ -47,6 +50,7 @@ import top.focess.veto.api.llm.VetoRequest;
 import top.focess.veto.api.llm.VetoResponse;
 import top.focess.veto.builtin.web.WebFetchTool;
 import top.focess.veto.bus.SessionActions;
+import top.focess.veto.integration.plugins.PluginManager;
 import top.focess.veto.llm.core.UniformLLMCaller;
 import top.focess.veto.memory.TurnLogService;
 import top.focess.veto.memory.TurnRecordRepository;
@@ -71,6 +75,7 @@ class WebFetchExecutorLoopTest {
     private final @NonNull ApprovedHttpDestination access = mock(ApprovedHttpDestination.class);
     private final @NonNull List<@NonNull VetoRequest> requests = new ArrayList<>();
     private final @NonNull ModelTierRegistry models = mock();
+    private @NonNull IngressDefense ingress = IngressDefenseTestSupport.inMemory();
 
     @AfterEach
     void clearOwner() {
@@ -166,8 +171,33 @@ class WebFetchExecutorLoopTest {
     }
 
     @Test
-    void isolatedLoopReturnsOnlySelectedEvidenceAndConfiguredModel() throws Exception {
-        WebFetchTool tool = tool(script(List.of(fetch(), read(), finish("s1"))), 6, 10);
+    void isolatedLoopPersistsMaskedEvidenceAndTrustedExecutionIdentity() throws Exception {
+        String credential = "12345678-abcd-4abc-8abc-123456789abc";
+        var plugins = mock(PluginManager.class);
+        when(plugins.applyObservationMiddleware(anyString()))
+                .thenAnswer(
+                        invocation ->
+                                Nullness.requireNonNull(invocation.getArgument(0, String.class))
+                                        .replace(credential, "[TEST_PROTECTED]"));
+        ingress = new IngressDefense(new SemanticMasker(null, plugins), plugins);
+        var completion =
+                call(
+                        "finish_read",
+                        Map.of(
+                                "outcome",
+                                "complete",
+                                "answer",
+                                "token="
+                                        + credential
+                                        + " api_key="
+                                        + credential
+                                        + " password="
+                                        + credential,
+                                "evidenceIds",
+                                List.of("s1"),
+                                "limitations",
+                                List.of()));
+        WebFetchTool tool = tool(script(List.of(fetch(), read(), completion)), 6, 10);
         String result = execute(tool);
         var json = mapper.readTree(result);
         assertEquals("complete", json.path("outcome").asText());
@@ -187,6 +217,9 @@ class WebFetchExecutorLoopTest {
         assertEquals(
                 json.path("execution").path("id").asText(),
                 persisted.path("execution").path("id").asText());
+        String answer = persisted.path("answer").asText();
+        assertFalse(answer.contains(credential));
+        assertTrue(answer.contains("[TEST_PROTECTED]"));
         assertFalse(result.contains("UNRELATED_PAGE_BODY"));
         VetoRequest first = requests.getFirst();
         assertEquals(ResponseContract.completion("finish_read", false), first.responseContract());
@@ -610,7 +643,8 @@ class WebFetchExecutorLoopTest {
                                                     Role.STANDALONE));
                             when(parent.state()).thenReturn(AgentState.RUNNING);
                             registry.register(sessionId, parent);
-                        });
+                        },
+                        ingress);
         when(network.openApprovedDestination("url"))
                 .thenAnswer(
                         invocation ->

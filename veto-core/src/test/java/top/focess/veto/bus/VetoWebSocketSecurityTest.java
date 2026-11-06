@@ -15,6 +15,7 @@ import static org.mockito.Mockito.when;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import jakarta.websocket.Session;
 import java.io.IOException;
+import java.net.InetSocketAddress;
 import java.net.URI;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -47,6 +48,7 @@ import top.focess.veto.agent.AgentService;
 import top.focess.veto.agent.intercept.HitlRegistry;
 import top.focess.veto.api.agent.screening.Danger;
 import top.focess.veto.api.plugin.Scope;
+import top.focess.veto.command.CommandRegistry;
 import top.focess.veto.command.SessionCommandService;
 import top.focess.veto.contract.Delta;
 import top.focess.veto.contract.Frame;
@@ -60,6 +62,65 @@ import top.focess.veto.vault.LoginSessionManager;
 import top.focess.veto.vault.TestUsers;
 
 class VetoWebSocketSecurityTest {
+    @Test
+    void terminalHandshakeRequiresHeaderTokenAndTlsForRemotePeers() {
+        var tokens = new LoginSessionManager();
+        var token = tokens.createLoginSession(TestUsers.ALICE, "alice");
+        var interceptor = new VetoWebSocketAuthInterceptor(tokens);
+        var handler = mock(WebSocketHandler.class);
+        for (String host : List.of("127.0.0.1", "::1")) {
+            var request = request("ws://localhost/ws/veto/terminal?token=" + token);
+            when(request.getRemoteAddress()).thenReturn(new InetSocketAddress(host, 12345));
+            request.getHeaders().set("X-Veto-Session-Token", token);
+            var attributes = new HashMap<String, Object>();
+            assertTrue(
+                    interceptor.beforeHandshake(
+                            request, mock(ServerHttpResponse.class), handler, attributes));
+            assertEquals(
+                    TestUsers.ALICE,
+                    attributes.get(VetoWebSocketAuthInterceptor.AUTHENTICATED_USER_ATTRIBUTE));
+        }
+        for (var remote :
+                new InetSocketAddress[] {
+                    null,
+                    InetSocketAddress.createUnresolved("localhost", 12345),
+                    new InetSocketAddress("203.0.113.10", 12345)
+                }) {
+            var request = request("ws://localhost/ws/veto/terminal?token=" + token);
+            if (remote != null) when(request.getRemoteAddress()).thenReturn(remote);
+            request.getHeaders().set("X-Forwarded-For", "127.0.0.1");
+            request.getHeaders().set("Forwarded", "for=127.0.0.1");
+            var response = mock(ServerHttpResponse.class);
+            assertFalse(interceptor.beforeHandshake(request, response, handler, new HashMap<>()));
+            verify(response).setStatusCode(HttpStatus.FORBIDDEN);
+        }
+        var unexpected = request("ws://localhost/ws/veto/terminal/extra?token=" + token);
+        when(unexpected.getRemoteAddress()).thenReturn(new InetSocketAddress("127.0.0.1", 12345));
+        var response = mock(ServerHttpResponse.class);
+        assertFalse(interceptor.beforeHandshake(unexpected, response, handler, new HashMap<>()));
+        verify(response).setStatusCode(HttpStatus.FORBIDDEN);
+        var secure = request("https://veto.example/ws/veto/terminal");
+        when(secure.getRemoteAddress()).thenReturn(new InetSocketAddress("203.0.113.10", 12345));
+        var missing = mock(ServerHttpResponse.class);
+        assertFalse(interceptor.beforeHandshake(secure, missing, handler, new HashMap<>()));
+        verify(missing).setStatusCode(HttpStatus.UNAUTHORIZED);
+        secure.getHeaders().set("X-Veto-Session-Token", token);
+        assertTrue(
+                interceptor.beforeHandshake(
+                        secure, mock(ServerHttpResponse.class), handler, new HashMap<>()));
+        tokens.revokeToken(token);
+        assertFalse(
+                interceptor.beforeHandshake(
+                        secure, mock(ServerHttpResponse.class), handler, new HashMap<>()));
+        var queryOnly =
+                request(
+                        "https://veto.example/ws/veto/terminal?token="
+                                + tokens.createLoginSession(TestUsers.ALICE, "alice"));
+        assertFalse(
+                interceptor.beforeHandshake(
+                        queryOnly, mock(ServerHttpResponse.class), handler, new HashMap<>()));
+    }
+
     private final @NonNull Map<@NonNull WebSocketServer, @NonNull AgentSessions> runtimes =
             new HashMap<>();
 
@@ -85,7 +146,8 @@ class VetoWebSocketSecurityTest {
                         mock(SessionService.class),
                         mock(SessionCommandService.class),
                         tokens,
-                        runtime);
+                        runtime,
+                        mock(CommandRegistry.class));
         runtimes.put(handler, runtime);
         handlers.add(handler);
         return handler;
@@ -114,7 +176,7 @@ class VetoWebSocketSecurityTest {
         LoginSessionManager sessionManager = new LoginSessionManager();
         String token = sessionManager.createLoginSession(TestUsers.ALICE, "alice");
         VetoWebSocketAuthInterceptor interceptor = new VetoWebSocketAuthInterceptor(sessionManager);
-        ServerHttpRequest validRequest = request("ws://localhost/ws?token=" + token);
+        ServerHttpRequest validRequest = request("ws://localhost/ws/veto/bus?token=" + token);
         ServerHttpResponse validResponse = mock(ServerHttpResponse.class);
         Map<String, Object> attributes = new HashMap<>();
 
@@ -128,7 +190,7 @@ class VetoWebSocketSecurityTest {
         ServerHttpResponse rejectedResponse = mock(ServerHttpResponse.class);
         assertFalse(
                 interceptor.beforeHandshake(
-                        request("ws://localhost/ws?token=invalid"),
+                        request("ws://localhost/ws/veto/bus?token=invalid"),
                         rejectedResponse,
                         mock(WebSocketHandler.class),
                         new HashMap<>()));
@@ -716,6 +778,7 @@ class VetoWebSocketSecurityTest {
         when(nativeSession.getUserProperties()).thenReturn(new HashMap<>());
         when(session.getNativeSession()).thenReturn(nativeSession);
         when(session.getId()).thenReturn(id);
+        when(session.getUri()).thenReturn(URI.create("ws://localhost/ws/veto/bus"));
         when(session.isOpen()).thenReturn(true);
         when(session.getAttributes())
                 .thenReturn(

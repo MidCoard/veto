@@ -84,6 +84,9 @@ public class DangerComputation {
         Danger executionRootDanger =
                 executionRootDanger(def, permit, workspace, policy, protectedSet);
         var prepared = permit.preparation();
+        if (prepared != null
+                && prepared.intent() instanceof ToolPreparation.DisclosureIntent disclosure
+                && disclosure.modelReadable()) base = max(base, Danger.DANGEROUS);
         if (prepared != null && prepared.intent() instanceof ToolPreparation.ProcessIntent intent) {
             call =
                     new ToolCall(

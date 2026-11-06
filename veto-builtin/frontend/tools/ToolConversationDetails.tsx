@@ -1,6 +1,7 @@
 import React from './runtime';
 import { toolFieldLabel, toolValueLabel } from './toolLabels';
 import { useI18n } from './runtime';
+import { ExpandableText } from './ExpandableText';
 
 // Explicitly curated against the native tool Args records, including reader-agent tools.
 export const conversationToolFields: Record<string, string[]> = {
@@ -61,7 +62,7 @@ export default function ToolConversationDetails({ toolName, args = {}, headerFie
     : toolName === 'view_task' && !args.taskId ? 'tool.summary.allTasks'
     : toolName === 'inspect_group' && fields.length === 0 ? 'tool.summary.group'
     : commandTool && commands.length === 0 ? 'tool.summary.missingCommand' : null;
-  if (!known && Object.values(args).some(value => typeof value === 'object' && value !== null)) return <div className="p-3 text-xs"><pre className="whitespace-pre-wrap break-words">{JSON.stringify(args, null, 2)}</pre>{result?.success === true && <pre className="mt-2 whitespace-pre-wrap break-words">{result.text}</pre>}</div>;
+  if (!known && Object.values(args).some(value => typeof value === 'object' && value !== null)) return <div className="p-3 text-xs"><ExpandableText text={JSON.stringify(args, null, 2)} className="whitespace-pre-wrap break-words" />{result?.success === true && <ExpandableText text={result.text} className="mt-2 whitespace-pre-wrap break-words" />}</div>;
   if (fields.length === 0 && commands.length === 0 && emptyLabel === null) return null;
   return <div className="space-y-3 border-t border-rule/60 px-3 py-3 text-xs">
     {commands.length > 0 && <div className="space-y-1 rounded-md border border-rule/60 bg-ink px-3 py-2 font-mono text-paper">

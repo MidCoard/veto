@@ -9,6 +9,7 @@ import org.springframework.context.annotation.Configuration;
 import top.focess.veto.agent.capability.CapabilityAccess;
 import top.focess.veto.api.agent.tool.ToolCapability;
 import top.focess.veto.api.credentials.VaultAccess;
+import top.focess.veto.api.llm.LocalModelRuntime;
 import top.focess.veto.api.plugin.Scope;
 import top.focess.veto.vault.KeysteadVault;
 import top.focess.veto.veto.LlamaCppBridge;
@@ -25,13 +26,7 @@ public class HostResourceConfiguration {
         KeysteadVault vault = vaultProvider.getIfAvailable();
         if (vault != null) services.put(VaultAccess.class, vaultAccess(vault));
         LlamaCppBridge bridge = bridgeProvider.getIfAvailable();
-        if (bridge != null) {
-            PluginLocalModelFactory factory =
-                    plugin ->
-                            new BoundLocalModelCompletion(
-                                    plugin, bridge.forPlugin(plugin.identity().id()));
-            services.put(PluginLocalModelFactory.class, factory);
-        }
+        if (bridge != null) services.put(LocalModelRuntime.class, bridge);
         return new PluginHostServices(services);
     }
 

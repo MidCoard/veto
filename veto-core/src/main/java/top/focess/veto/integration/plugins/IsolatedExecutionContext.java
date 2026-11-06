@@ -10,9 +10,11 @@ import java.util.function.BooleanSupplier;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.agent.capability.CapabilityAccess;
 import top.focess.veto.agent.capability.HttpDestinationGrant;
+import top.focess.veto.agent.tool.ExecutionReceipts;
 import top.focess.veto.agent.tool.ToolCallContext;
 import top.focess.veto.agent.tool.ToolCallContextHolder;
 import top.focess.veto.api.plugin.agent.IsolatedAgent;
+import top.focess.veto.util.Nullness;
 
 /** Host-issued isolated runtime context. Counters are atomic; cancellation flags are volatile. */
 public final class IsolatedExecutionContext implements IsolatedAgent.Runtime {
@@ -129,10 +131,18 @@ public final class IsolatedExecutionContext implements IsolatedAgent.Runtime {
                 output.get());
     }
 
-    /** Settles the declaring invocation with the result through the terminal tool. */
+    /**
+     * Settles the declaring invocation through its terminal tool. The current call's receipt
+     * preserves this host-generated execution ID when its result enters masked history.
+     *
+     * @param result terminal tool result; all content other than the matching execution ID remains
+     *     subject to ordinary observation masking
+     */
     public void complete(@NonNull String result) {
         authorize(terminal.tool());
-        completed = true;
+        ExecutionReceipts.publish(
+                Nullness.requireNonNull(ToolCallContextHolder.get()), id, this::provenanceLive);
         ToolCallContextHolder.finish(result);
+        completed = true;
     }
 }

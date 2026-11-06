@@ -15,10 +15,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.regex.Pattern;
 import org.jspecify.annotations.NonNull;
-import top.focess.veto.api.credentials.VaultAccess;
 import top.focess.veto.api.plugin.Scope;
-import top.focess.veto.secret.detection.SecretDetector;
-import top.focess.veto.secret.detection.SecretMasker;
 
 /** Bounded transient captures. No raw-value lookup is exposed to tools or model callers. */
 public final class SecretCandidateStore {
@@ -58,7 +55,6 @@ public final class SecretCandidateStore {
     private final int maxCount;
     private final int maxBytes;
     private final int maxValueBytes;
-    private volatile @NonNull SecretDetector detector;
 
     /** Creates a store with production defaults: UTC clock, 30-minute TTL, and standard limits. */
     public SecretCandidateStore() {
@@ -66,7 +62,7 @@ public final class SecretCandidateStore {
     }
 
     /**
-     * Creates a store with explicit limits and the deterministic detector.
+     * Creates a store with explicit retention limits.
      *
      * @param clock the time source driving expiry
      * @param ttl how long a captured value stays available before expiring
@@ -80,26 +76,6 @@ public final class SecretCandidateStore {
             int maxCount,
             int maxBytes,
             int maxValueBytes) {
-        this(clock, ttl, maxCount, maxBytes, maxValueBytes, SecretDetector.deterministic());
-    }
-
-    /**
-     * Creates a store with explicit limits and detection engine.
-     *
-     * @param clock the time source driving expiry
-     * @param ttl how long a captured value stays available before expiring
-     * @param maxCount the maximum number of retained live candidates
-     * @param maxBytes the maximum total UTF-8 bytes of retained secret values
-     * @param maxValueBytes the maximum UTF-8 bytes of a single secret value
-     * @param detector the secret detector used to find capture-worthy spans
-     */
-    public SecretCandidateStore(
-            @NonNull Clock clock,
-            @NonNull Duration ttl,
-            int maxCount,
-            int maxBytes,
-            int maxValueBytes,
-            @NonNull SecretDetector detector) {
         if (ttl.isNegative() || ttl.isZero() || maxCount < 1 || maxBytes < 1 || maxValueBytes < 1)
             throw new IllegalArgumentException("Invalid candidate store limits");
         this.clock = clock;
@@ -107,58 +83,47 @@ public final class SecretCandidateStore {
         this.maxCount = maxCount;
         this.maxBytes = maxBytes;
         this.maxValueBytes = maxValueBytes;
-        this.detector = detector;
     }
 
-    /** Replaces the detection engine (e.g. once the host grants a detection model). */
-    public void detector(@NonNull SecretDetector value) {
-        detector = value;
-    }
-
-    /**
-     * Detects credential-class secrets in the input and replaces each with a {@code [SECRET_REF:*]}
-     * marker, retaining the value for later reveal or import within the scope.
-     *
-     * @throws IllegalStateException if the scope is closed or retired, an embedded reference is
-     *     unresolvable, or candidate capacity is exceeded
-     */
-    public synchronized @NonNull Capture capture(
-            Scope.@NonNull AgentScope scope, @NonNull String sourceId, @NonNull String input) {
-        return capture(scope, sourceId, input, false);
-    }
-
-    /** Capture before rendering source lines while preserving CR, LF, and CRLF boundaries. */
-    public synchronized @NonNull Capture captureFile(
-            Scope.@NonNull AgentScope scope, @NonNull String sourceId, @NonNull String input) {
-        return capture(scope, sourceId, input, true);
-    }
-
-    private @NonNull Capture capture(
+    /** Captures an exact source value selected by an admitted Secret Agent tool call. */
+    public synchronized @NonNull Capture captureExact(
             Scope.@NonNull AgentScope scope,
             @NonNull String sourceId,
             @NonNull String input,
+            @NonNull String value) {
+        return captureExact(scope, sourceId, input, value, false);
+    }
+
+    /** File captures retain line boundaries so source locations remain meaningful. */
+    public synchronized @NonNull Capture captureExact(
+            Scope.@NonNull AgentScope scope,
+            @NonNull String sourceId,
+            @NonNull String input,
+            @NonNull String value,
             boolean preserveLines) {
+        if (value.isEmpty() || value.length() > maxValueBytes || !input.contains(value))
+            throw new IllegalArgumentException("Credential must be an exact nonempty source value");
+        List<Span> matches = new ArrayList<>();
+        for (int start = input.indexOf(value);
+                start >= 0;
+                start = input.indexOf(value, start + value.length()))
+            matches.add(new Span(start, start + value.length(), "slm-detected"));
+        return captureMatches(scope, sourceId, input, preserveLines, matches);
+    }
+
+    private @NonNull Capture captureMatches(
+            Scope.@NonNull AgentScope scope,
+            @NonNull String sourceId,
+            @NonNull String input,
+            boolean preserveLines,
+            @NonNull List<Span> detected) {
         if (closedUsers.contains(scope.userId())
                 || retiredSessions.contains(
                         new SecretSessionIdentity(scope.userId(), scope.session())))
             throw new IllegalStateException("Secret capture is unavailable");
         expire();
-        List<int[]> references = new ArrayList<>();
-        var referenceMatcher = REFERENCE.matcher(input);
-        while (referenceMatcher.find()) {
-            String reference = referenceMatcher.group(1);
-            if (reference == null)
-                throw new IllegalStateException("Secret reference is unavailable");
-            SecretCandidate referenced = entries.get(reference);
-            if (referenced == null || !referenced.scope.equals(scope) || referenced.value == null)
-                throw new IllegalStateException("Secret reference is unavailable");
-            references.add(new int[] {referenceMatcher.start(), referenceMatcher.end()});
-        }
-        // Mask-only categories (IPs, emails, internal hosts, …) never become importable
-        // SECRET_REF candidates; only credential-class matches are captured.
-        List<SecretMasker.SecretMatch> matches = new ArrayList<>();
-        for (var match : detector.detect(input))
-            if (SecretMasker.captureWorthy(match.category())) matches.add(match);
+        var references = referenceRanges(scope, input);
+        List<Span> matches = new ArrayList<>(detected);
         Map<String, SecretCandidate> known = new LinkedHashMap<>();
         for (SecretCandidate entry : entries.values()) {
             String value = entry.value;
@@ -167,14 +132,11 @@ public final class SecretCandidateStore {
             for (int index = input.indexOf(value);
                     index >= 0;
                     index = input.indexOf(value, index + value.length()))
-                matches.add(
-                        new SecretMasker.SecretMatch(
-                                index, index + value.length(), entry.descriptor.category()));
+                matches.add(new Span(index, index + value.length(), entry.descriptor.category()));
         }
         matches.sort(
-                Comparator.comparingInt(SecretMasker.SecretMatch::start)
-                        .thenComparing(
-                                Comparator.comparingInt(SecretMasker.SecretMatch::end).reversed()));
+                Comparator.comparingInt(Span::start)
+                        .thenComparing(Comparator.comparingInt(Span::end).reversed()));
         Map<String, SecretCandidate> added = new LinkedHashMap<>();
         List<Descriptor> captured = new ArrayList<>();
         StringBuilder text = new StringBuilder();
@@ -237,28 +199,30 @@ public final class SecretCandidateStore {
         return new Capture(text.toString(), List.copyOf(captured));
     }
 
-    /** A span of input that is either plain text or an already-captured reference marker. */
-    public record ReferenceSegment(@NonNull String text, boolean reference) {}
+    private record Span(int start, int end, @NonNull String category) {}
 
-    /** Snapshot validated references; callers may mask plain segments without holding this lock. */
-    public synchronized @NonNull List<ReferenceSegment> referenceSegments(
+    private @NonNull List<int[]> referenceRanges(
             Scope.@NonNull AgentScope scope, @NonNull String input) {
-        expire();
-        List<ReferenceSegment> segments = new ArrayList<>();
+        List<int[]> ranges = new ArrayList<>();
         var matcher = REFERENCE.matcher(input);
-        int previous = 0;
         while (matcher.find()) {
             String reference = matcher.group(1);
-            SecretCandidate entry = reference == null ? null : entries.get(reference);
+            SecretCandidate entry = reference == null ? null : resolveReference(scope, reference);
             if (entry == null || !entry.scope.equals(scope) || entry.value == null)
                 throw new IllegalStateException("Secret reference is unavailable");
-            segments.add(new ReferenceSegment(input.substring(previous, matcher.start()), false));
-            segments.add(
-                    new ReferenceSegment(input.substring(matcher.start(), matcher.end()), true));
-            previous = matcher.end();
+            ranges.add(new int[] {matcher.start(), matcher.end()});
         }
-        segments.add(new ReferenceSegment(input.substring(previous), false));
-        return List.copyOf(segments);
+        for (var entry : entries.values()) {
+            var receipt = entry.imported;
+            if (receipt == null || !entry.scope.equals(scope)) continue;
+            String reference = receipt.credentialRef();
+            for (int index = input.indexOf(reference);
+                    index >= 0;
+                    index = input.indexOf(reference, index + reference.length()))
+                ranges.add(new int[] {index, index + reference.length()});
+        }
+        ranges.sort(Comparator.comparingInt(range -> range[0]));
+        return ranges;
     }
 
     /** Returns the descriptor for a reference within the scope, or empty if unknown or expired. */
@@ -271,11 +235,11 @@ public final class SecretCandidateStore {
                 : Optional.of(entry.descriptor);
     }
 
-    /** User-authorized browser access; no tool or model adapter exposes this operation. */
+    /** Returns an owned live value; callers enforce browser or tool disclosure authorization. */
     public synchronized @NonNull Optional<String> reveal(
             Scope.@NonNull AgentScope scope, @NonNull String reference) {
         expire();
-        SecretCandidate entry = entries.get(reference);
+        SecretCandidate entry = resolveReference(scope, reference);
         if (closedUsers.contains(scope.userId())
                 || retiredSessions.contains(
                         new SecretSessionIdentity(scope.userId(), scope.session()))
@@ -284,60 +248,33 @@ public final class SecretCandidateStore {
         return Optional.ofNullable(entry.value);
     }
 
+    private SecretCandidate resolveReference(
+            Scope.@NonNull AgentScope scope, @NonNull String reference) {
+        var candidate = entries.get(reference);
+        if (candidate != null && candidate.scope.equals(scope)) return candidate;
+        return entries.values().stream()
+                .filter(
+                        entry -> {
+                            var receipt = entry.imported;
+                            return entry.scope.equals(scope)
+                                    && receipt != null
+                                    && receipt.credentialRef().equals(reference);
+                        })
+                .findFirst()
+                .orElse(null);
+    }
+
     /** Storage transition only. The trusted caller must validate the execution permit first. */
-    public synchronized @NonNull ImportReceipt importOnce(
+    public synchronized void recordImport(
             Scope.@NonNull AgentScope scope,
             @NonNull String reference,
-            @NonNull String service,
-            @NonNull String label,
-            VaultAccess.@NonNull Handle vault) {
+            @NonNull ImportReceipt receipt) {
         expire();
-        SecretCandidate entry = entries.get(reference);
-        if (closedUsers.contains(scope.userId())
-                || retiredSessions.contains(
-                        new SecretSessionIdentity(scope.userId(), scope.session()))
-                || entry == null
-                || !entry.scope.equals(scope)
-                || entry.value == null)
+        var entry = entries.get(reference);
+        if (entry == null || !entry.scope.equals(scope) || entry.value == null)
             throw new IllegalStateException("Secret reference is unavailable");
-        if (!service.equals("github")
-                || label.isBlank()
-                || label.length() > 80
-                || !label.equals(label.trim()))
-            throw new IllegalArgumentException("Invalid credential import binding");
-        var vaultScope = vault.scope();
-        if (!scope.userId().equals(vaultScope.userId())
-                || !scope.session().equals(vaultScope.session())
-                || !scope.agent().equals(vaultScope.agent()))
-            throw new SecurityException("Vault scope does not match the candidate");
-        if (!vault.isUnlocked())
-            throw new IllegalStateException("Credential userId vault is locked");
-        ImportReceipt previous = entry.imported;
-        if (previous != null) {
-            if (!previous.service().equals(service) || !previous.label().equals(label))
-                throw new IllegalArgumentException("Credential import binding does not match");
-            return previous;
-        }
-        String value = entry.value;
-        if (value == null) throw new IllegalStateException("Secret reference is unavailable");
-        if (label.contains(value)) throw new IllegalArgumentException("Invalid credential label");
-        ImportReceipt receipt;
-        try {
-            receipt =
-                    new ImportReceipt(
-                            vault.createSecureNote(
-                                    "veto.import." + reference,
-                                    Map.of(
-                                            "veto.import.id", reference,
-                                            "veto.import.service", service,
-                                            "veto.import.label", label),
-                                    value),
-                            service,
-                            label);
-        } catch (RuntimeException failure) {
-            // Storage exceptions can originate in third-party code. Do not expose their payloads.
-            throw new IllegalStateException("Credential import could not be saved");
-        }
+        if (entry.imported != null && !entry.imported.equals(receipt))
+            throw new IllegalStateException("Credential receipt changed");
         entry.imported = receipt;
         var d = entry.descriptor;
         entry.descriptor =
@@ -349,7 +286,6 @@ public final class SecretCandidateStore {
                         d.category(),
                         d.expiresAt(),
                         State.IMPORTED);
-        return receipt;
     }
 
     /** Discards the captured values of one userId/session; does not block future captures. */

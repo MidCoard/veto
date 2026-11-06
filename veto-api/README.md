@@ -96,8 +96,8 @@ plugin event for failed signup/login, successful completion of logout, session c
 terminal deactivation, agent startup, or user deletion. Required permanent-data deletion uses
 the separate `DATA_LIFECYCLE` contribution, not a best-effort event.
 `BeforeObservationEvent` transforms every executed tool result, including failures, after
-`AfterToolEvent` and before final ingress defense. Successful native workspace reads then also
-cross `BeforeTextCommitEvent.Phase.FILE_OBSERVATION`, whose replacement text enters that defense
+`AfterToolEvent` and before final ingress defense. All executed tool results then also
+cross `BeforeTextCommitEvent.Phase.OBSERVATION`, whose replacement text enters that defense
 before history publication. `FILE_CAPTURE` runs earlier, inside an admitted workspace read;
 `INPUT` protects user text before recording it. These boundaries do not emit events for arbitrary
 asynchronous observations or every file operation. `ToolCallEvent` and `ToolResultEvent` in
@@ -404,3 +404,8 @@ interfaces. A component may implement several contracts and register at each rel
 point. `PromptContribution`, `ToolCategory` and `ProtocolPointDefinition` are validated
 metadata classes that can be instantiated directly. Tools extend `Tool` through
 `AgentTool`, `NativeTool` or `RemoteTool`; services extend the stateful `PluginService`.
+
+`LlmProvider.resolve` owns target semantics and receives the host network resolver.
+LOCAL endpoints are model file paths handled by `LocalModelRuntime`; network
+providers resolve credentials through host egress. `AgentProfile.model` accepts
+an ordinary `LlmBinding`, mutually exclusive with a tier.

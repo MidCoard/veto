@@ -36,7 +36,7 @@ import top.focess.veto.api.agent.tool.NativeTool;
 import top.focess.veto.api.agent.tool.RemoteTool;
 import top.focess.veto.api.event.Listener;
 import top.focess.veto.api.event.ServiceDirectoryChangedEvent;
-import top.focess.veto.api.llm.LocalModelCompletion;
+import top.focess.veto.api.llm.LocalModelRuntime;
 import top.focess.veto.api.llm.PromptRenderer;
 import top.focess.veto.api.llm.TextEmbedding;
 import top.focess.veto.api.plugin.PluginBinding;
@@ -463,9 +463,10 @@ public final class PluginManager implements AutoCloseable {
                                             names,
                                             plugin,
                                             installedIds.contains(plugin.identity().id()))));
-        Object localModelFactory = pluginServices.remove(PluginLocalModelFactory.class);
-        if (localModelFactory instanceof PluginLocalModelFactory factory)
-            pluginServices.put(LocalModelCompletion.class, factory.bind(plugin));
+        Object localRuntime = pluginServices.get(LocalModelRuntime.class);
+        if (localRuntime instanceof LocalModelRuntime runtime)
+            pluginServices.put(
+                    LocalModelRuntime.class, new BoundLocalModelRuntime(plugin, runtime));
         Object embeddingFactory = pluginServices.remove(PluginEmbeddingFactory.class);
         if (embeddingFactory instanceof PluginEmbeddingFactory factory)
             factory.bind(plugin).ifPresent(model -> pluginServices.put(TextEmbedding.class, model));

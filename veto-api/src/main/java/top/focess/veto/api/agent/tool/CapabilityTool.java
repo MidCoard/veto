@@ -42,4 +42,9 @@ public interface CapabilityTool<T> {
      * @throws Exception when execution cannot produce a successful result
      */
     @NonNull String execute(@NonNull T args) throws Exception;
+
+    /** Returns implementation-owned post-processing options after a successful execution. */
+    default @NonNull ToolResultOptions resultOptions(@NonNull T args) {
+        return ToolResultOptions.DEFAULT;
+    }
 }

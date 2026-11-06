@@ -83,7 +83,8 @@ public class AuthController {
                         status.login().map(LoginSession::userId).orElse(null),
                         Instant.now().toString(),
                         status.login().isPresent(),
-                        status.login().map(LoginSession::username).orElse(null)));
+                        status.login().map(LoginSession::username).orElse(null),
+                        status.role()));
     }
 
     @PostMapping(value = "/users", consumes = MediaType.APPLICATION_JSON_VALUE)

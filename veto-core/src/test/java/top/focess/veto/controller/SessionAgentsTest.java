@@ -15,6 +15,7 @@ import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import top.focess.veto.agent.SessionAgentRegistry;
+import top.focess.veto.agent.VetoAgent;
 import top.focess.veto.agent.identity.Role;
 import top.focess.veto.agent.workspace.WorkspaceAdmissionPolicy;
 import top.focess.veto.api.agent.AgentState;
@@ -136,16 +137,19 @@ class SessionAgentsTest {
 
     @Test
     void conversationHistoryOnlyLoadsThePrimaryStream() throws Exception {
-        SessionService.@NonNull SessionConfig cfg = mock();
-        when(cfg.sessionId()).thenReturn("session-id");
+        var session = mock(SessionEntity.class);
+        when(session.getId()).thenReturn("session-id");
+        when(session.getPrimaryAgentId()).thenReturn("primary");
         when(vault.currentUser()).thenReturn(TestUsers.OWNER);
-        when(sessions.resolveByName("session", TestUsers.OWNER)).thenReturn(Optional.of(cfg));
-        when(sessions.primaryAgentIdFor("session", TestUsers.OWNER))
-                .thenReturn(Optional.of("primary"));
+        when(sessions.findByName("session", TestUsers.OWNER)).thenReturn(Optional.of(session));
+        when(sessions.resolveByName("session", TestUsers.OWNER))
+                .thenThrow(new IllegalStateException("Model tier is no longer configured"));
         when(history.load("session-id", "primary")).thenReturn(List.of());
         mvc.perform(get("/api/sessions/session/history")).andExpect(status().isOk());
         verify(history).load("session-id", "primary");
         verify(history, never()).load(anyString());
+        verify(sessions, never()).resolveByName(anyString(), any());
+        verify(sessions, never()).primaryAgentIdFor(anyString(), any());
     }
 
     @Test
@@ -154,7 +158,7 @@ class SessionAgentsTest {
         mvc.perform(get("/api/sessions/private/agents")).andExpect(status().isUnauthorized());
         when(vault.currentUser())
                 .thenReturn(UUID.fromString("2170d64e-a3ea-5061-9454-b8ddb9127653"));
-        when(sessions.resolveByName(
+        when(sessions.findByName(
                         "private", UUID.fromString("2170d64e-a3ea-5061-9454-b8ddb9127653")))
                 .thenReturn(Optional.empty());
         mvc.perform(get("/api/sessions/private/agents")).andExpect(status().isNotFound());
@@ -165,11 +169,11 @@ class SessionAgentsTest {
     @Test
     void executionSnapshotReportsQueuedWorkWithoutReturningHistory() throws Exception {
         UUID sessionId = UUID.randomUUID();
-        SessionService.@NonNull SessionConfig cfg = mock();
-        top.focess.veto.agent.@NonNull VetoAgent agent = mock();
-        when(cfg.sessionId()).thenReturn(sessionId.toString());
+        var session = mock(SessionEntity.class);
+        var agent = mock(VetoAgent.class);
+        when(session.getId()).thenReturn(sessionId.toString());
         when(vault.currentUser()).thenReturn(TestUsers.OWNER);
-        when(sessions.resolveByName("session", TestUsers.OWNER)).thenReturn(Optional.of(cfg));
+        when(sessions.findByName("session", TestUsers.OWNER)).thenReturn(Optional.of(session));
         when(agent.id()).thenReturn("primary");
         when(agent.hasPendingWork()).thenReturn(true);
         when(registry.agents(sessionId))
@@ -184,10 +188,10 @@ class SessionAgentsTest {
     @Test
     void includesReaderParentageAndStateWithoutExportingHistory() throws Exception {
         UUID sessionId = UUID.randomUUID();
-        SessionService.@NonNull SessionConfig cfg = mock();
-        when(cfg.sessionId()).thenReturn(sessionId.toString());
+        var session = mock(SessionEntity.class);
+        when(session.getId()).thenReturn(sessionId.toString());
         when(vault.currentUser()).thenReturn(TestUsers.OWNER);
-        when(sessions.resolveByName("session", TestUsers.OWNER)).thenReturn(Optional.of(cfg));
+        when(sessions.findByName("session", TestUsers.OWNER)).thenReturn(Optional.of(session));
         when(registry.records(sessionId))
                 .thenReturn(
                         List.of(

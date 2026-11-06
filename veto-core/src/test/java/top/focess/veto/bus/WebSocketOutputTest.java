@@ -5,6 +5,7 @@ import static org.mockito.Mockito.*;
 
 import jakarta.websocket.Session;
 import java.io.IOException;
+import java.net.URI;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -30,6 +31,7 @@ import org.springframework.web.socket.WebSocketSession;
 import org.springframework.web.socket.adapter.standard.StandardWebSocketSession;
 import top.focess.veto.agent.AgentService;
 import top.focess.veto.api.plugin.Scope;
+import top.focess.veto.command.CommandRegistry;
 import top.focess.veto.command.SessionCommandService;
 import top.focess.veto.contract.Delta;
 import top.focess.veto.contract.Frame;
@@ -353,7 +355,8 @@ class WebSocketOutputTest {
                         mock(SessionService.class),
                         mock(SessionCommandService.class),
                         tokens,
-                        runtime);
+                        runtime,
+                        mock(CommandRegistry.class));
         servers.add(server);
         return new Fixture(
                 server,
@@ -423,6 +426,7 @@ class WebSocketOutputTest {
         when(nativeSession.getUserProperties()).thenReturn(new HashMap<>());
         when(socket.getNativeSession()).thenReturn(nativeSession);
         when(socket.getId()).thenReturn(id);
+        when(socket.getUri()).thenReturn(URI.create("ws://localhost/ws/veto/bus"));
         when(socket.isOpen()).thenReturn(true);
         when(socket.getAttributes())
                 .thenReturn(

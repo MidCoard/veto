@@ -199,7 +199,10 @@ class AgentEndToEndTest {
                                 String task = call.getArgument(6);
                                 if (base == null || task == null)
                                     throw new AssertionError("Missing transformation context");
-                                return transforms.intent(base, task);
+                                var intent = transforms.intent(base, task);
+                                if (intent == null) return null;
+                                return new SessionPlugins.Configuration(
+                                        intent.profile(), intent.transition(), null);
                             });
             dependencies.plugins(selection).events(Mockito.mock(EventManager.class));
             var tiers = Mockito.mock(ModelTierRegistry.class);

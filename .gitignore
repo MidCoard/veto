@@ -145,5 +145,9 @@ plans/
 scripts/
 ARCHITECTURE.md
 .veto_history
+.veto_terminal_history.json
 veto-training/models/
 veto-training/.venv/
+veto-secret-protection/training/data/
+veto-training/service/web/node_modules/
+veto-training/service/web/dist/

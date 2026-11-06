@@ -1,0 +1,4 @@
+inspect-ai==0.3.286
+agentdojo==0.1.35
+websockets==15.0.1
+httpx==0.28.1

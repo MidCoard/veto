@@ -13,13 +13,13 @@ import org.springframework.beans.factory.support.StaticListableBeanFactory;
 import top.focess.command.CommandManager;
 import top.focess.command.CommandPermission;
 import top.focess.command.CommandResult;
+import top.focess.veto.bus.WebSocketServer;
 import top.focess.veto.command.PromptHandler;
 import top.focess.veto.command.VetoCommandSender;
 import top.focess.veto.command.commands.LoginCommand;
 import top.focess.veto.event.EventManager;
 import top.focess.veto.i18n.Msg;
 import top.focess.veto.security.SignupPolicy;
-import top.focess.veto.terminal.TcpServer;
 
 class LoginCommandTest {
     @Test
@@ -42,7 +42,7 @@ class LoginCommandTest {
                         mock(PromptHandler.class),
                         events,
                         new LoginSessionManager(),
-                        new StaticListableBeanFactory().getBeanProvider(TcpServer.class));
+                        new StaticListableBeanFactory().getBeanProvider(WebSocketServer.class));
         var sender = mock(VetoCommandSender.class);
         when(sender.hasPermission(any(CommandPermission.class))).thenReturn(true);
         when(sender.input("Password:", true)).thenReturn("wrong-password");

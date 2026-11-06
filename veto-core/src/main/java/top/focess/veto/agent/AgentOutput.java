@@ -320,6 +320,8 @@ final class AgentOutput {
             String detail = String.valueOf(t.getMessage());
             String message =
                     switch (t) {
+                        case ProtectedInputException ignored ->
+                                Msg.get(locale, "error.agent.inputProtectionFailed");
                         case VetoRefusedException refused ->
                                 Msg.get(
                                         locale,

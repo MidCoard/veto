@@ -33,8 +33,6 @@ import top.focess.veto.api.llm.VetoRequest;
 import top.focess.veto.api.llm.VetoResponse;
 import top.focess.veto.api.llm.exceptions.LlmException;
 import top.focess.veto.api.llm.exceptions.ModelSchemaException;
-import top.focess.veto.api.plugin.agent.AgentProfile;
-import top.focess.veto.api.plugin.agent.IsolatedAgent;
 import top.focess.veto.i18n.Msg;
 import top.focess.veto.model.tier.ModelTierRegistry;
 import top.focess.veto.util.Nullness;
@@ -49,11 +47,11 @@ final class ModelSession {
     record Configuration(
             @NonNull AgentPersona persona,
             @NonNull LlmBinding binding,
-            AgentProfile.Prompt prompt,
+            String prompt,
             @NonNull ToolResultPresentationMode presentation,
             @NonNull UUID userId,
             ModelTierRegistry tiers,
-            IsolatedAgent.Terminal terminal,
+            AgentExecutionPolicy.Terminal terminal,
             @NonNull Workspace workspace) {}
 
     private final @NonNull String agentId;
@@ -139,11 +137,6 @@ final class ModelSession {
                             hooks.responsePolicies());
         } catch (LlmException error) {
             runner.checkExecutionBoundary();
-            output.appendObservation(
-                    "llm_error",
-                    error.getMessage() == null
-                            ? "LLM call failed without a message"
-                            : error.getMessage());
 
             throw error;
         }
@@ -241,7 +234,7 @@ final class ModelSession {
         return new ModelExchange.Attempt(request, response, callId);
     }
 
-    boolean terminalOnly(@NonNull LoopBreaker ledger, IsolatedAgent.Terminal terminal) {
+    boolean terminalOnly(@NonNull LoopBreaker ledger, AgentExecutionPolicy.Terminal terminal) {
         long limit = ledger.grantedCalls();
         return terminal != null && limit > 0 && ledger.count() >= limit - terminal.reservedCalls();
     }
@@ -275,7 +268,7 @@ final class ModelSession {
 
     private @NonNull String linkCurrentSystemMessage(@NonNull Configuration current) {
         PromptSource.Rendered source =
-                compiler.linkSystemProfile(
+                compiler.linkSystemSource(
                         current.persona(),
                         current.workspace(),
                         current.prompt(),

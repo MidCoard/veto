@@ -149,21 +149,21 @@ class VetoApplicationTests {
     }
 
     @Test
-    void vetoGatewayRedactsSensitiveData() {
+    void scopeLessOutboundDoesNotRunTheSecretAgent() {
         String sensitivePayload =
-                "Server: 192.168.1.100, API key: abcdefghijklmnopqrstuvwxyz0123456789ABCDEF";
+                "Server: 192.168.1.100, Email: admin@internal.corp, API key: "
+                        + "abcdefghijklmnopqrstuvwxyz0123456789ABCDEF, "
+                        + "-----BEGIN OPENSSH PRIVATE KEY-----test-----END OPENSSH PRIVATE KEY-----";
         VetoGateway.VetoResult result =
                 vetoGateway.processOutbound(
                         sensitivePayload, "it-dag-2", "it-req-2", "IT-Integration");
 
         assertNotNull(result, "Result should not be null");
-        assertTrue(result.redactionCount() > 0, "Sensitive data should trigger redactions");
-        assertFalse(
-                result.processedPayload().contains("192.168.1.100"),
-                "Redacted payload should not contain original IP");
-        assertFalse(
-                result.processedPayload().contains("abcdefghijklmnopqrstuvwxyz0123456789ABCDEF"),
-                "Redacted payload should not contain original API key");
+        assertEquals(0, result.redactionCount());
+        assertEquals(
+                sensitivePayload,
+                result.processedPayload(),
+                "Secret imports run at primary Agent ingress, not in global observation middleware");
     }
 
     @Test
@@ -192,26 +192,15 @@ class VetoApplicationTests {
 
     @Test
     void vetoGatewayStats() {
+        long decisions = vetoGateway.getTotalVetoes() + vetoGateway.getTotalPasses();
+        long redactions = vetoGateway.getTotalRedactions();
         vetoGateway.processOutbound("clean data", "stats-1", "stats-1", "IT");
         vetoGateway.processOutbound("IP: 10.0.0.1", "stats-2", "stats-2", "IT");
         vetoGateway.processOutbound("more clean", "stats-3", "stats-3", "IT");
         vetoGateway.processOutbound("Email: test@example.external.com", "stats-4", "stats-4", "IT");
 
-        assertTrue(vetoGateway.getTotalVetoes() >= 2, "Should have vetoed at least 2 payloads");
-        assertTrue(vetoGateway.getTotalRedactions() >= 2, "Should have at least 2 redactions");
-    }
-
-    @Test
-    void outboundMaskingUsesThePluginObservationMiddleware() {
-        String multiSecret =
-                "IP: 10.0.0.50, Email: admin@internal.corp, SSH: -----BEGIN OPENSSH PRIVATE"
-                        + " KEY-----test-----END OPENSSH PRIVATE KEY-----";
-        var result = vetoGateway.processOutbound(multiSecret, "mask-1", "mask-1", "IT");
-
-        assertEquals(VetoGateway.VetoDecision.REDACT, result.decision());
-        assertFalse(result.processedPayload().contains("10.0.0.50"));
-        assertFalse(result.processedPayload().contains("admin@internal.corp"));
-        assertFalse(result.processedPayload().contains("PRIVATE KEY-----test"));
+        assertEquals(decisions + 4, vetoGateway.getTotalVetoes() + vetoGateway.getTotalPasses());
+        assertEquals(redactions, vetoGateway.getTotalRedactions());
     }
 
     @Test

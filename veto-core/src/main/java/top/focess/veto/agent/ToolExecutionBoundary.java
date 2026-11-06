@@ -5,7 +5,9 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Function;
 import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 import top.focess.veto.agent.drift.ReadHistory;
 import top.focess.veto.agent.intercept.ApprovalDecision;
 import top.focess.veto.agent.intercept.Gateway;
@@ -134,19 +136,15 @@ public final class ToolExecutionBoundary {
     @NonNull String defend(
             @NonNull AuthorizedToolInvocation authorized,
             @NonNull ToolResult result,
-            String replacement) {
+            Function<@NonNull String, @Nullable String> protection) {
         ScreenedToolInvocation screened = authorized.screened;
-        if (replacement != null
-                && result.success()
-                && screened.definition.capability() == ToolCapability.WORKSPACE_READ)
-            return ingress.frameReplacementObservation(
-                    screened.call, screened.definition, result, replacement);
         return ingress.maskAndFrame(
                 screened.call,
                 screened.definition,
                 result,
                 authorized.maskObservation,
-                gateway.readHistory());
+                gateway.readHistory(),
+                protection);
     }
 
     @NonNull ReadHistory readHistory() {

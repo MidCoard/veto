@@ -8,6 +8,9 @@ import com.sun.net.httpserver.HttpServer;
 import java.net.InetSocketAddress;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -18,10 +21,14 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.jar.JarEntry;
+import java.util.jar.JarOutputStream;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 import org.mockito.Mockito;
+import org.springframework.core.io.ClassPathResource;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.util.ReflectionTestUtils;
 import top.focess.veto.agent.AgentRunner;
@@ -31,6 +38,7 @@ import top.focess.veto.agent.identity.AgentPersona;
 import top.focess.veto.agent.identity.Role;
 import top.focess.veto.agent.intercept.IngressDefenseTestSupport;
 import top.focess.veto.agent.intercept.ToolExecutionPermit;
+import top.focess.veto.agent.loop.PromptLibrary;
 import top.focess.veto.agent.tool.CapabilityTestCalls;
 import top.focess.veto.agent.tool.ToolCallContext;
 import top.focess.veto.agent.tool.ToolCallContextHolder;
@@ -45,7 +53,9 @@ import top.focess.veto.api.llm.ProviderType;
 import top.focess.veto.api.llm.ToolCall;
 import top.focess.veto.api.llm.ToolResultPresentationMode;
 import top.focess.veto.api.llm.VetoResponse;
+import top.focess.veto.api.plugin.agent.AgentProfile;
 import top.focess.veto.api.plugin.agent.IsolatedAgent;
+import top.focess.veto.api.plugin.contract.JsonValue;
 import top.focess.veto.builtin.web.ReaderConfig;
 import top.focess.veto.builtin.web.WebFetchTool;
 import top.focess.veto.builtin.web.WebReadSession;
@@ -61,6 +71,7 @@ import top.focess.veto.model.AgentInstanceRepository;
 import top.focess.veto.model.tier.ModelBinding;
 import top.focess.veto.model.tier.ModelTier;
 import top.focess.veto.model.tier.ModelTierRegistry;
+import top.focess.veto.plugin.runtime.PluginClassLoader;
 import top.focess.veto.vault.CurrentUser;
 import top.focess.veto.vault.ExecutionSecurity;
 import top.focess.veto.vault.TestUsers;
@@ -70,6 +81,165 @@ class WebReadChildAuthorityTest {
     void clearContext() {
         ToolCallContextHolder.clear();
         SecurityContextHolder.clearContext();
+    }
+
+    @Test
+    void isolatedDescriptionSystemAndCompletionUseTheOwningPluginLoader(
+            @TempDir @NonNull Path directory) throws Exception {
+        var jar = directory.resolve("isolated-prompts.jar");
+        var ownerName = IsolatedPromptOwner.class.getName();
+        var classPath = ownerName.replace('.', '/') + ".class";
+        try (var output = new JarOutputStream(Files.newOutputStream(jar))) {
+            output.putNextEntry(new JarEntry(classPath));
+            output.write(new ClassPathResource(classPath).getContentAsByteArray());
+            output.closeEntry();
+            output.putNextEntry(new JarEntry("prompts/"));
+            output.closeEntry();
+            for (var source :
+                    Map.of(
+                                    "private-description", "Private reader purpose.",
+                                    "private-system", "Private reader instructions.",
+                                    "private-completion",
+                                            "@message user\nFinish with {{tool}}; remaining {{remaining}}.\n@endmessage")
+                            .entrySet()) {
+                output.putNextEntry(new JarEntry("prompts/" + source.getKey() + ".mdc"));
+                String header =
+                        "---\nversion: 2\nid: "
+                                + source.getKey()
+                                + (source.getKey().equals("private-completion")
+                                        ? "\nrequires: [tool, remaining]"
+                                        : "\nrequires: []")
+                                + "\n---\n";
+                output.write((header + source.getValue()).getBytes(StandardCharsets.UTF_8));
+                output.closeEntry();
+            }
+        }
+        assertThrows(
+                IllegalArgumentException.class, () -> PromptLibrary.source("private-description"));
+        var session = UUID.randomUUID();
+        var parent = install("parent", TestUsers.OWNER, session, "web_fetch");
+        SecurityContextHolder.setContext(ExecutionSecurity.contextFor(TestUsers.OWNER));
+        var mapper = new ObjectMapper();
+        var registry =
+                new SessionAgentRegistry(
+                        Mockito.mock(AgentInstanceRepository.class),
+                        Mockito.mock(TurnRecordRepository.class),
+                        Mockito.mock(SessionActions.class));
+        var parentAgent = mock(VetoAgent.class);
+        when(parentAgent.id()).thenReturn("parent");
+        when(parentAgent.name()).thenReturn("parent");
+        when(parentAgent.persona())
+                .thenReturn(
+                        new AgentPersona("parent", "parent", "Parent", Set.of(), Role.STANDALONE));
+        when(parentAgent.state()).thenReturn(AgentState.RUNNING);
+        registry.register(session, parentAgent);
+        var models = mock(ModelTierRegistry.class);
+        when(models.resolve(TestUsers.OWNER, ModelTier.LOW))
+                .thenReturn(new ModelBinding(ProviderType.DEEPSEEK, "reader", "key", 0, 2048));
+        var calls = new AtomicInteger();
+        var executions =
+                new IsolatedExecutions(
+                        mapper,
+                        (request, modelSessionId) -> {
+                            assertTrue(
+                                    request.systemPrompt()
+                                            .contains("Private reader instructions."));
+                            return switch (calls.getAndIncrement()) {
+                                case 0 -> call("fetch_page", Map.of());
+                                case 1 -> call("read_sections", Map.of("ids", List.of("s1")));
+                                case 2 -> {
+                                    assertTrue(
+                                            request.messages().stream()
+                                                    .anyMatch(
+                                                            message ->
+                                                                    message.content()
+                                                                            .contains(
+                                                                                    "Finish with finish_read; remaining 1.")));
+                                    yield call(
+                                            "finish_read",
+                                            Map.of(
+                                                    "outcome",
+                                                    "complete",
+                                                    "answer",
+                                                    "Fixture source.",
+                                                    "evidenceIds",
+                                                    List.of("s1"),
+                                                    "limitations",
+                                                    List.of()));
+                                }
+                                default ->
+                                        throw new AssertionError("Reader exceeded its call budget");
+                            };
+                        },
+                        models,
+                        new VetoCapabilityTranslator(),
+                        registry,
+                        new TurnLogService(
+                                Mockito.mock(TurnRecordRepository.class),
+                                mapper,
+                                Mockito.mock(SessionActions.class)),
+                        IngressDefenseTestSupport.inMemory(),
+                        128,
+                        600,
+                        1048576,
+                        65536,
+                        Mockito.mock(SessionPlugins.class),
+                        Mockito.mock(EventManager.class),
+                        Mockito.mock(SessionActions.class));
+        var data = new JsonValue.ObjectValue(Map.of());
+        var spec =
+                new IsolatedAgent.Spec(
+                        "Private reader",
+                        new AgentProfile.Prompt("private-description", data),
+                        new AgentProfile.Prompt("private-system", data),
+                        List.of("LOW"),
+                        new IsolatedAgent.Limits(3, Duration.ofSeconds(15), 32000, 2048, 2048),
+                        new IsolatedAgent.Terminal(
+                                "finish_read",
+                                1,
+                                new AgentProfile.Prompt("private-completion", data)));
+        try (var loader = new PluginClassLoader("fixture", List.of(jar.toUri().toURL()));
+                var access =
+                        new HttpDestinationGrant(
+                                deadline ->
+                                        new HttpDocument(
+                                                URI.create("https://example.com/fixture"),
+                                                200,
+                                                "text/plain",
+                                                "Fixture source.",
+                                                false,
+                                                100),
+                                parent)) {
+            var owner = loader.loadClass(ownerName);
+            assertNotSame(IsolatedPromptOwner.class, owner);
+            try (var child =
+                    executions.open(
+                            owner,
+                            spec,
+                            scope -> {
+                                access.bind(scope, "fetch_page");
+                                return new WebReadSession(scope, access);
+                            },
+                            () -> true)) {
+                var persona =
+                        registry.agents(session).stream()
+                                .filter(entry -> entry.agent().id().equals(child.id()))
+                                .findFirst()
+                                .orElseThrow()
+                                .agent()
+                                .persona();
+                assertEquals("Private reader purpose.", persona.description().strip());
+                var request = child.submit("Read the fixture.");
+                var result = request.result().get(15, TimeUnit.SECONDS);
+                assertNotNull(result);
+                assertTrue(result.success());
+                assertEquals(Boolean.TRUE, request.settled().get(15, TimeUnit.SECONDS));
+                assertEquals(3, calls.get());
+            }
+        } finally {
+            IsolatedExecutions.releaseInvocation(parent);
+            registry.stopSession(session);
+        }
     }
 
     @Test
@@ -303,6 +473,7 @@ class WebReadChildAuthorityTest {
         var runtime = new AtomicReference<IsolatedAgent.Runtime>();
         var child =
                 executions.open(
+                        getClass(),
                         new ReaderConfig(Map.of()).spec(),
                         scope -> {
                             runtime.set(scope);
@@ -319,6 +490,7 @@ class WebReadChildAuthorityTest {
                     SecurityException.class,
                     () ->
                             executions.open(
+                                    getClass(),
                                     new ReaderConfig(Map.of()).spec(),
                                     unused -> {
                                         throw new AssertionError();
@@ -372,6 +544,7 @@ class WebReadChildAuthorityTest {
                     SecurityException.class,
                     () ->
                             executions.open(
+                                    getClass(),
                                     new ReaderConfig(Map.of()).spec(),
                                     unused -> {
                                         throw new AssertionError();
@@ -427,6 +600,7 @@ class WebReadChildAuthorityTest {
                     SecurityException.class,
                     () ->
                             executions.open(
+                                    getClass(),
                                     new ReaderConfig(Map.of()).spec(),
                                     scope -> {
                                         grant.bind(scope, "invented-operation");
@@ -492,6 +666,7 @@ class WebReadChildAuthorityTest {
         install("parent", TestUsers.OWNER, UUID.randomUUID(), "alias");
         var mapper = new ObjectMapper();
         var disposed = new AtomicInteger();
+        var cleanupFailure = new AssertionError("Private tool cleanup failed");
         var models = mock(ModelTierRegistry.class);
         when(models.resolve(TestUsers.OWNER, ModelTier.LOW))
                 .thenReturn(new ModelBinding(ProviderType.DEEPSEEK, "reader", "key", 0, 2048));
@@ -521,23 +696,27 @@ class WebReadChildAuthorityTest {
                         Mockito.mock(SessionPlugins.class),
                         Mockito.mock(EventManager.class),
                         Mockito.mock(SessionActions.class));
-        assertThrows(
-                SecurityException.class,
-                () ->
-                        executions.open(
-                                new ReaderConfig(Map.of()).spec(),
-                                scope ->
-                                        new IsolatedAgent.Tools() {
-                                            public @NonNull List<NativeTool<?>> tools() {
-                                                return List.of(new WriteToFileTool());
-                                            }
+        var failure =
+                assertThrows(
+                        SecurityException.class,
+                        () ->
+                                executions.open(
+                                        getClass(),
+                                        new ReaderConfig(Map.of()).spec(),
+                                        scope ->
+                                                new IsolatedAgent.Tools() {
+                                                    public @NonNull List<NativeTool<?>> tools() {
+                                                        return List.of(new WriteToFileTool());
+                                                    }
 
-                                            public void close() {
-                                                disposed.incrementAndGet();
-                                            }
-                                        },
-                                () -> true));
+                                                    public void close() {
+                                                        disposed.incrementAndGet();
+                                                        throw cleanupFailure;
+                                                    }
+                                                },
+                                        () -> true));
         assertEquals(1, disposed.get());
+        assertArrayEquals(new Throwable[] {cleanupFailure}, failure.getSuppressed());
     }
 
     private static @NonNull ToolCallContext install(
@@ -585,3 +764,5 @@ class WebReadChildAuthorityTest {
         return new VetoResponse(null, List.of(new ToolCall(name, args)), null);
     }
 }
+
+class IsolatedPromptOwner {}

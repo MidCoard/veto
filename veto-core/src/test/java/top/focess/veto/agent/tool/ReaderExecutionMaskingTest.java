@@ -1,6 +1,7 @@
 package top.focess.veto.agent.tool;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.Map;
@@ -20,7 +21,7 @@ import top.focess.veto.api.llm.ToolCall;
 import top.focess.veto.api.llm.ToolResultPresentationMode;
 import top.focess.veto.builtin.web.FinishReadTool;
 import top.focess.veto.builtin.web.WebFetchTool;
-import top.focess.veto.integration.plugins.PluginTestSupport;
+import top.focess.veto.integration.plugins.PluginManager;
 import top.focess.veto.vault.TestUsers;
 
 class ReaderExecutionMaskingTest {
@@ -41,7 +42,15 @@ class ReaderExecutionMaskingTest {
                         Map.of());
         var call = new ToolCall(toolName, Map.of(), "reader-call");
         var mapper = new ObjectMapper();
-        try (var plugins = PluginTestSupport.manager()) {
+        try (var plugins = mock(PluginManager.class)) {
+            when(plugins.applyObservationMiddleware(anyString()))
+                    .thenAnswer(
+                            invocation -> {
+                                String text = invocation.getArgument(0);
+                                if (text == null)
+                                    throw new IllegalArgumentException("Missing observation");
+                                return text.replace(id, "[REDACTED]").replace(forged, "[REDACTED]");
+                            });
             var defense = new IngressDefense(null, plugins);
             String body =
                     mapper.writeValueAsString(Map.of("execution", Map.of("id", id), "answer", id));
@@ -76,11 +85,16 @@ class ReaderExecutionMaskingTest {
                                 definition,
                                 ToolResult.success(toolName, call.callId(), body),
                                 true,
-                                new ReadHistory());
+                                new ReadHistory(),
+                                text -> {
+                                    assertFalse(text.contains("\"id\""), text);
+                                    return text.replace(id, "[SECRET_REF:fixture]");
+                                });
                 var parsed = mapper.readTree(masked);
                 assertNotNull(parsed);
                 assertEquals(id, parsed.path("execution").path("id").asText());
                 assertFalse(parsed.path("answer").asText().contains(id));
+                assertTrue(parsed.path("answer").asText().startsWith("[SECRET_REF:"));
                 ExecutionReceipts.publish(context, id, () -> true);
                 String spoofed = body.replace(id, forged);
                 assertFalse(

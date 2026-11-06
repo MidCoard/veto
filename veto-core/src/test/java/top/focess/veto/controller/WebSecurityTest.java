@@ -259,6 +259,12 @@ class WebSecurityTest {
                 .andExpect(status().isForbidden());
         mvc.perform(get("/ws/veto/bus").servletPath("/ws/veto/bus").param("token", token))
                 .andExpect(status().isOk());
+        mvc.perform(get("/ws/veto/bus").servletPath("/ws/veto/bus"))
+                .andExpect(status().isUnauthorized());
+        mvc.perform(get("/ws/veto/terminal").servletPath("/ws/veto/terminal"))
+                .andExpect(status().isOk());
+        mvc.perform(post("/ws/veto/terminal")).andExpect(status().isUnauthorized());
+        mvc.perform(get("/ws/veto/terminal/extra")).andExpect(status().isUnauthorized());
         mvc.perform(get("/api/probe/user").param("token", token))
                 .andExpect(status().isUnauthorized());
         mvc.perform(get("/unmapped")).andExpect(status().isUnauthorized());
@@ -395,7 +401,13 @@ class WebSecurityTest {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST);
         }
 
-        @GetMapping({"/api/auth/status", "/api/system/info", "/actuator/health", "/api/plugins"})
+        @GetMapping({
+            "/api/auth/status",
+            "/api/system/info",
+            "/actuator/health",
+            "/api/plugins",
+            "/ws/veto/terminal"
+        })
         public @NonNull String status() {
             return "ok";
         }

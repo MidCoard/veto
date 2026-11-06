@@ -21,7 +21,16 @@ public final class LlmProvidersPlugin extends VetoPlugin {
             context.register(
                     StandardContributionPoints.LLM_PROVIDERS,
                     type.name().toLowerCase(Locale.ROOT),
-                    new BundledLlmProvider(type, clients));
+                    type == ProviderType.LOCAL
+                            ? new LocalLlmProvider(
+                                    clients,
+                                    () ->
+                                            context.service(LocalModelRuntime.class)
+                                                    .orElseThrow(
+                                                            () ->
+                                                                    new IllegalStateException(
+                                                                            "Local model runtime unavailable")))
+                            : new BundledLlmProvider(type, clients));
     }
 
     @Override

@@ -1,5 +1,6 @@
 package top.focess.veto.agent;
 
+import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -38,9 +39,7 @@ public final class AgentProfiles {
      * for a new agent, never a replacement for an existing agent identity.
      */
     public record Resolved(
-            @NonNull AgentPersona persona,
-            @NonNull LlmBinding binding,
-            AgentProfile.Prompt prompt) {}
+            @NonNull AgentPersona persona, @NonNull LlmBinding binding, String prompt) {}
 
     record Selection(@NonNull Resolved resolved, AgentConfiguration.Transition transition) {}
 
@@ -55,7 +54,13 @@ public final class AgentProfiles {
             ModelTierRegistry tiers,
             @NonNull String task) {
         if (plugins == null) return new Selection(new Resolved(persona, binding, null), null);
-        var available = plugins.tools(session, Set.copyOf(engine.getActiveTools(null)));
+        var requested = new HashSet<>(engine.getActiveTools(null));
+        requested.addAll(
+                engine.getActiveTools(
+                        persona.whitelistedTools().stream()
+                                .map(ToolDefinition::name)
+                                .collect(Collectors.toSet())));
+        var available = plugins.tools(session, Set.copyOf(requested));
         var base =
                 new AgentProfile(
                         persona.name(),
@@ -67,7 +72,7 @@ public final class AgentProfiles {
                         null,
                         null,
                         Map.of());
-        var intent =
+        var configuration =
                 plugins.configure(
                         userId,
                         session,
@@ -76,7 +81,7 @@ public final class AgentProfiles {
                         base,
                         available.stream().map(AgentProfiles::configurationTool).toList(),
                         task);
-        if (intent == null)
+        if (configuration == null)
             return new Selection(
                     new Resolved(
                             persona.withWhitelistedTools(
@@ -86,8 +91,15 @@ public final class AgentProfiles {
                     null);
         if (tiers == null) throw new IllegalStateException("Model tiers unavailable");
         return new Selection(
-                resolve(agentId, userId, intent.profile(), available, binding, tiers),
-                intent.transition());
+                resolve(
+                        agentId,
+                        userId,
+                        configuration.profile(),
+                        available,
+                        binding,
+                        tiers,
+                        configuration.prompt()),
+                configuration.transition());
     }
 
     /**
@@ -102,7 +114,8 @@ public final class AgentProfiles {
             @NonNull AgentProfile profile,
             @NonNull Set<ToolDefinition> authorized,
             @NonNull LlmBinding base,
-            @NonNull ModelTierRegistry tiers) {
+            @NonNull ModelTierRegistry tiers,
+            String prompt) {
         Set<String> available =
                 authorized.stream().map(ToolDefinition::name).collect(Collectors.toSet());
         if (!available.containsAll(profile.tools()))
@@ -118,7 +131,8 @@ public final class AgentProfiles {
                         profile.description(),
                         tools,
                         Role.valueOf(profile.label()));
-        var prompt = profile.prompt();
+        var modelBinding = profile.model();
+        if (modelBinding != null) return new Resolved(persona, modelBinding, prompt);
         var tier = profile.tier();
         if (tier == null) return new Resolved(persona, base, prompt);
         var model = tiers.resolve(userId, Nullness.requireNonNull(ModelTier.valueOf(tier)));

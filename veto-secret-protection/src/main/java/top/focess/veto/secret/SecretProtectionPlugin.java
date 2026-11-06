@@ -7,12 +7,8 @@ import java.util.concurrent.TimeUnit;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.api.credentials.VaultAccess;
 import top.focess.veto.api.event.*;
-import top.focess.veto.api.llm.LocalModelCompletion;
-import top.focess.veto.api.llm.PromptRenderer;
 import top.focess.veto.api.plugin.*;
 import top.focess.veto.api.plugin.contract.*;
-import top.focess.veto.secret.detection.MdcSecretDetectionModel;
-import top.focess.veto.secret.detection.SlmSecretDetector;
 import top.focess.veto.secret.references.SecretCandidateStore;
 
 /**
@@ -27,8 +23,15 @@ public final class SecretProtectionPlugin extends VetoPlugin {
     /** Constructs the plugin with host-granted import access and its complete contributions. */
     public SecretProtectionPlugin(
             @NonNull PluginContext context, JsonValue.@NonNull ObjectValue configuration) {
-        if (!configuration.values().isEmpty())
+        if (!Set.of("modelPath").containsAll(configuration.values().keySet()))
             throw new IllegalArgumentException("Unsupported configuration");
+        var configuredPath = configuration.values().get("modelPath");
+        String modelPath = SecretAgent.DEFAULT_MODEL_PATH;
+        if (configuredPath != null) {
+            if (!(configuredPath instanceof JsonValue.StringValue path) || path.value().isBlank())
+                throw new IllegalArgumentException("modelPath must be a nonblank local model path");
+            modelPath = path.value();
+        }
         candidates = new SecretCandidateStore();
         var vault =
                 context.service(VaultAccess.class)
@@ -36,30 +39,25 @@ public final class SecretProtectionPlugin extends VetoPlugin {
                                 arguments -> {
                                     throw new IllegalStateException("Vault access is unavailable");
                                 });
-        var localModel = context.service(LocalModelCompletion.class).orElse(null);
-        var prompts = context.service(PromptRenderer.class).orElse(null);
-        var detector =
-                new SlmSecretDetector(
-                        localModel == null || prompts == null
-                                ? null
-                                : new MdcSecretDetectionModel(localModel, prompts));
-        candidates.detector(detector);
+        var agent = new SecretAgent(context, candidates, modelPath);
         context.register(
                 StandardContributionPoints.FRONTEND,
                 "frontend",
                 new SecretCandidateFrontend(candidates));
         context.register(
-                StandardContributionPoints.OBSERVATION,
-                "observation-mask",
-                (observation, cancellation) -> detector.mask(observation));
-        context.register(
                 StandardContributionPoints.LISTENERS,
                 "lifecycle",
-                new SecretProtectionListener(candidates, detector));
+                new SecretProtectionListener(candidates, agent));
         context.register(
                 StandardContributionPoints.TOOLS,
-                "import_detected_credential",
-                new ImportCredentialTool(candidates, vault));
+                "import_credential",
+                new ImportCredentialTool(agent, vault));
+        context.register(
+                StandardContributionPoints.TOOLS,
+                "read_credential",
+                new ReadCredentialTool(agent, vault));
+        context.register(
+                StandardContributionPoints.AGENT_CONFIGURATION, "secret-agent", agent::configure);
     }
 
     @Override

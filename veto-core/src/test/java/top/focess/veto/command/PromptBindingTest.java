@@ -125,7 +125,8 @@ class PromptBindingTest {
                                         model.credentialKey(),
                                         model.llmOptions(),
                                         null),
-                                tiers)
+                                tiers,
+                                null)
                         .binding();
         assertEquals(model.llmOptions(), leader.options());
         assertEquals(80100, leader.options().inputBudget());

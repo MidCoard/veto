@@ -14,6 +14,33 @@ import top.focess.veto.builtin.web.model.FetchedPage;
 
 class WebReadDocumentTest {
     @Test
+    void keepsInlineWordsInOrderWithoutMergingOrRepeatingNestedBlocks() {
+        var document =
+                document(
+                        "text/html",
+                        """
+                <main><h1><a href="#reference">Reference</a></h1><div>Read <a href="/scope">the scope</a> and
+                <em>core concepts</em> together.<div>A <strong>nested</strong> paragraph.</div>
+                Then read <span>the ending</span>.<p>Separate <code>block</code>.</p></div></main>
+                """,
+                        false);
+        var ids = document.outline().stream().map(WebReadDocument.Entry::id).toList();
+        var text = document.read(ids).stream().map(WebReadDocument.Segment::text).toList();
+        assertEquals(
+                List.of(
+                        "Reference (https://example.com/docs#reference)",
+                        "Read the scope (https://example.com/scope) and\ncore concepts together.",
+                        "A nested paragraph.",
+                        "Then read the ending.",
+                        "Separate block."),
+                text);
+        document.recordInspection(ids);
+        assertEquals("Reference", document.evidence(ids.get(1)).section());
+        assertEquals(text.get(1), document.evidence(ids.get(1)).quote());
+        assertTrue(document.fullyRead());
+    }
+
+    @Test
     void searchFindsMatchingTitlesBeyondEarlierMentionsWithoutChangingEvidence() {
         var document =
                 document(

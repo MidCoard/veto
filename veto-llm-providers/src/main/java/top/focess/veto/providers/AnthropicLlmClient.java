@@ -16,6 +16,7 @@ import com.anthropic.models.messages.ToolResultBlockParam;
 import com.anthropic.models.messages.ToolUseBlock;
 import com.anthropic.models.messages.ToolUseBlockParam;
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.ArrayList;
 import java.util.List;
@@ -35,6 +36,7 @@ import top.focess.veto.api.llm.ProviderMessages;
 import top.focess.veto.api.llm.ResolvedRequest;
 import top.focess.veto.api.llm.ToolDefinition;
 import top.focess.veto.api.llm.VetoRequest;
+import top.focess.veto.api.llm.exceptions.LlmException;
 import top.focess.veto.api.llm.exceptions.ModelCapabilityException;
 import top.focess.veto.api.llm.exceptions.ModelSchemaException;
 
@@ -92,7 +94,8 @@ final class AnthropicLlmClient implements LlmClient {
         // Retain tool contracts and native history while choosing the response channel.
         var strictPolicy = new AnthropicStrictToolPolicy();
         for (ToolDefinition t : request.tools()) {
-            var selection = strictPolicy.select(objectMapper.valueToTree(t.inputSchema()));
+            JsonNode schema = objectMapper.valueToTree(t.inputSchema());
+            var selection = strictPolicy.select(schema);
             if (!selection.strict())
                 log.debug(
                         "Anthropic native tool {} uses local schema validation: {}",
@@ -150,13 +153,17 @@ final class AnthropicLlmClient implements LlmClient {
                         .strip();
 
         String stop = message.stopReason().map(Object::toString).orElse("");
+        // Schema correction cannot repair an exhausted output/context budget or resume
+        // a provider-side paused turn. Surface the failure without repeating the request.
         if (Set.of("max_tokens", "model_context_window_exceeded", "pause_turn").contains(stop))
-            throw new ModelSchemaException(
-                    "Anthropic response was truncated (stop_reason="
+            throw new LlmException(
+                    "Anthropic response is incomplete (stop_reason="
                             + stop
                             + ", tool_use_blocks="
                             + toolUses.size()
-                            + "); no calls were executed");
+                            + "); no calls were executed. Review the model limits or split the"
+                            + " request before retrying; automatic continuation is unavailable.",
+                    false);
         if ((!toolUses.isEmpty() && !stop.isEmpty() && !stop.equals("tool_use"))
                 || (toolUses.isEmpty() && stop.equals("tool_use")))
             throw new ModelSchemaException(
@@ -228,7 +235,7 @@ final class AnthropicLlmClient implements LlmClient {
     }
 
     private static Tool.InputSchema.@NonNull Properties toolProperties(
-            @NonNull Map<String, Object> inputSchema) {
+            @NonNull Map<String, ?> inputSchema) {
         Object value = inputSchema.get("properties");
         Tool.InputSchema.Properties.Builder builder = Tool.InputSchema.Properties.builder();
         if (value == null) {
@@ -246,8 +253,7 @@ final class AnthropicLlmClient implements LlmClient {
         return builder.build();
     }
 
-    private static Tool.@NonNull InputSchema toolInputSchema(
-            @NonNull Map<String, Object> inputSchema) {
+    private static Tool.@NonNull InputSchema toolInputSchema(@NonNull Map<String, ?> inputSchema) {
         Tool.InputSchema.Builder builder = Tool.InputSchema.builder();
         if (inputSchema.containsKey("properties")) builder.properties(toolProperties(inputSchema));
         // The SDK models type/properties directly. Preserve every other canonical keyword,

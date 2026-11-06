@@ -1,15 +1,13 @@
 package top.focess.veto.llm.provider;
 
 import org.jspecify.annotations.NonNull;
+import top.focess.veto.api.llm.LlmRequestResolver;
 import top.focess.veto.api.llm.ProviderType;
 import top.focess.veto.api.llm.ResolvedRequest;
+import top.focess.veto.api.llm.VetoRequest;
 import top.focess.veto.api.llm.VetoResponse;
 
-/**
- * Strategy for a single LLM provider. Implementations receive a {@link ResolvedRequest} (credential
- * already resolved by the orchestrator) and must never see the public {@code VetoRequest}, so a
- * provider cannot accidentally leak or re-log a raw secret.
- */
+/** Provider strategy with target resolution and normalized execution. */
 public interface LLMProviderStrategy {
     /**
      * Returns whether this strategy supports the given provider type.
@@ -27,6 +25,12 @@ public interface LLMProviderStrategy {
      * @return the default base URL
      */
     String defaultBaseUrl();
+
+    /** Resolves a request using provider-owned target semantics. */
+    default @NonNull ResolvedRequest resolve(
+            @NonNull VetoRequest request, @NonNull LlmRequestResolver network) {
+        return network.resolve(request, defaultBaseUrl());
+    }
 
     /**
      * Executes the LLM request using this strategy.

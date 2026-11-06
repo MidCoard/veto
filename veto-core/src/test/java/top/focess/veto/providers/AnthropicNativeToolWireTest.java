@@ -27,6 +27,7 @@ import top.focess.veto.api.llm.ResolvedRequest;
 import top.focess.veto.api.llm.ResponseContract;
 import top.focess.veto.api.llm.ToolDefinition;
 import top.focess.veto.api.llm.VetoRequest;
+import top.focess.veto.api.llm.exceptions.LlmException;
 import top.focess.veto.api.llm.exceptions.ModelSchemaException;
 import top.focess.veto.builtin.planning.SubmitPlanTool;
 import top.focess.veto.builtin.tools.AskUserTool;
@@ -35,7 +36,14 @@ import top.focess.veto.llm.core.*;
 /** Verifies real SDK serialization and native response decoding without a remote model or key. */
 class AnthropicNativeToolWireTest {
     @ParameterizedTest
-    @CsvSource({"tool_use, 0", "end_turn, 1", "max_tokens, 1"})
+    @CsvSource({
+        "tool_use, 0",
+        "end_turn, 1",
+        "max_tokens, 0",
+        "max_tokens, 1",
+        "model_context_window_exceeded, 1",
+        "pause_turn, 0"
+    })
     void invalidStopReportsOnlyReasonAndBlockCount(String stopReason, int toolUseBlocks)
             throws Exception {
         var server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
@@ -67,6 +75,7 @@ class AnthropicNativeToolWireTest {
                         .baseUrl("http://127.0.0.1:" + server.getAddress().getPort())
                         .build();
         try {
+            LlmSystemUsage.begin();
             var request =
                     new VetoRequest(
                             "System",
@@ -84,8 +93,17 @@ class AnthropicNativeToolWireTest {
                     new AnthropicLlmClient(sdk, new ObjectMapper(), ProviderTestPrompts.PROMPTS);
             var error =
                     assertThrows(
-                            ModelSchemaException.class,
+                            RuntimeException.class,
                             () -> client.complete(new ResolvedRequest(request, null, "unused")));
+            if ("tool_use".equals(stopReason) || "end_turn".equals(stopReason)) {
+                assertInstanceOf(ModelSchemaException.class, error);
+            } else {
+                var providerFailure = assertInstanceOf(LlmException.class, error);
+                assertFalse(providerFailure.isRetryable());
+            }
+            assertEquals(1, LlmSystemUsage.snapshot().size());
+            assertEquals(10, LlmSystemUsage.snapshot().getFirst().promptTokens());
+            assertEquals(5, LlmSystemUsage.snapshot().getFirst().completionTokens());
             String diagnostic = String.valueOf(error.getMessage());
             assertTrue(diagnostic.contains("stop_reason=" + stopReason), diagnostic);
             assertTrue(diagnostic.contains("tool_use_blocks=" + toolUseBlocks), diagnostic);

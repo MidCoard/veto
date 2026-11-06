@@ -20,6 +20,7 @@ import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.test.util.ReflectionTestUtils;
+import top.focess.veto.api.agent.tool.ToolDocumentation;
 import top.focess.veto.api.llm.ChatMessage;
 import top.focess.veto.api.llm.LlmOptions;
 import top.focess.veto.api.llm.LlmSystemUsage;
@@ -34,25 +35,6 @@ import top.focess.veto.llm.core.*;
 import top.focess.veto.util.Nullness;
 
 class AnthropicLlmClientTest {
-
-    @Test
-    void truncatedProviderResponseIsRetryableInsteadOfAFinalAnswer() {
-        var sdk = mock(AnthropicClient.class, RETURNS_DEEP_STUBS);
-        var response = mock(Message.class, RETURNS_DEEP_STUBS);
-        var partial = text("Partial answer");
-        when(response.content()).thenReturn(List.of(partial));
-        when(response.stopReason())
-                .thenReturn(
-                        java.util.Optional.of(
-                                com.anthropic.models.messages.StopReason.of("max_tokens")));
-        when(sdk.messages().create(any(MessageCreateParams.class), any(RequestOptions.class)))
-                .thenReturn(response);
-        assertThrows(
-                ModelSchemaException.class,
-                () ->
-                        new AnthropicLlmClient(sdk, new ObjectMapper(), ProviderTestPrompts.PROMPTS)
-                                .complete(new ResolvedRequest(request(), null, "unused")));
-    }
 
     @Test
     void keepsJsonExamplesInsideFinalAnswerInsteadOfParsingThemAsVetoResponse() throws Exception {
@@ -105,18 +87,21 @@ class AnthropicLlmClientTest {
         when(response.content()).thenReturn(List.of(finished));
         when(sdk.messages().create(any(MessageCreateParams.class), any(RequestOptions.class)))
                 .thenReturn(response);
-        ToolDefinition tool = mock(ToolDefinition.class);
-        when(tool.name()).thenReturn("view_file");
-        when(tool.description()).thenReturn("Read a file");
-        when(tool.inputSchema())
-                .thenReturn(
+        var tool =
+                new ToolDefinition(
+                        "view_file",
+                        "Read a file",
                         Map.of(
                                 "type",
                                 "object",
                                 "properties",
                                 Map.of("absolutePath", Map.of("type", "string")),
                                 "required",
-                                List.of("absolutePath")));
+                                List.of("absolutePath")),
+                        List.of(),
+                        ToolDocumentation.empty(),
+                        List.of(),
+                        List.of());
         List<ToolDefinition> tools = List.of(tool);
         var request =
                 new VetoRequest(
@@ -181,10 +166,15 @@ class AnthropicLlmClientTest {
         when(response.content()).thenReturn(List.of(finished));
         when(sdk.messages().create(any(MessageCreateParams.class), any(RequestOptions.class)))
                 .thenReturn(response);
-        ToolDefinition tool = mock(ToolDefinition.class);
-        when(tool.name()).thenReturn("view_file");
-        when(tool.description()).thenReturn("Read a file");
-        when(tool.inputSchema()).thenReturn(Map.of("type", "object"));
+        var tool =
+                new ToolDefinition(
+                        "view_file",
+                        "Read a file",
+                        Map.of("type", "object"),
+                        List.of(),
+                        ToolDocumentation.empty(),
+                        List.of(),
+                        List.of());
         var schema = new ObjectMapper().createObjectNode();
         schema.put("type", "object");
         schema.putObject("properties").putObject("message").put("type", "string");
@@ -261,16 +251,19 @@ class AnthropicLlmClientTest {
         var response = mock(Message.class, RETURNS_DEEP_STUBS);
         when(sdk.messages().create(any(MessageCreateParams.class), any(RequestOptions.class)))
                 .thenReturn(response);
-        ToolDefinition tool = mock(ToolDefinition.class);
-        when(tool.name()).thenReturn("list_dir");
-        when(tool.description()).thenReturn("List a directory");
-        when(tool.inputSchema())
-                .thenReturn(
+        var tool =
+                new ToolDefinition(
+                        "list_dir",
+                        "List a directory",
                         Map.of(
                                 "type",
                                 "object",
                                 "properties",
-                                Map.of("absolutePath", Map.of("type", "string"))));
+                                Map.of("absolutePath", Map.of("type", "string"))),
+                        List.of(),
+                        ToolDocumentation.empty(),
+                        List.of(),
+                        List.of());
         List<ToolDefinition> tools = List.of(tool);
         var request =
                 new VetoRequest(

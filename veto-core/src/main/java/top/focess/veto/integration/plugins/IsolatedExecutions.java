@@ -3,6 +3,7 @@ package top.focess.veto.integration.plugins;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -25,6 +26,7 @@ import top.focess.veto.agent.intercept.Gateway;
 import top.focess.veto.agent.intercept.HitlRegistry;
 import top.focess.veto.agent.intercept.IngressDefense;
 import top.focess.veto.agent.loop.PromptCompiler;
+import top.focess.veto.agent.loop.PromptLibrary;
 import top.focess.veto.agent.screening.DangerComputation;
 import top.focess.veto.agent.screening.ProtectedSet;
 import top.focess.veto.agent.screening.SlmScreeningProvider;
@@ -41,6 +43,7 @@ import top.focess.veto.api.llm.VetoRequest;
 import top.focess.veto.api.plugin.agent.AgentProfile;
 import top.focess.veto.api.plugin.agent.IsolatedAgent;
 import top.focess.veto.api.plugin.contract.JsonValues;
+import top.focess.veto.api.util.Resources;
 import top.focess.veto.bus.SessionActions;
 import top.focess.veto.event.EventManager;
 import top.focess.veto.llm.config.LlmJacksonConfig;
@@ -144,8 +147,15 @@ public final class IsolatedExecutions {
     /**
      * Opens an isolated child for the current authorized parent invocation, clamped to host
      * ceilings. The {@code admitted} supplier must stay true for the child's whole lifetime.
+     *
+     * @param promptOwner implementation class of the authorized plugin that owns the prompt
+     *     resources
+     * @param spec requested identity, prompts, model tiers and execution limits
+     * @param factory creates the invocation's private tools
+     * @param admitted checks that the plugin and authenticated session remain available
      */
     public @NonNull IsolatedChildAgent open(
+            @NonNull Class<?> promptOwner,
             IsolatedAgent.@NonNull Spec spec,
             IsolatedAgent.@NonNull Factory factory,
             @NonNull BooleanSupplier admitted) {
@@ -191,7 +201,7 @@ public final class IsolatedExecutions {
                     new AgentPersona(
                             scope.id(),
                             spec.name(),
-                            render(spec.description()),
+                            render(promptOwner, spec.description()),
                             Set.copyOf(engine.getActiveTools(null)));
             var gateway =
                     new Gateway(
@@ -214,7 +224,8 @@ public final class IsolatedExecutions {
                             model.contextWindowTokens());
             int inputBudget = (int) Math.min(limits.inputTokens(), options.inputBudget());
             var compiler =
-                    PromptCompiler.isolated(translator, mapper, render(spec.system()), inputBudget);
+                    PromptCompiler.isolated(
+                            translator, mapper, render(promptOwner, spec.system()), inputBudget);
             UniformLLMCaller measured =
                     (request, ignoredSessionId) -> {
                         scope.check();
@@ -288,7 +299,8 @@ public final class IsolatedExecutions {
                             parent.userId(),
                             history,
                             session);
-            runner.setExecutionPolicy(new AgentExecutionPolicy(spec.terminal(), scope::check));
+            runner.setExecutionPolicy(
+                    new AgentExecutionPolicy(terminal(promptOwner, spec.terminal()), scope::check));
             var agent =
                     registry.startIsolated(
                             session,
@@ -305,10 +317,10 @@ public final class IsolatedExecutions {
                             () -> PRIVATE_CONTEXTS.remove(scope.id(), scope));
             invocation.child = child;
             return child;
-        } catch (RuntimeException error) {
+        } catch (Throwable error) {
             scope.closed = true;
             PRIVATE_CONTEXTS.remove(scope.id(), scope);
-            tools.close();
+            Resources.closeOnFailure(tools, error);
             throw error;
         }
     }
@@ -325,9 +337,28 @@ public final class IsolatedExecutions {
                 requested.framingReserveBytes());
     }
 
-    private @NonNull String render(AgentProfile.@NonNull Prompt prompt) {
-        return PromptCompiler.compileDocument(prompt.resource(), JsonValues.toMap(prompt.data()))
+    private @NonNull String render(@NonNull Class<?> owner, AgentProfile.@NonNull Prompt prompt) {
+        return PromptLibrary.compileTool(owner, prompt.resource(), JsonValues.toMap(prompt.data()))
                 .text();
+    }
+
+    private AgentExecutionPolicy.@NonNull Terminal terminal(
+            @NonNull Class<?> owner, IsolatedAgent.@NonNull Terminal terminal) {
+        var prompt = terminal.prompt();
+        return new AgentExecutionPolicy.Terminal(
+                terminal.tool(),
+                terminal.reservedCalls(),
+                prompt.resource() + ".mdc",
+                remaining -> {
+                    var data = new LinkedHashMap<>(JsonValues.toMap(prompt.data()));
+                    data.put("tool", terminal.tool());
+                    data.put("remaining", remaining);
+                    var result = PromptLibrary.compileTool(owner, prompt.resource(), data);
+                    if (result.messages().size() != 1)
+                        throw new IllegalArgumentException(
+                                prompt.resource() + ": expected one message");
+                    return result.messages().getFirst();
+                });
     }
 
     private @NonNull String json(Object value) {

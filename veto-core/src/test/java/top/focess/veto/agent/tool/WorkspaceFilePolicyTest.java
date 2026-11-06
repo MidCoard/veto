@@ -41,6 +41,7 @@ import top.focess.veto.builtin.workspace.ViewFileTool;
 import top.focess.veto.builtin.workspace.WriteToFileTool;
 import top.focess.veto.event.EventManager;
 import top.focess.veto.integration.plugins.PluginTestSupport;
+import top.focess.veto.integration.plugins.SecretAgentHostFixture;
 
 class WorkspaceFilePolicyTest {
     private static final @NonNull UUID USER = UUID.randomUUID();
@@ -153,7 +154,7 @@ class WorkspaceFilePolicyTest {
         Path file =
                 Files.writeString(
                         root.resolve("credential.txt"), "first\r\n" + key + "\r\nlast\r\n");
-        try (var plugins = PluginTestSupport.manager()) {
+        try (var plugins = SecretAgentHostFixture.manager("agent", List.of(key))) {
             var tool =
                     new ViewFileTool(
                             new ProtectedWorkspaceReadCapabilityImpl(
@@ -162,10 +163,10 @@ class WorkspaceFilePolicyTest {
             var capability = CapabilityResolver.require(WorkspaceReadCapability.class);
             String result =
                     tool.execute(new ViewFileTool.Args(file.toString(), null, null), capability);
-            assertTrue(result.startsWith("1: first\n2: [SECRET_REF:s_"), result);
+            assertTrue(result.startsWith("1: first\n2: [SECRET_REF:cred_"), result);
             assertTrue(result.endsWith("3: \n4: \n5: last\n"), result);
             assertFalse(result.contains("synthetic-material"));
-            String reference = result.substring(result.indexOf("s_"), result.indexOf(']'));
+            String reference = result.substring(result.indexOf("cred_"), result.indexOf(']'));
             assertEquals(
                     key,
                     PluginTestSupport.reveal(

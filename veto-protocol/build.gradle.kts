@@ -21,7 +21,7 @@ val logbackVersion: String by rootProject.extra
 
 dependencies {
     api(project(":veto-api"))
-    // Standard TCP carries Java protocol frames; TypeScript wire handling belongs to veto-ui.
+    // Shared Java JSON contracts; WebSocket lifecycle belongs to core and clients to veto-ui.
 
     // Public protocol signatures expose JSpecify type-use annotations to consumers.
     api("org.jspecify:jspecify:1.0.0")
@@ -29,7 +29,7 @@ dependencies {
     implementation("com.fasterxml.jackson.datatype:jackson-datatype-jsr310:$jacksonVersion")
 
     // SLF4J facade only 鈥?the protocol module must not mandate a logging implementation. Each
-    // application module (terminal, core) brings its own backend (Logback).
+    // Java application module (core) brings its own backend (Logback).
     api("org.slf4j:slf4j-api:$slf4jVersion")
 
     testImplementation("org.junit.jupiter:junit-jupiter:5.10.2")

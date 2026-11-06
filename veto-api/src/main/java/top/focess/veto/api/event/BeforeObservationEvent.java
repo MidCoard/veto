@@ -6,9 +6,8 @@ import top.focess.veto.api.plugin.Scope;
 /**
  * Fired for an executed tool result after the after-tool transformation and before final ingress
  * defense and history publication, including unsuccessful results. Handlers transform {@link
- * #text()} in place; the submitter reads the final value after dispatch. Successful native
- * workspace reads also cross {@link BeforeTextCommitEvent.Phase#FILE_OBSERVATION} after this
- * transformation.
+ * #text()} in place; the submitter reads the final value after dispatch. All executed tool results
+ * also cross {@link BeforeTextCommitEvent.Phase#OBSERVATION} after this transformation.
  */
 public final class BeforeObservationEvent extends WorkflowEvent {
     private @NonNull String text;

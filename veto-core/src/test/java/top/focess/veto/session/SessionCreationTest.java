@@ -38,6 +38,7 @@ import top.focess.veto.agent.screening.ProtectedSet;
 import top.focess.veto.agent.screening.ProtectedSetResolver;
 import top.focess.veto.agent.workspace.WorkspaceAdmissionPolicy;
 import top.focess.veto.api.llm.ProviderType;
+import top.focess.veto.api.llm.ToolResultPresentationMode;
 import top.focess.veto.command.VetoCommandSender;
 import top.focess.veto.command.commands.SessionCommand;
 import top.focess.veto.event.EventManager;
@@ -282,7 +283,14 @@ class SessionCreationTest {
                 CommandResult.ALLOW,
                 manager.dispatch(sender, "session create coder terminal").result());
         verify(terminalService)
-                .createSession(TestUsers.ALICE, "coder", "terminal", List.of("/0/project"));
+                .createSession(
+                        TestUsers.ALICE,
+                        "coder",
+                        "terminal",
+                        List.of("/0/project"),
+                        0,
+                        ToolResultPresentationMode.BASIC,
+                        List.of());
         verify(sessions, times(2))
                 .save(
                         argThat(

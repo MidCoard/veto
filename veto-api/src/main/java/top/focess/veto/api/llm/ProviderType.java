@@ -9,5 +9,12 @@ public enum ProviderType {
     /** Google Gemini provider. */
     GEMINI,
     /** DeepSeek provider. */
-    DEEPSEEK
+    DEEPSEEK,
+    /** Host-managed local model; never resolves a remote endpoint or vault API key. */
+    LOCAL;
+
+    /** Whether configured bindings require a network credential reference. */
+    public boolean usesCredentials() {
+        return this != LOCAL;
+    }
 }

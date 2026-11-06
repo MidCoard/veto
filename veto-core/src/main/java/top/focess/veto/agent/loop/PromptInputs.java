@@ -145,29 +145,32 @@ public final class PromptInputs {
 
     /** Projects the tool catalogue into name-sorted prompt input rows, bounding example counts. */
     public static @NonNull List<ToolInput> tools(@NonNull List<ToolDefinition> tools) {
-        return tools.stream()
-                .sorted(Comparator.comparing(ToolDefinition::name))
-                .map(
-                        tool ->
-                                new ToolInput(
-                                        tool.name(),
-                                        tool.description(),
-                                        arguments(tool.inputSchema(), ""),
-                                        tool.examples().stream()
-                                                .limit(MAX_CATALOG_EXAMPLES)
-                                                .toList(),
-                                        tool.returnExamples().stream()
-                                                .limit(MAX_CATALOG_EXAMPLES)
-                                                .toList(),
-                                        tool.resultFormats().stream()
-                                                .map(
-                                                        format ->
-                                                                new Format(
-                                                                        format.id(),
-                                                                        format.description()))
-                                                .toList(),
-                                        tool.documentation()))
-                .toList();
+        var ordered = new ArrayList<>(tools);
+        ordered.sort(Comparator.comparing(ToolDefinition::name));
+        List<ToolInput> rows = new ArrayList<>();
+        for (var tool : ordered) {
+            List<Format> formats = new ArrayList<>();
+            for (var format : tool.resultFormats())
+                formats.add(new Format(format.id(), format.description()));
+            rows.add(
+                    new ToolInput(
+                            tool.name(),
+                            tool.description(),
+                            arguments(tool.inputSchema(), ""),
+                            tool.examples()
+                                    .subList(
+                                            0,
+                                            Math.min(MAX_CATALOG_EXAMPLES, tool.examples().size())),
+                            tool.returnExamples()
+                                    .subList(
+                                            0,
+                                            Math.min(
+                                                    MAX_CATALOG_EXAMPLES,
+                                                    tool.returnExamples().size())),
+                            List.copyOf(formats),
+                            tool.documentation()));
+        }
+        return List.copyOf(rows);
     }
 
     /**

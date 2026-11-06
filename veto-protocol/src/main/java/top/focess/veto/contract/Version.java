@@ -4,7 +4,17 @@ import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonValue;
 import org.jspecify.annotations.NonNull;
 
-/** Immutable product version carried as a canonical string in Hello and Welcome. */
+/**
+ * Immutable product version advertised in Hello and Welcome. This identifies a software build; wire
+ * compatibility uses Frame.PROTOCOL_VERSION instead. Parsing normalizes abbreviated numeric
+ * versions but does not enforce the full Semantic Versioning specification.
+ *
+ * @param major major product version component
+ * @param minor minor product version component
+ * @param patch patch product version component
+ * @param preRelease pre-release suffix without its leading hyphen, or null when absent
+ * @param build build metadata without its leading plus sign, or null when absent
+ */
 public record Version(int major, int minor, int patch, String preRelease, String build) {
     /** Sentinel for "no version reported". */
     public static final @NonNull Version UNKNOWN = new Version(0, 0, 0, "unknown", null);
@@ -53,7 +63,12 @@ public record Version(int major, int minor, int patch, String preRelease, String
         return new Version(major, minor, patch, preRelease, build);
     }
 
-    /** Canonical string form: {@code MAJOR.MINOR.PATCH[-preRelease][+build]}. */
+    /**
+     * Formats the version as the string used in JSON handshakes.
+     *
+     * @return {@code MAJOR.MINOR.PATCH[-preRelease][+build]}, always including all numeric
+     *     components
+     */
     @JsonValue
     @Override
     public @NonNull String toString() {

@@ -10,6 +10,7 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Service;
+import top.focess.veto.agent.loop.PromptLibrary;
 import top.focess.veto.agent.tool.ToolDefinition;
 import top.focess.veto.api.agent.control.SourceEvidence;
 import top.focess.veto.api.llm.VetoResponse;
@@ -19,6 +20,7 @@ import top.focess.veto.api.plugin.agent.AgentHost;
 import top.focess.veto.api.plugin.agent.AgentProfile;
 import top.focess.veto.api.plugin.contract.AgentConfiguration;
 import top.focess.veto.api.plugin.contract.AgentInbox;
+import top.focess.veto.api.plugin.contract.JsonValues;
 import top.focess.veto.api.plugin.contract.ModelResponsePolicy;
 import top.focess.veto.api.plugin.contract.PluginFailure;
 import top.focess.veto.api.plugin.contract.StandardContributionPoints;
@@ -57,11 +59,25 @@ public class SessionPlugins {
         return bindings;
     }
 
+    /** Plugin intent with guidance compiled from that activation's own resources. */
+    public record Configuration(
+            @NonNull AgentProfile profile,
+            AgentConfiguration.Transition transition,
+            String prompt) {}
+
+    /** Compiles an owned profile resource before it crosses into model execution. */
+    public String renderPrompt(@NonNull String namespace, AgentProfile.Prompt prompt) {
+        if (prompt == null) return null;
+        Class<?> owner = manager.registry().plugin(namespace).implementation().getClass();
+        return PromptLibrary.compileTool(owner, prompt.resource(), JsonValues.toMap(prompt.data()))
+                .text();
+    }
+
     /**
      * Collects the single agent-configuration intent of the selected contributors; null when no
      * contributor applies, and conflicting intents fail.
      */
-    public AgentConfiguration.Intent configure(
+    public Configuration configure(
             @NonNull UUID userId,
             @NonNull String session,
             @NonNull String agent,
@@ -73,7 +89,7 @@ public class SessionPlugins {
         var entries = publication.entries(StandardContributionPoints.AGENT_CONFIGURATION);
         if (entries.isEmpty()) return null;
         var selected = selectedIds(session, publication);
-        AgentConfiguration.Intent result = null;
+        Configuration result = null;
         for (var entry : entries) {
             String namespace = entry.source().namespace();
             if (!selected.contains(namespace)
@@ -101,7 +117,11 @@ public class SessionPlugins {
                     if (result != null)
                         throw new IllegalStateException(
                                 "Conflicting agent configuration contributions");
-                    result = intent;
+                    result =
+                            new Configuration(
+                                    intent.profile(),
+                                    intent.transition(),
+                                    renderPrompt(namespace, intent.profile().prompt()));
                 }
             } catch (PluginFailure error) {
                 throw new IllegalStateException("Agent configuration failed", error);

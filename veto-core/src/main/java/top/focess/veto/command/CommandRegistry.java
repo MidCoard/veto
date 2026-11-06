@@ -9,15 +9,15 @@ import top.focess.command.*;
 import top.focess.veto.api.plugin.Scope;
 import top.focess.veto.contract.Frame;
 import top.focess.veto.contract.Frame.HintInfo;
-import top.focess.veto.terminal.TcpServer;
+import top.focess.veto.session.ProtocolConnection;
 
 /**
  * Registry wrapping the {@link CommandManager} from {@code focess-command}.
  *
  * <p>Provides command registration, dispatch, tab-completion, and hint generation for all Veto
- * slash-commands and plain-text LLM prompts. The {@link TcpServer} owns the transport layer and
- * calls {@link #dispatch(VetoCommandSender, String)} with a sender whose outbox has already been
- * wired to the ROUTER socket.
+ * slash-commands and plain-text LLM prompts. The {@link ProtocolConnection} owns terminal exchanges
+ * and calls {@link #dispatch(VetoCommandSender, String)} with a sender whose outbox has already
+ * been wired to its ordered output queue.
  *
  * <h3>Thread safety</h3>
  *
@@ -192,7 +192,7 @@ public class CommandRegistry {
      *
      * <p>Routes the current buffer contents through the {@link CommandManager} to determine which
      * arguments come next, then constructs a {@link HintInfo} whose {@link HintInfo#displayText}
-     * can be rendered as a JLine tail-tip suggestion.
+     * can be rendered beside the terminal command editor.
      *
      * @param sender the command sender for the active terminal session
      * @param raw the current command-line buffer; may be {@code null} or empty

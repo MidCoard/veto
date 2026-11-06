@@ -16,7 +16,6 @@ version = "1.0.100"
 extra["jacksonVersion"] = "2.18.8"
 extra["slf4jVersion"] = "2.0.13"
 extra["logbackVersion"] = "1.5.34"
-extra["jlineVersion"] = "3.26.1"
 
 // Null safety is a repository-wide compile contract. Unannotated references are nullable;
 // JSpecify @NonNull opts individual contracts into non-nullness.
@@ -101,7 +100,7 @@ val generateReleaseReadme by tasks.registering {
 val localRelease by tasks.registering {
     group = "release"
     description = "Assembles the versioned local release bundle under release/."
-    dependsOn(":veto-core:bootJar", ":veto-terminal:distZip", ":veto-protocol:jar")
+    dependsOn(":veto-core:bootJar", ":veto-protocol:jar")
     dependsOn(generateReleaseReadme)
     dependsOn("localPluginPackages")
     val versionStr = project.version.toString()
@@ -113,20 +112,30 @@ val localRelease by tasks.registering {
                     .layout
                     .buildDirectory
                     .file("libs/veto-core-$versionStr.jar")
-    val distZip =
-            project(":veto-terminal")
-                    .layout
-                    .buildDirectory
-                    .file("distributions/veto-terminal-$versionStr.zip")
+    val terminalDistribution = providers.gradleProperty("terminalDistribution")
     val license = layout.projectDirectory.file("LICENSE")
-    val model = layout.projectDirectory.file("models/veto-secret-slm.gguf")
-    val modelChecksum = layout.projectDirectory.file("config/secret-model.sha256")
+    val model = layout.projectDirectory.file("models/veto-secret-agent.gguf")
+    val modelChecksum = layout.projectDirectory.file("config/secret-agent-model.sha256")
     val modelRouting = layout.projectDirectory.file("config/application.yml")
     val secretPackage =
             layout.projectDirectory.dir("release/plugin-packages/$versionStr/top.focess.secret-protection")
     doLast {
+        require(terminalDistribution.isPresent) {
+            "Build veto-ui/terminal on the target platform, then supply -PterminalDistribution=<terminal/build>."
+        }
+        val terminalRoot = rootProject.file(terminalDistribution.get()).canonicalFile
+        require(!terminalRoot.toPath().startsWith(outDir.asFile.canonicalFile.toPath())) {
+            "terminalDistribution must be outside the release directory being replaced."
+        }
+        val terminalFiles = terminalRoot.listFiles().orEmpty().toList()
+        val terminalNames = setOf("veto-terminal", "veto-terminal.exe", "README.md", "LICENSE", "THIRD_PARTY_LICENSES.txt", "BUN-LICENSE.md")
+        require(terminalFiles.isNotEmpty() && terminalFiles.all { it.name in terminalNames && it.isFile && !Files.isSymbolicLink(it.toPath()) }) {
+            "terminalDistribution must contain only the native terminal binary, README and license files."
+        }
+        require(terminalFiles.count { it.name == "veto-terminal" || it.name == "veto-terminal.exe" } == 1)
+        require(listOf("README.md", "LICENSE", "THIRD_PARTY_LICENSES.txt", "BUN-LICENSE.md").all { File(terminalRoot, it).isFile })
         val modelFile = model.asFile
-        require(modelFile.isFile && modelFile.length() == 986_048_000L) {
+        require(modelFile.isFile && modelFile.length() > 0 && modelChecksum.asFile.isFile) {
             "The approved secret-protection model is required to assemble a release."
         }
         val digest = MessageDigest.getInstance("SHA-256")
@@ -149,7 +158,7 @@ val localRelease by tasks.registering {
                 File(pluginRoot, "lib").listFiles().orEmpty().filter { it.extension == "jar" }
         require(pluginFiles.all { it.isFile && !Files.isSymbolicLink(it.toPath()) })
         val packageBytes = modelFile.length() + bootJar.get().asFile.length() +
-                distZip.get().asFile.length() + pluginFiles.sumOf { it.length() } +
+                terminalFiles.sumOf { it.length() } + pluginFiles.sumOf { it.length() } +
                 modelRouting.asFile.length() + 1_000_000L
         require(packageBytes <= 2_000_000_000L) { "Release exceeds its 2 GB package size limit." }
         require(workspace.usableSpace >= packageBytes + 3_221_225_472L) {
@@ -167,11 +176,14 @@ val localRelease by tasks.registering {
         val coreDir = File(out, "core").apply { mkdirs() }
         val terminalDir = File(out, "terminal").apply { mkdirs() }
         bootJar.get().asFile.copyTo(File(coreDir, "veto-core.jar"))
-        val terminalZip = distZip.get().asFile
-        terminalZip.copyTo(File(terminalDir, terminalZip.name))
+        for (file in terminalFiles) {
+            val destination = File(terminalDir, file.name)
+            file.copyTo(destination)
+            if (file.name == "veto-terminal") require(destination.setExecutable(true, false))
+        }
         license.asFile.copyTo(File(out, "LICENSE"))
         val modelsDir = File(out, "models").apply { mkdirs() }
-        modelFile.copyTo(File(modelsDir, "veto-secret-slm.gguf"))
+        modelFile.copyTo(File(modelsDir, "veto-secret-agent.gguf"))
         for (notice in listOf("secret-model-LICENSE.txt", "secret-model-NOTICE.txt")) {
             rootProject.file("config/$notice").copyTo(File(modelsDir, notice))
         }

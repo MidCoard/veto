@@ -216,6 +216,10 @@ class PluginLlmProvidersTest {
             var absentMessage = absent.getMessage();
             if (absentMessage == null) throw new AssertionError("Missing selection diagnostic");
             assertTrue(absentMessage.contains("not selected for this session"));
+            assertTrue(absentMessage.contains("/session create <pattern> <name> " + exact.id()));
+            assertTrue(
+                    absentMessage.contains("Existing session plugin selections cannot be changed"));
+            assertFalse(absentMessage.contains("Restore the pinned plugin revision"));
         } finally {
             manager.close();
         }

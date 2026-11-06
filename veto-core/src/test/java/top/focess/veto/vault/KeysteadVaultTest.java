@@ -138,13 +138,28 @@ class KeysteadVaultTest {
             vault.createVault(ALICE, "p@ssw0rd!");
             assertEquals(ALICE, vault.login("alice", "p@ssw0rd!"));
             String reference =
-                    store.capture(scope, "source", "password=synthetic-token")
+                    store.captureExact(
+                                    scope, "source", "password=synthetic-token", "synthetic-token")
                             .candidates()
                             .getFirst()
                             .reference();
-            var receipt = store.importOnce(scope, reference, "github", "Repository", writer);
-            assertEquals(
-                    receipt, store.importOnce(scope, reference, "github", "Repository", writer));
+            var credential =
+                    writer.createSecureNote(
+                            "veto.import." + reference,
+                            Map.of(
+                                    "veto.import.id",
+                                    reference,
+                                    "veto.import.service",
+                                    "github",
+                                    "veto.import.label",
+                                    "Repository",
+                                    "veto.import.visibility",
+                                    "private"),
+                            "synthetic-token");
+            var receipt =
+                    new SecretCandidateStore.ImportReceipt(credential, "github", "Repository");
+            store.recordImport(scope, reference, receipt);
+            store.recordImport(scope, reference, receipt);
             assertEquals(1, vault.listTitles().size());
             assertEquals(
                     Optional.of("synthetic-token"), vault.readNoteBody("veto.import." + reference));
@@ -153,15 +168,16 @@ class KeysteadVaultTest {
                     store.describe(scope, reference).orElseThrow().state());
             assertEquals(
                     "[SECRET_REF:" + reference + "]",
-                    store.capture(scope, "repeat", "synthetic-token").text());
+                    store.captureExact(scope, "repeat", "synthetic-token", "synthetic-token")
+                            .text());
             var other = new Scope.AgentScope(ALICE, "session", "mate");
             assertThrows(
                     IllegalStateException.class,
-                    () -> store.importOnce(other, reference, "github", "Repository", writer));
+                    () -> store.recordImport(other, reference, receipt));
             store.closeUser(ALICE);
             assertThrows(
                     IllegalStateException.class,
-                    () -> store.importOnce(scope, reference, "github", "Repository", writer));
+                    () -> store.recordImport(scope, reference, receipt));
             assertEquals(1, vault.listTitles().size());
         } finally {
             vault.shutdown();

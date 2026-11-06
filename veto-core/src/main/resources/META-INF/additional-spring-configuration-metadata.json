@@ -15,14 +15,8 @@
     {
       "name": "veto.terminal.enabled",
       "type": "java.lang.Boolean",
-      "description": "Whether the local terminal TCP server is enabled.",
+      "description": "Whether the loopback-only terminal WebSocket endpoint is enabled.",
       "defaultValue": true
-    },
-    {
-      "name": "veto.terminal.bind-address",
-      "type": "java.lang.String",
-      "description": "TCP bind address (tcp://host:port) for the local terminal TCP server.",
-      "defaultValue": "tcp://127.0.0.1:5555"
     },
     {
       "name": "veto.http.timeout-seconds",

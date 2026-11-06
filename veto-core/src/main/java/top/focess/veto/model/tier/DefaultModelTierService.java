@@ -67,7 +67,9 @@ public class DefaultModelTierService implements ModelTierRegistry, ModelTierProf
         var provider = binding.getProvider();
         String model = binding.getModel();
         String credentialKey = binding.getCredentialKey();
-        if (provider == null || model == null || credentialKey == null) {
+        if (provider == null
+                || model == null
+                || (provider.usesCredentials() && credentialKey == null)) {
             throw new ModelTierConfigException(
                     Msg.get("error.tier.incomplete", tier, profile.getName()));
         }
@@ -83,7 +85,7 @@ public class DefaultModelTierService implements ModelTierRegistry, ModelTierProf
         return new ModelBinding(
                 provider,
                 model,
-                credentialKey,
+                credentialKey == null ? "" : credentialKey,
                 temperature,
                 maxOutputTokens,
                 binding.getBaseUrl(),
@@ -143,13 +145,30 @@ public class DefaultModelTierService implements ModelTierRegistry, ModelTierProf
                 bindingRepo
                         .findByProfileIdAndTier(profile.getId(), tier)
                         .orElseGet(() -> new ModelTierBindingEntity(profile.getId(), tier));
+        String selectedProvider = fields.get(ModelTierField.PROVIDER);
+        var effectiveProvider = binding.getProvider();
+        if (selectedProvider != null) {
+            try {
+                effectiveProvider = ProviderType.valueOf(selectedProvider.trim().toUpperCase());
+            } catch (IllegalArgumentException failure) {
+                throw new IllegalArgumentException(
+                        Msg.get(
+                                "error.tier.fieldInvalid",
+                                ModelTierField.PROVIDER.field(),
+                                Msg.get("error.tier.unknownProvider", selectedProvider)),
+                        failure);
+            }
+        }
         for (var entry : fields.entrySet()) {
             ModelTierField field = entry.getKey();
             String value = entry.getValue();
             try {
                 if (field == ModelTierField.CREDENTIAL_KEY) {
                     String credKey = value.trim();
-                    if (!credentialChecker.exists(userId, credKey)) {
+                    if (effectiveProvider != null && !effectiveProvider.usesCredentials()) {
+                        if (!credKey.isEmpty())
+                            throw new IllegalArgumentException("Provider does not use credentials");
+                    } else if (!credentialChecker.exists(userId, credKey)) {
                         throw new IllegalArgumentException(
                                 Msg.get("error.vault.credKeyMissing", credKey));
                     }

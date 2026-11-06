@@ -96,6 +96,17 @@ public final class PluginAgentHosts implements PluginAgentHostFactory {
                         return grant.scope().session();
                     }
 
+                    public @NonNull String primaryAgentId() {
+                        scopes.authorizeSession(storage, grant);
+                        var primary =
+                                sessions.findById(grant.scope().session())
+                                        .orElseThrow()
+                                        .getPrimaryAgentId();
+                        if (primary == null)
+                            throw new IllegalStateException("Session has no primary agent");
+                        return primary;
+                    }
+
                     public @NonNull Child open(
                             @NonNull String id,
                             @NonNull String parentId,
@@ -122,6 +133,7 @@ public final class PluginAgentHosts implements PluginAgentHostFactory {
                     throw new SecurityException("Invocation scope mismatch");
                 var child =
                         engine.open(
+                                plugin.implementation().getClass(),
                                 spec,
                                 factory,
                                 () -> {

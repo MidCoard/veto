@@ -12,6 +12,7 @@ import org.jspecify.annotations.NonNull;
  * @param content canonical tool output before the session-specific representation is applied
  * @param errorCode stable machine-readable failure code, or null when not applicable; the wire and
  *     persisted representation is {@link ToolErrorCode#name()}
+ * @param options implementation-owned options for the exact successful content
  */
 public record ToolResult(
         @NonNull String toolName,
@@ -19,7 +20,23 @@ public record ToolResult(
         @NonNull ToolResultStatus status,
         @NonNull ToolResultFormat format,
         @NonNull String content,
-        ToolErrorCode errorCode) {
+        ToolErrorCode errorCode,
+        @NonNull ToolResultOptions options) {
+
+    public ToolResult {
+        if (status != ToolResultStatus.SUCCESS) options = ToolResultOptions.DEFAULT;
+    }
+
+    /** Creates a result with ordinary post-processing. */
+    public ToolResult(
+            @NonNull String toolName,
+            String callId,
+            @NonNull ToolResultStatus status,
+            @NonNull ToolResultFormat format,
+            @NonNull String content,
+            ToolErrorCode errorCode) {
+        this(toolName, callId, status, format, content, errorCode, ToolResultOptions.DEFAULT);
+    }
 
     /**
      * Creates a successful result with no declared encoding and no error code.
@@ -73,12 +90,31 @@ public record ToolResult(
     }
 
     /**
-     * Copies this result with replacement content and unchanged metadata.
+     * Copies this result, revoking processor exemptions when the content changes.
      *
      * @param replacement new canonical content
      * @return the copied result
      */
     public @NonNull ToolResult withContent(@NonNull String replacement) {
-        return new ToolResult(toolName, callId, status, format, replacement, errorCode);
+        return new ToolResult(
+                toolName,
+                callId,
+                status,
+                format,
+                replacement,
+                errorCode,
+                content.equals(replacement) ? options : ToolResultOptions.DEFAULT);
+    }
+
+    /** Attaches trusted options only to successful results. */
+    public @NonNull ToolResult withOptions(@NonNull ToolResultOptions selected) {
+        return new ToolResult(
+                toolName,
+                callId,
+                status,
+                format,
+                content,
+                errorCode,
+                success() ? selected : ToolResultOptions.DEFAULT);
     }
 }

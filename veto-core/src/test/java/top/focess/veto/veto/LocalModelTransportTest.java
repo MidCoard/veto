@@ -12,7 +12,6 @@ import java.net.http.HttpResponse;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
-import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
@@ -21,8 +20,6 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.ArgumentMatchers;
 import org.mockito.MockedConstruction;
@@ -30,21 +27,50 @@ import org.springframework.test.util.ReflectionTestUtils;
 
 class LocalModelTransportTest {
     @Test
-    void dedicatedPluginArtifactDoesNotFallBackToOrReconfigureSharedModel(
-            @TempDir @NonNull Path root) {
+    void providerReusesCoreModelProcessForSameFileAndContext(@TempDir @NonNull Path root)
+            throws Exception {
+        var model = Files.writeString(root.resolve("core.gguf"), "fixture");
+        var config = new SlmConfiguration();
+        config.setModelPath(model.toString());
+        var bridge = new LlamaCppBridge(config, new GBNFGrammarEngine(config));
+        var process = mock(Process.class);
+        when(process.isAlive()).thenReturn(true);
+        ReflectionTestUtils.setField(bridge, "llamaProcess", process);
+        ReflectionTestUtils.setField(bridge, "serverPort", 18081);
+        try {
+            assertEquals("http://127.0.0.1:18081/v1", bridge.endpoint(model.toString(), 2048));
+            assertEquals(
+                    "http://127.0.0.1:18081/v1",
+                    bridge.endpoint(root.resolve(".").resolve("core.gguf").toString(), 2048));
+            var instances = (Map<?, ?>) ReflectionTestUtils.getField(bridge, "models");
+            if (instances == null) throw new AssertionError("Missing runtime instance map");
+            assertTrue(instances.isEmpty());
+        } finally {
+            when(process.isAlive()).thenReturn(false);
+            bridge.stop();
+        }
+    }
+
+    @Test
+    void modelEndpointRejectsNetworkMissingAndInvalidArtifacts(@TempDir @NonNull Path root)
+            throws Exception {
         var config = new SlmConfiguration();
         config.setEnabled(false);
-        config.setPluginModelPaths(Map.of("test.secret", root.resolve("missing.gguf").toString()));
         var shared = new LlamaCppBridge(config, new GBNFGrammarEngine(config));
         try {
-            var dedicated = shared.forPlugin("test.secret");
-            assertNotSame(shared, dedicated);
-            assertSame(dedicated, shared.forPlugin("test.secret"));
-            assertSame(shared, shared.forPlugin("other.plugin"));
-            assertFalse(dedicated.isAvailable());
-            assertEquals("./models/veto-slm.gguf", config.getModelPath());
-            assertTrue(config.forModel("other.gguf").getPluginModelPaths().isEmpty());
-
+            assertThrows(
+                    IllegalArgumentException.class,
+                    () -> shared.endpoint("https://example.com/model.gguf", 2048));
+            assertThrows(
+                    IllegalArgumentException.class,
+                    () -> shared.endpoint(root.resolve("missing.gguf").toString(), 2048));
+            var model = Files.writeString(root.resolve("model.gguf"), "fixture");
+            assertThrows(
+                    IllegalArgumentException.class, () -> shared.endpoint(model.toString(), 0));
+            assertThrows(
+                    IllegalStateException.class, () -> shared.endpoint(model.toString(), 16384));
+            assertEquals(2048, config.getNCtx());
+            assertEquals(16384, config.forModel(model.toString(), 16384).getNCtx());
         } finally {
             shared.stop();
         }
@@ -113,9 +139,8 @@ class LocalModelTransportTest {
         assertNull(ReflectionTestUtils.getField(bridge, "llamaProcess"));
     }
 
-    @ParameterizedTest
-    @ValueSource(booleans = {false, true})
-    void cancellingLocalCompletionCancelsThePendingHttpRequest(boolean namedGrammar) {
+    @Test
+    void cancellingLocalCompletionCancelsThePendingHttpRequest() {
         SlmConfiguration config = mock(SlmConfiguration.class);
         GBNFGrammarEngine grammars = mock(GBNFGrammarEngine.class);
         HttpClient http = mock(HttpClient.class);
@@ -130,22 +155,16 @@ class LocalModelTransportTest {
         when(process.isAlive()).thenReturn(true);
         ReflectionTestUtils.setField(bridge, "llamaProcess", process);
         ReflectionTestUtils.setField(bridge, "serverPort", 8080);
-        if (namedGrammar) when(grammars.resolveGrammar("veto-output")).thenReturn("root ::= \"x\"");
-        var result =
-                namedGrammar
-                        ? bridge.infer("compiled content", "veto-output")
-                        : bridge.inferWithGrammar("compiled content", "root ::= \"x\"");
+        when(grammars.resolveGrammar("veto-output")).thenReturn("root ::= \"x\"");
+        var result = bridge.infer("compiled content", "veto-output");
         var request = ArgumentCaptor.forClass(HttpRequest.class);
         verify(http)
                 .sendAsync(
                         request.capture(),
                         ArgumentMatchers.<HttpResponse.BodyHandler<String>>any());
-        assertEquals(
-                Duration.ofSeconds(namedGrammar ? 30 : 2),
-                request.getValue().timeout().orElseThrow());
+        assertEquals(Duration.ofSeconds(30), request.getValue().timeout().orElseThrow());
         assertTrue(result.cancel(true));
         assertTrue(pending.isCancelled());
-        if (!namedGrammar) verifyNoInteractions(grammars);
     }
 
     @Test
@@ -176,13 +195,8 @@ class LocalModelTransportTest {
                 .sendAsync(
                         any(HttpRequest.class),
                         ArgumentMatchers.<HttpResponse.BodyHandler<String>>any());
-        for (var result :
-                List.of(
-                        bridge.infer("prompt", "veto-output"),
-                        bridge.inferWithGrammar("prompt", "root ::= \"x\""))) {
-            var failure =
-                    assertThrows(ExecutionException.class, () -> result.get(1, TimeUnit.SECONDS));
-            assertTrue(failure.getCause() == callbackFailure);
-        }
+        var result = bridge.infer("prompt", "veto-output");
+        var failure = assertThrows(ExecutionException.class, () -> result.get(1, TimeUnit.SECONDS));
+        assertTrue(failure.getCause() == callbackFailure);
     }
 }

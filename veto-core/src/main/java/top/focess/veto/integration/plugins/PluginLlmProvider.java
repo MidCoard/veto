@@ -4,9 +4,12 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.api.llm.LlmClient;
 import top.focess.veto.api.llm.LlmProvider;
+import top.focess.veto.api.llm.LlmRequestResolver;
 import top.focess.veto.api.llm.ProviderType;
 import top.focess.veto.api.llm.ResolvedRequest;
+import top.focess.veto.api.llm.VetoRequest;
 import top.focess.veto.api.llm.exceptions.ModelCapabilityException;
+import top.focess.veto.api.plugin.contract.PluginFailure;
 import top.focess.veto.llm.provider.AbstractLlmProvider;
 import top.focess.veto.observability.AuditLogger;
 import top.focess.veto.plugin.runtime.ManagedPlugin;
@@ -38,6 +41,16 @@ final class PluginLlmProvider extends AbstractLlmProvider {
 
     public String defaultBaseUrl() {
         return defaultBaseUrl;
+    }
+
+    @Override
+    public @NonNull ResolvedRequest resolve(
+            @NonNull VetoRequest request, @NonNull LlmRequestResolver network) {
+        try {
+            return runtime.execute(() -> implementation.resolve(request, network));
+        } catch (PluginFailure unavailable) {
+            throw new ModelCapabilityException("Model provider is unavailable", unavailable);
+        }
     }
 
     public @NonNull String providerName() {

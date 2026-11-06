@@ -2,6 +2,8 @@ package top.focess.veto.api.plugin;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -10,6 +12,7 @@ import java.util.Map;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
+import top.focess.veto.api.agent.tool.ToolDocumentation;
 import top.focess.veto.api.agent.tool.ToolErrorCode;
 import top.focess.veto.api.agent.tool.ToolExecutionException;
 import top.focess.veto.api.agent.tool.ToolJson;
@@ -19,6 +22,7 @@ import top.focess.veto.api.llm.ProviderType;
 import top.focess.veto.api.llm.ResolvedRequest;
 import top.focess.veto.api.llm.ResponseContract;
 import top.focess.veto.api.llm.ToolCall;
+import top.focess.veto.api.llm.ToolDefinition;
 import top.focess.veto.api.llm.VetoRequest;
 import top.focess.veto.api.llm.VetoResponse;
 import top.focess.veto.api.plugin.contract.AgentInbox;
@@ -28,6 +32,32 @@ import top.focess.veto.api.process.Command;
 import top.focess.veto.api.process.CommandResult;
 
 class ApiRepairTest {
+    @Test
+    void nativeToolSchemaPreservesJsonNullsAndDefensiveCopies() throws Exception {
+        var mapper = new ObjectMapper();
+        Map<String, Object> source =
+                mapper.readValue(
+                        """
+                        {"type":"object","properties":{"optional":{
+                          "default":null,"enum":[null,"value"],"const":null}}}
+                        """,
+                        new TypeReference<>() {});
+        var expected = mapper.valueToTree(source);
+        var tool =
+                new ToolDefinition(
+                        "optional",
+                        "Optional argument",
+                        source,
+                        List.of(),
+                        ToolDocumentation.empty(),
+                        List.of(),
+                        List.of());
+        source.clear();
+        assertEquals(expected, mapper.valueToTree(tool.inputSchema()));
+        assertThrows(UnsupportedOperationException.class, () -> tool.inputSchema().clear());
+        assertEquals(tool.inputSchema(), ToolDefinition.wireView(tool).get("inputSchema"));
+    }
+
     public record BrokenResult(@NonNull String value) {
         @Override
         public @NonNull String value() {

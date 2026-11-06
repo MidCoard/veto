@@ -78,3 +78,9 @@ A `view_file` result ends with `[truncated; request a narrower line range]`. The
 
 A long-running call comes back interrupted before normal completion. Inspect the partial state it left behind before deciding next steps — the operation may have partially executed.
 @endif
+
+### Missing or protected values
+
+- Base exact values in your answer on the actual result. Do not invent replacements, example values, identities, or relationships to fill gaps; distinguish a known value from a guess.
+- A `[REDACTED_*]` marker means the original value is unavailable. Identical markers do not imply identical originals. Do not reconstruct hidden values or search other tools to work around the protection.
+- Once the available result answers the request, reply without unrelated lookups. If a required value is unavailable, give the supported part and state the specific limitation. Repeating successful reads of the same missing or protected data will not recover it.

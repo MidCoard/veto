@@ -5,6 +5,7 @@ import static org.mockito.Mockito.*;
 import static top.focess.veto.vault.TestUsers.ALICE;
 import static top.focess.veto.vault.TestUsers.BOB;
 
+import java.util.List;
 import java.util.UUID;
 import java.util.regex.Pattern;
 import org.jspecify.annotations.NonNull;
@@ -17,15 +18,16 @@ import top.focess.veto.api.event.UserLogoutEvent;
 import top.focess.veto.api.event.UserRegisteredEvent;
 import top.focess.veto.api.plugin.Scope;
 import top.focess.veto.api.plugin.contract.PluginFailure;
+import top.focess.veto.bus.WebSocketServer;
 import top.focess.veto.command.PromptHandler;
 import top.focess.veto.event.EventManager;
 import top.focess.veto.integration.plugins.PluginManager;
 import top.focess.veto.integration.plugins.PluginTestSupport;
-import top.focess.veto.terminal.TcpServer;
+import top.focess.veto.integration.plugins.SecretAgentHostFixture;
 
 class AuthLifecycleManagerTest {
-    private static @NonNull ObjectProvider<TcpServer> tcpServers() {
-        return new StaticListableBeanFactory().getBeanProvider(TcpServer.class);
+    private static @NonNull ObjectProvider<WebSocketServer> webSocketServers() {
+        return new StaticListableBeanFactory().getBeanProvider(WebSocketServer.class);
     }
 
     private static @NonNull UserEntity alice() {
@@ -56,7 +58,7 @@ class AuthLifecycleManagerTest {
                         mock(PromptHandler.class),
                         mock(EventManager.class),
                         sessions,
-                        tcpServers());
+                        webSocketServers());
         lifecycle.logout(ALICE);
         lifecycle.login(alice(), "replacement-password");
         var replacementId = UUID.randomUUID();
@@ -74,7 +76,7 @@ class AuthLifecycleManagerTest {
         var events = mock(EventManager.class);
         var lifecycle =
                 new AuthLifecycleManager(
-                        vault, prompts, events, new LoginSessionManager(), tcpServers());
+                        vault, prompts, events, new LoginSessionManager(), webSocketServers());
         doThrow(new IllegalArgumentException("Signup failed"))
                 .when(vault)
                 .login("alice", "invalid");
@@ -91,7 +93,7 @@ class AuthLifecycleManagerTest {
         var events = mock(EventManager.class);
         var lifecycle =
                 new AuthLifecycleManager(
-                        vault, prompts, events, new LoginSessionManager(), tcpServers());
+                        vault, prompts, events, new LoginSessionManager(), webSocketServers());
         lifecycle.logout(ALICE);
         var ordered = inOrder(events, prompts, vault);
         ordered.verify(events)
@@ -112,7 +114,7 @@ class AuthLifecycleManagerTest {
         EventManager events = mock(EventManager.class);
         var lifecycle =
                 new AuthLifecycleManager(
-                        vault, prompts, events, new LoginSessionManager(), tcpServers());
+                        vault, prompts, events, new LoginSessionManager(), webSocketServers());
 
         lifecycle.signup(alice(), "password");
         verify(events)
@@ -144,9 +146,11 @@ class AuthLifecycleManagerTest {
     void logoutClosesCaptureEvenWhenDetachAndVaultCloseFail() throws Exception {
         KeysteadVault vault = vault();
         PromptHandler prompts = mock(PromptHandler.class);
-        try (var plugins = PluginTestSupport.manager()) {
-            var scope = new Scope.AgentScope(ALICE, "session", "agent");
-            var other = new Scope.AgentScope(BOB, "session", "agent");
+        try (var plugins =
+                SecretAgentHostFixture.manager("agent", List.of("alpha", "beta", "late"))) {
+            var session = UUID.randomUUID().toString();
+            var scope = new Scope.AgentScope(ALICE, session, "agent");
+            var other = new Scope.AgentScope(BOB, UUID.randomUUID().toString(), "agent");
             String reference = capture(plugins, scope, "password=alpha");
             String otherReference = capture(plugins, other, "password=beta");
             var lifecycle =
@@ -155,19 +159,20 @@ class AuthLifecycleManagerTest {
                             prompts,
                             PluginTestSupport.eventManager(plugins),
                             new LoginSessionManager(),
-                            tcpServers());
+                            webSocketServers());
             doThrow(new IllegalStateException("Detach failed")).when(prompts).deactivateUser(ALICE);
             doThrow(new IllegalStateException("Close failed")).when(vault).logout(ALICE);
             assertThrows(IllegalStateException.class, () -> lifecycle.logout(ALICE));
             assertTrue(PluginTestSupport.reveal(plugins, scope, reference).isEmpty());
-            assertEquals(
-                    "password=late",
-                    PluginTestSupport.protect(
-                            plugins,
-                            BeforeTextCommitEvent.Phase.INPUT,
-                            scope,
-                            "source",
-                            "password=late"));
+            assertThrows(
+                    IllegalStateException.class,
+                    () ->
+                            PluginTestSupport.protect(
+                                    plugins,
+                                    BeforeTextCommitEvent.Phase.INPUT,
+                                    scope,
+                                    "source",
+                                    "password=late"));
             assertEquals(
                     "beta", PluginTestSupport.reveal(plugins, other, otherReference).orElseThrow());
         }
@@ -177,8 +182,8 @@ class AuthLifecycleManagerTest {
     void onlySuccessfulLoginReopensCaptureWithoutRestoringOldReferences() throws Exception {
         KeysteadVault vault = vault();
         PromptHandler prompts = mock(PromptHandler.class);
-        try (var plugins = PluginTestSupport.manager()) {
-            var scope = new Scope.AgentScope(ALICE, "session", "agent");
+        try (var plugins = SecretAgentHostFixture.manager("agent", List.of("alpha"))) {
+            var scope = new Scope.AgentScope(ALICE, UUID.randomUUID().toString(), "agent");
             String old = capture(plugins, scope, "password=alpha");
             var lifecycle =
                     new AuthLifecycleManager(
@@ -186,20 +191,21 @@ class AuthLifecycleManagerTest {
                             prompts,
                             PluginTestSupport.eventManager(plugins),
                             new LoginSessionManager(),
-                            tcpServers());
+                            webSocketServers());
             lifecycle.logout(ALICE);
             doThrow(new IllegalArgumentException("Login failed"))
                     .when(vault)
                     .login("alice", "invalid");
             assertThrows(IllegalArgumentException.class, () -> lifecycle.login(alice(), "invalid"));
-            assertEquals(
-                    "password=alpha",
-                    PluginTestSupport.protect(
-                            plugins,
-                            BeforeTextCommitEvent.Phase.INPUT,
-                            scope,
-                            "source",
-                            "password=alpha"));
+            assertThrows(
+                    IllegalStateException.class,
+                    () ->
+                            PluginTestSupport.protect(
+                                    plugins,
+                                    BeforeTextCommitEvent.Phase.INPUT,
+                                    scope,
+                                    "source",
+                                    "password=alpha"));
             assertTrue(PluginTestSupport.reveal(plugins, scope, old).isEmpty());
             lifecycle.login(alice(), "test-password");
             String reopened = capture(plugins, scope, "password=alpha");
@@ -215,7 +221,7 @@ class AuthLifecycleManagerTest {
         String captured =
                 PluginTestSupport.protect(
                         plugins, BeforeTextCommitEvent.Phase.INPUT, scope, "source", text);
-        var matcher = Pattern.compile("s_[a-f0-9]{32}").matcher(captured);
+        var matcher = Pattern.compile("cred_[a-f0-9]{32}").matcher(captured);
         if (!matcher.find()) throw new AssertionError("Expected reference is missing");
         return matcher.group();
     }

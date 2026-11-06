@@ -6,6 +6,7 @@ import java.util.Map;
 import org.jspecify.annotations.NonNull;
 import org.mockito.Mockito;
 import top.focess.veto.agent.SessionAgentRegistry;
+import top.focess.veto.agent.intercept.IngressDefense;
 import top.focess.veto.agent.intercept.IngressDefenseTestSupport;
 import top.focess.veto.agent.translation.CapabilityTranslator;
 import top.focess.veto.api.plugin.Scope;
@@ -39,6 +40,34 @@ public final class ReaderTestHarness {
             int input,
             int output,
             @NonNull Runnable beforeOpen) {
+        return create(
+                mapper,
+                caller,
+                models,
+                translator,
+                registry,
+                history,
+                calls,
+                seconds,
+                input,
+                output,
+                beforeOpen,
+                IngressDefenseTestSupport.inMemory());
+    }
+
+    public static @NonNull WebReader create(
+            @NonNull ObjectMapper mapper,
+            @NonNull UniformLLMCaller caller,
+            @NonNull ModelTierRegistry models,
+            @NonNull CapabilityTranslator translator,
+            @NonNull SessionAgentRegistry registry,
+            @NonNull TurnLogService history,
+            int calls,
+            int seconds,
+            int input,
+            int output,
+            @NonNull Runnable beforeOpen,
+            @NonNull IngressDefense ingress) {
         var executions =
                 new IsolatedExecutions(
                         mapper,
@@ -47,7 +76,7 @@ public final class ReaderTestHarness {
                         translator,
                         registry,
                         history,
-                        IngressDefenseTestSupport.inMemory(),
+                        ingress,
                         128,
                         600,
                         1048576,
@@ -66,7 +95,7 @@ public final class ReaderTestHarness {
                             IsolatedAgent.@NonNull Spec spec,
                             IsolatedAgent.@NonNull Factory factory) {
                         beforeOpen.run();
-                        return executions.open(spec, factory, () -> true);
+                        return executions.open(getClass(), spec, factory, () -> true);
                     }
                 };
         return new WebReader(

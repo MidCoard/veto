@@ -7,324 +7,148 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
-import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
-import top.focess.veto.api.credentials.VaultAccess;
 import top.focess.veto.api.plugin.Scope;
 
 class SecretCandidateStoreTest {
-    @Test
-    void fileCapturePreservesSourceLinesAndOriginalPrivateKeyOffsets() {
-        var store = new SecretCandidateStore();
-        String key = "-----BEGIN PRIVATE KEY-----\r\nsynthetic-material\n-----END PRIVATE KEY-----";
-        String source = "first\r\n" + key + "\r\nlast\n";
-        var captured = store.captureFile(scope, "file-observation", source);
-        var descriptor = captured.candidates().getFirst();
-        assertEquals(7, descriptor.start());
-        assertEquals(7 + key.length(), descriptor.end());
-        String reference = "[SECRET_REF:" + descriptor.reference() + "]";
-        assertEquals("first\r\n" + reference + "\r\n\n\r\nlast\n", captured.text());
-        assertFalse(captured.text().contains("synthetic-material"));
-        assertEquals(captured.text(), store.captureFile(scope, "repeat", captured.text()).text());
-        assertEquals(reference, store.capture(scope, "user", key).text());
-    }
+    private static final Scope.@NonNull AgentScope OWNER =
+            new Scope.AgentScope(UUID.randomUUID(), "session", "agent");
 
     @Test
-    void importMarksSuccessOnlyAfterStorageAndRedactsStorageFailures() {
+    void capturesOnlyExactSelectionsAndReusesReferencesAcrossRepeatedValues() {
         var store = new SecretCandidateStore();
-        String reference =
-                store.capture(scope, "source", "password=synthetic-token")
-                        .candidates()
-                        .getFirst()
-                        .reference();
-        var writer = new InMemoryWriter();
-        writer.failNextWrite = true;
-        var failure =
-                assertThrows(
-                        IllegalStateException.class,
-                        () -> store.importOnce(scope, reference, "github", "Repository", writer));
-        assertEquals("Credential import could not be saved", failure.getMessage());
-        assertNull(failure.getCause());
+        String input = "😀 password=alpha token=beta; alpha";
+        var first = store.captureExact(OWNER, "source", input, "alpha");
+        var ref = first.candidates().getFirst().reference();
         assertEquals(
-                SecretCandidateStore.State.AVAILABLE,
-                store.describe(scope, reference).orElseThrow().state());
-        var imported = store.importOnce(scope, reference, "github", "Repository", writer);
-        assertEquals(
-                SecretCandidateStore.State.IMPORTED,
-                store.describe(scope, reference).orElseThrow().state());
-        assertEquals(imported, store.importOnce(scope, reference, "github", "Repository", writer));
+                "😀 password=[SECRET_REF:" + ref + "] token=beta; [SECRET_REF:" + ref + "]",
+                first.text());
+        assertEquals(input.indexOf("alpha"), first.candidates().getFirst().start());
+        var second = store.captureExact(OWNER, "source", input, "beta");
+        assertFalse(second.text().contains("alpha"));
+        assertFalse(second.text().contains("beta"));
+        assertEquals(ref, second.candidates().getFirst().reference());
         assertThrows(
                 IllegalArgumentException.class,
-                () -> store.importOnce(scope, reference, "github", "Changed", writer));
-        var expected =
-                new StoredCredential(
-                        UUID.fromString("58e341e3-0de3-571d-81db-520951bc691b"),
-                        reference,
-                        "github",
-                        "Repository",
-                        "synthetic-token");
-        assertEquals(List.of(expected, expected), writer.attempts);
-        writer.unlocked = false;
-        assertThrows(
-                IllegalStateException.class,
-                () -> store.importOnce(scope, reference, "github", "Repository", writer));
+                () -> store.captureExact(OWNER, "source", input, "ALPHA"));
     }
 
-    private final Scope.@NonNull AgentScope scope =
-            new Scope.AgentScope(
-                    UUID.fromString("58e341e3-0de3-571d-81db-520951bc691b"), "session", "agent");
-
     @Test
-    void stableReferencesReplaceKnownValuesWithoutPublishingRawSecrets() {
+    void retainsTheEntireMultilineKeyIncludingDelimiters() {
         var store = new SecretCandidateStore();
-        var first =
-                store.capture(scope, "observation-1", "😀 password=alpha-secret token=beta-secret");
-        assertEquals(2, first.candidates().size());
-        assertFalse(first.text().contains("alpha-secret"));
-        assertFalse(first.text().contains("beta-secret"));
-        assertFalse(first.candidates().toString().contains("alpha-secret"));
-        String reference = first.candidates().getFirst().reference();
-        var repeated =
-                store.capture(scope, "observation-2", "alpha-secret appears twice: alpha-secret");
-        assertEquals(2, repeated.candidates().size());
-        assertTrue(
-                repeated.candidates().stream()
-                        .allMatch(candidate -> candidate.reference().equals(reference)));
-        assertFalse(repeated.text().contains("alpha-secret"));
+        String key = "-----BEGIN PRIVATE KEY-----\r\nAbCdEf123+/=\r\n-----END PRIVATE KEY-----";
+        var result = store.captureExact(OWNER, "file", "before\n" + key + "\nafter", key);
         assertEquals(
-                SecretCandidateStore.State.AVAILABLE,
-                store.describe(scope, reference).orElseThrow().state());
+                key, store.reveal(OWNER, result.candidates().getFirst().reference()).orElseThrow());
+        assertTrue(result.text().startsWith("before\n[SECRET_REF:"));
+        assertTrue(result.text().endsWith("]\nafter"));
+        var file = store.captureExact(OWNER, "file", "before\n" + key + "\nafter", key, true);
+        assertEquals(4, file.text().chars().filter(character -> character == '\n').count());
     }
 
     @Test
-    void ownerSessionAndAgentCannotShareOrForgeReferences() {
+    void capacityAndUtf8ByteLimitsRejectBeforeCommittingNewCandidates() {
+        var store = new SecretCandidateStore(Clock.systemUTC(), Duration.ofMinutes(1), 1, 4, 4);
+        assertThrows(
+                IllegalStateException.class, () -> store.captureExact(OWNER, "s", "🔑x", "🔑x"));
+        var first = store.captureExact(OWNER, "s", "abcd", "abcd");
+        assertThrows(
+                IllegalStateException.class, () -> store.captureExact(OWNER, "s", "efgh", "efgh"));
+        assertEquals(
+                "abcd",
+                store.reveal(OWNER, first.candidates().getFirst().reference()).orElseThrow());
+        assertEquals(first.text(), store.captureExact(OWNER, "s", "abcd", "abcd").text());
+    }
+
+    @Test
+    void receiptsRequireLiveOwnershipAndCannotBeRebound() {
         var store = new SecretCandidateStore();
-        String reference =
-                store.capture(scope, "source", "password=alpha-secret")
+        var ref =
+                store.captureExact(OWNER, "s", "secret", "secret")
                         .candidates()
                         .getFirst()
                         .reference();
-        for (var other :
-                new Scope.AgentScope[] {
-                    new Scope.AgentScope(
-                            UUID.fromString("8ae198e4-a119-54c1-bb34-adc327dd03f2"),
-                            "session",
-                            "agent"),
-                    new Scope.AgentScope(
-                            UUID.fromString("58e341e3-0de3-571d-81db-520951bc691b"),
-                            "other",
-                            "agent"),
-                    new Scope.AgentScope(
-                            UUID.fromString("58e341e3-0de3-571d-81db-520951bc691b"),
-                            "session",
-                            "mate")
-                }) {
-            assertTrue(store.describe(other, reference).isEmpty());
-            assertNotEquals(
-                    reference,
-                    store.capture(other, "source", "password=alpha-secret")
-                            .candidates()
-                            .getFirst()
-                            .reference());
-        }
-        assertTrue(store.describe(scope, "s_forged").isEmpty());
-        assertThrows(
-                IllegalStateException.class,
-                () -> store.capture(scope, "source", "[SECRET_REF:s_forged]"));
-        String marker = "[SECRET_REF:" + reference + "]";
-        assertEquals(marker, store.capture(scope, "source", marker).text());
-        assertTrue(store.capture(scope, "source", marker).candidates().isEmpty());
-        assertThrows(
-                IllegalStateException.class,
-                () -> store.capture(scope, "source", "password=unprotected" + marker));
-    }
-
-    @Test
-    void rejectedBatchDoesNotConsumeCapacityAndUtf8BytesAreEnforced() {
-        var clock = Clock.fixed(Instant.EPOCH, ZoneOffset.UTC);
-        var store = new SecretCandidateStore(clock, Duration.ofMinutes(30), 1, 10, 10);
-        assertThrows(
-                IllegalStateException.class,
-                () -> store.capture(scope, "source", "password=alpha token=beta"));
-        assertEquals(1, store.capture(scope, "source", "password=alpha").candidates().size());
-        assertEquals(2, store.capture(scope, "source", "alpha alpha").candidates().size());
-        var byteLimited = new SecretCandidateStore(clock, Duration.ofMinutes(30), 5, 3, 3);
-        assertThrows(
-                IllegalStateException.class,
-                () -> byteLimited.capture(scope, "source", "password=🔑"));
-        assertEquals(1, byteLimited.capture(scope, "source", "password=abc").candidates().size());
-    }
-
-    @Test
-    void expirationAndLifecycleDiscardInvalidateReferencesAndReleaseCapacity() {
-        var clock = new MutableClock();
-        var store = new SecretCandidateStore(clock, Duration.ofMinutes(30), 1, 100, 100);
-        String old =
-                store.capture(scope, "source", "password=alpha")
-                        .candidates()
-                        .getFirst()
-                        .reference();
-        clock.current = Instant.EPOCH.plus(Duration.ofMinutes(30));
-        assertEquals(
-                SecretCandidateStore.State.EXPIRED,
-                store.describe(scope, old).orElseThrow().state());
-        String next =
-                store.capture(scope, "source", "password=alpha")
-                        .candidates()
-                        .getFirst()
-                        .reference();
-        assertNotEquals(old, next);
-        store.discardSession(UUID.fromString("ec629ca2-6e80-51d3-a243-d00a0c2fcb52"), "session");
-        assertEquals(
-                SecretCandidateStore.State.AVAILABLE,
-                store.describe(scope, next).orElseThrow().state());
-        store.discardSession(UUID.fromString("58e341e3-0de3-571d-81db-520951bc691b"), "session");
-        assertEquals(
-                SecretCandidateStore.State.DISCARDED,
-                store.describe(scope, next).orElseThrow().state());
-        String last =
-                store.capture(scope, "source", "password=beta").candidates().getFirst().reference();
-        store.discardUser(UUID.fromString("58e341e3-0de3-571d-81db-520951bc691b"));
-        assertEquals(
-                SecretCandidateStore.State.DISCARDED,
-                store.describe(scope, last).orElseThrow().state());
-        assertTrue(new SecretCandidateStore().describe(scope, last).isEmpty());
-    }
-
-    @Test
-    void scopeAndBindingFailuresNeverReachTheWriter() {
-        var store = new SecretCandidateStore();
-        String reference =
-                store.capture(scope, "source", "password=synthetic-token")
-                        .candidates()
-                        .getFirst()
-                        .reference();
-        var writer = new InMemoryWriter();
+        var receipt = new SecretCandidateStore.ImportReceipt("cred_example", "service", "label");
         for (var other :
                 List.of(
-                        new Scope.AgentScope(
-                                UUID.fromString("8ae198e4-a119-54c1-bb34-adc327dd03f2"),
-                                "session",
-                                "agent"),
-                        new Scope.AgentScope(
-                                UUID.fromString("58e341e3-0de3-571d-81db-520951bc691b"),
-                                "other",
-                                "agent"),
-                        new Scope.AgentScope(
-                                UUID.fromString("58e341e3-0de3-571d-81db-520951bc691b"),
-                                "session",
-                                "mate"))) {
+                        new Scope.AgentScope(UUID.randomUUID(), OWNER.session(), OWNER.agent()),
+                        new Scope.AgentScope(OWNER.userId(), "other", OWNER.agent()),
+                        new Scope.AgentScope(OWNER.userId(), OWNER.session(), "other"))) {
+            assertTrue(store.reveal(other, ref).isEmpty());
             assertThrows(
-                    IllegalStateException.class,
-                    () -> store.importOnce(other, reference, "github", "Repository", writer));
+                    IllegalStateException.class, () -> store.recordImport(other, ref, receipt));
         }
+        store.recordImport(OWNER, ref, receipt);
+        store.recordImport(OWNER, ref, receipt);
+        assertEquals("secret", store.reveal(OWNER, "cred_example").orElseThrow());
+        assertEquals(
+                SecretCandidateStore.State.IMPORTED,
+                store.describe(OWNER, ref).orElseThrow().state());
         assertThrows(
                 IllegalStateException.class,
-                () -> store.importOnce(scope, "s_forged", "github", "Repository", writer));
-        assertThrows(
-                IllegalArgumentException.class,
-                () -> store.importOnce(scope, reference, "other-service", "Repository", writer));
-        for (String label : List.of("", " ", " trailing ", "x".repeat(81))) {
-            assertThrows(
-                    IllegalArgumentException.class,
-                    () -> store.importOnce(scope, reference, "github", label, writer));
-        }
-        assertEquals(0, writer.unlockChecks);
-        assertTrue(writer.attempts.isEmpty());
+                () ->
+                        store.recordImport(
+                                OWNER,
+                                ref,
+                                new SecretCandidateStore.ImportReceipt(
+                                        "cred_other", "service", "label")));
+        store.discardAgent(OWNER);
+        assertTrue(store.reveal(OWNER, ref).isEmpty());
+        assertThrows(IllegalStateException.class, () -> store.recordImport(OWNER, ref, receipt));
     }
 
     @Test
-    void closedOwnersRetiredSessionsAndDiscardedAgentsCannotImport() {
-        for (String lifecycle : List.of("userId", "session", "agent", "expiration")) {
-            var clock = new MutableClock();
-            var store = new SecretCandidateStore(clock, Duration.ofMinutes(30), 1, 100, 100);
-            String reference =
-                    store.capture(scope, "source", "password=synthetic-token")
-                            .candidates()
-                            .getFirst()
-                            .reference();
-            switch (lifecycle) {
-                case "userId" -> store.closeUser(scope.userId());
-                case "session" -> store.retireSession(scope.userId(), scope.session());
-                case "agent" -> store.discardAgent(scope);
-                case "expiration" -> clock.current = Instant.EPOCH.plus(Duration.ofMinutes(30));
-                default -> throw new AssertionError(lifecycle);
-            }
-            var writer = new InMemoryWriter();
-            assertThrows(
-                    IllegalStateException.class,
-                    () -> store.importOnce(scope, reference, "github", "Repository", writer));
-            assertEquals(0, writer.unlockChecks);
-            assertTrue(writer.attempts.isEmpty());
-            assertThrows(
-                    IllegalStateException.class,
-                    () -> store.referenceSegments(scope, "[SECRET_REF:" + reference + "]"));
-        }
+    void logoutAndRetiredSessionsRejectCaptureAndNeverReviveSecrets() {
+        var store = new SecretCandidateStore();
+        var ref =
+                store.captureExact(OWNER, "s", "secret", "secret")
+                        .candidates()
+                        .getFirst()
+                        .reference();
+        store.closeUser(OWNER.userId());
+        assertTrue(store.reveal(OWNER, ref).isEmpty());
+        assertThrows(
+                IllegalStateException.class,
+                () -> store.captureExact(OWNER, "s", "secret", "secret"));
+        store.openUser(OWNER.userId());
+        assertTrue(store.reveal(OWNER, ref).isEmpty());
+        store.captureExact(OWNER, "s", "secret", "secret");
+        store.retireSession(OWNER.userId(), OWNER.session());
+        assertThrows(
+                IllegalStateException.class,
+                () -> store.captureExact(OWNER, "s", "secret", "secret"));
     }
 
-    private record StoredCredential(
-            @NonNull UUID userId,
-            @NonNull String reference,
-            @NonNull String service,
-            @NonNull String label,
-            @NonNull String value) {}
-
-    private static final class InMemoryWriter implements VaultAccess.Handle {
-        private boolean unlocked = true;
-        private boolean failNextWrite;
-        private int unlockChecks;
-        private final @NonNull List<StoredCredential> attempts = new ArrayList<>();
-
-        @Override
-        public Scope.@NonNull AgentScope scope() {
-            return new Scope.AgentScope(
-                    UUID.fromString("58e341e3-0de3-571d-81db-520951bc691b"), "session", "agent");
-        }
-
-        @Override
-        public boolean isUnlocked() {
-            unlockChecks++;
-            return unlocked;
-        }
-
-        @Override
-        public @NonNull String createSecureNote(
-                @NonNull String title,
-                @NonNull Map<@NonNull String, @NonNull String> attributes,
-                @NonNull String value) {
-            attempts.add(
-                    new StoredCredential(
-                            UUID.fromString("58e341e3-0de3-571d-81db-520951bc691b"),
-                            attributes.getOrDefault("veto.import.id", ""),
-                            attributes.getOrDefault("veto.import.service", ""),
-                            attributes.getOrDefault("veto.import.label", ""),
-                            value));
-            if (failNextWrite) {
-                failNextWrite = false;
-                throw new IllegalStateException(value);
-            }
-            return "cred_01234567-89ab-cdef-0123-456789abcdef";
-        }
+    @Test
+    void expiresValuesAtTheDeadline() {
+        var clock = new MutableClock();
+        var store = new SecretCandidateStore(clock, Duration.ofSeconds(1), 4, 64, 32);
+        var ref =
+                store.captureExact(OWNER, "s", "secret", "secret")
+                        .candidates()
+                        .getFirst()
+                        .reference();
+        clock.current = Instant.EPOCH.plusSeconds(1);
+        assertTrue(store.reveal(OWNER, ref).isEmpty());
+        assertEquals(
+                SecretCandidateStore.State.EXPIRED,
+                store.describe(OWNER, ref).orElseThrow().state());
     }
 
     private static final class MutableClock extends Clock {
         private @NonNull Instant current = Instant.EPOCH;
 
-        @Override
         public @NonNull ZoneId getZone() {
             return ZoneOffset.UTC;
         }
 
-        @Override
         public @NonNull Clock withZone(@NonNull ZoneId zone) {
             return Clock.fixed(current, zone);
         }
 
-        @Override
         public @NonNull Instant instant() {
             return current;
         }

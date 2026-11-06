@@ -10,9 +10,9 @@ import top.focess.veto.api.event.UserLoggedInEvent;
 import top.focess.veto.api.event.UserLogoutEvent;
 import top.focess.veto.api.event.UserRegisteredEvent;
 import top.focess.veto.api.plugin.Scope;
+import top.focess.veto.bus.WebSocketServer;
 import top.focess.veto.command.PromptHandler;
 import top.focess.veto.event.EventManager;
-import top.focess.veto.terminal.TcpServer;
 
 /**
  * Unified service for managing user authentication and vault lifecycle. Ensures that login and
@@ -35,7 +35,7 @@ public class AuthLifecycleManager {
     private final @NonNull KeysteadVault vault;
     private final @NonNull PromptHandler promptHandler;
     private final @NonNull LoginSessionManager loginSessions;
-    private final @NonNull ObjectProvider<TcpServer> tcpServers;
+    private final @NonNull ObjectProvider<WebSocketServer> webSocketServers;
     private final @NonNull AccountLocks locks = new AccountLocks();
 
     /** Constructs the manager with vault access, terminal detachment, and event delivery. */
@@ -44,12 +44,12 @@ public class AuthLifecycleManager {
             @NonNull PromptHandler promptHandler,
             @NonNull EventManager eventManager,
             @NonNull LoginSessionManager loginSessions,
-            @NonNull ObjectProvider<TcpServer> tcpServers) {
+            @NonNull ObjectProvider<WebSocketServer> webSocketServers) {
         this.vault = vault;
         this.promptHandler = promptHandler;
         this.eventManager = eventManager;
         this.loginSessions = loginSessions;
-        this.tcpServers = tcpServers;
+        this.webSocketServers = webSocketServers;
     }
 
     /** Account boundaries for transactions, vault effects and identity publication. */
@@ -97,8 +97,8 @@ public class AuthLifecycleManager {
         try (var _ = locks.account(userId)) {
             log.info("AuthLifecycleManager: Logging out user {}", userId);
             loginSessions.revokeUserTokens(userId);
-            var tcpServer = tcpServers.getIfAvailable();
-            if (tcpServer != null) tcpServer.revokeUser(userId);
+            var server = webSocketServers.getIfAvailable();
+            if (server != null) server.revokeUser(userId);
             eventManager.submit(new UserLogoutEvent(new Scope.UserScope(userId)));
             try {
                 promptHandler.deactivateUser(userId);

@@ -8,7 +8,6 @@ include(
     "veto-builtin",
     "veto-plugin-runtime",
     "veto-core",
-    "veto-terminal",
     "veto-training",
 )
 

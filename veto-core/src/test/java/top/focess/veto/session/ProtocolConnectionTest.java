@@ -31,6 +31,7 @@ import top.focess.veto.api.llm.LlmBinding;
 import top.focess.veto.api.llm.ProviderType;
 import top.focess.veto.api.llm.ToolResultPresentationMode;
 import top.focess.veto.api.plugin.Scope;
+import top.focess.veto.command.CommandRegistry;
 import top.focess.veto.command.SessionCommandService;
 import top.focess.veto.contract.Frame;
 import top.focess.veto.contract.Version;
@@ -140,6 +141,88 @@ class ProtocolConnectionTest {
     }
 
     @Test
+    void ownRequestReceivesOnlyCorrelatedFailureWhileObserverOutcomesRemainVisible()
+            throws Exception {
+        var request = request("owned");
+        when(primary.submitRequest(anyString(), any(), any(), isNull(), any()))
+                .thenAnswer(invocation -> admit(invocation, request));
+        connection.receive(new Frame.Request(2, id, null, "prompt"));
+        var accepted = assertInstanceOf(Frame.RequestAccepted.class, receive());
+        assertTrue(
+                connection.sendSession(
+                        new Frame.Error(accepted.scope(), "owned", 3, "failed", 0, null, null),
+                        () -> true));
+        var observed =
+                new Frame.Error(
+                        accepted.scope(), "another-request", 3, "other failure", 0, null, null);
+        assertTrue(connection.sendSession(observed, () -> true));
+        assertEquals(observed, receive());
+        request.result().complete(AgentResult.failure("failed", Map.of("turns", 3)));
+        request.settled().complete(true);
+        var failure = assertInstanceOf(Frame.Error.class, receive());
+        assertEquals(2, failure.seq());
+        assertEquals("owned", failure.requestId());
+        assertNull(replies.poll(100, TimeUnit.MILLISECONDS));
+    }
+
+    @Test
+    void terminalDispatchKeepsAdmittedAgentScopeForOutcomeFiltering() throws Exception {
+        var registry = mock(CommandRegistry.class);
+        when(registry.terminalOutcome(any(), any())).thenAnswer(call -> call.getArgument(1));
+        var request = request("terminal-owned");
+        var result = request.result();
+        var following = new CountDownLatch(1);
+        when(request.result())
+                .thenAnswer(
+                        call -> {
+                            following.countDown();
+                            return result;
+                        });
+        var scope = new Scope.AgentScope(TestUsers.ALICE, entity.getId(), "primary");
+        try (var terminal =
+                new ProtocolConnection(
+                        "terminal",
+                        runtime,
+                        sessions,
+                        commands,
+                        registry,
+                        TestUsers.ALICE,
+                        authenticated::get,
+                        action -> action.getAsBoolean(),
+                        workers,
+                        replies::add,
+                        ignored -> {},
+                        Locale.CHINESE)) {
+            terminal.receive(new Frame.Hello(5, 1, Version.UNKNOWN, ""));
+            assertInstanceOf(Frame.Welcome.class, receive());
+            runtime.select("terminal", scope.sessionScope());
+            when(registry.dispatch(any(), eq("prompt")))
+                    .thenAnswer(
+                            call -> {
+                                terminal.submitAgent(
+                                        runtime.requireOwned(entity.getId(), TestUsers.ALICE),
+                                        scope,
+                                        admission -> admission.enqueue(() -> request));
+                                return new Frame.Done(
+                                        scope.sessionScope(), null, -1, null, null, 0);
+                            });
+            terminal.receive(new Frame.Request(2, null, null, "prompt"));
+            assertInstanceOf(Frame.RequestAccepted.class, receive());
+            assertTrue(following.await(2, TimeUnit.SECONDS));
+            assertTrue(
+                    terminal.sendSession(
+                            new Frame.Error(scope, "terminal-owned", 3, "failed", 0, null, null),
+                            () -> true));
+            request.result().complete(AgentResult.failure("failed", Map.of("turns", 3)));
+            request.settled().complete(true);
+            var failure = assertInstanceOf(Frame.Error.class, receive());
+            assertEquals(2, failure.seq());
+            assertEquals(scope, failure.scope());
+            assertNull(replies.poll(100, TimeUnit.MILLISECONDS));
+        }
+    }
+
+    @Test
     void alreadyCompletedHandleStillAcknowledgesBeforeFinalReply() throws Exception {
         var request = request("fast");
         request.result().complete(AgentResult.success("done", Map.of()));
@@ -172,7 +255,7 @@ class ProtocolConnectionTest {
     }
 
     @Test
-    void cancellationSignalsExactRunnerAndAcknowledgesBeforeInlineSettlement() throws Exception {
+    void cancellationSignalsExactRunnerAndReplacesInlineSettlement() throws Exception {
         var request = request("cancel");
         when(primary.submitRequest(anyString(), any(), any(), isNull(), any()))
                 .thenAnswer(invocation -> admit(invocation, request));
@@ -187,9 +270,10 @@ class ProtocolConnectionTest {
         assertInstanceOf(Frame.RequestAccepted.class, receive());
         connection.receive(new Frame.Cancel(3, 2));
         assertEquals(
-                Frame.CancelStatus.ACCEPTED,
+                Frame.CancelStatus.CANCELLED,
                 assertInstanceOf(Frame.CancelResult.class, receive()).status());
-        assertEquals(2, assertInstanceOf(Frame.Done.class, receive()).seq());
+        connection.receive(new Frame.Heartbeat());
+        assertInstanceOf(Frame.HeartbeatAck.class, receive());
         verify(request).requestCancellation();
         connection.receive(new Frame.Cancel(4, 2));
         assertEquals(
@@ -220,11 +304,67 @@ class ProtocolConnectionTest {
         assertTrue(entered.await(2, TimeUnit.SECONDS));
         connection.receive(new Frame.Cancel(3, 2));
         assertEquals(
-                Frame.CancelStatus.ACCEPTED,
+                Frame.CancelStatus.CANCELLED,
                 assertInstanceOf(Frame.CancelResult.class, receive()).status());
         released.countDown();
-        assertEquals(2, assertInstanceOf(Frame.Done.class, receive()).seq());
+        connection.receive(new Frame.Heartbeat());
+        assertInstanceOf(Frame.HeartbeatAck.class, receive());
         verify(primary, never()).submitRequest(anyString(), any(), any(), any(), any());
+    }
+
+    @Test
+    void repeatedCancellationWaitsForActualSettlementAndSignalsRunnerOnce() throws Exception {
+        var request = request("delayed-cancel");
+        when(primary.submitRequest(anyString(), any(), any(), isNull(), any()))
+                .thenAnswer(invocation -> admit(invocation, request));
+        when(request.requestCancellation()).thenReturn(true);
+        connection.receive(new Frame.Request(2, id, null, "work"));
+        assertInstanceOf(Frame.RequestAccepted.class, receive());
+        connection.receive(new Frame.Cancel(3, 2));
+        connection.receive(new Frame.Cancel(4, 2));
+        request.result().complete(AgentResult.failure("cancelled", Map.of()));
+        connection.receive(new Frame.Heartbeat());
+        assertInstanceOf(Frame.HeartbeatAck.class, receive());
+        request.settled().complete(true);
+        assertEquals(new Frame.CancelResult(Frame.CancelStatus.CANCELLED, 3), receive());
+        assertEquals(new Frame.CancelResult(Frame.CancelStatus.CANCELLED, 4), receive());
+        verify(request, times(1)).requestCancellation();
+        connection.receive(new Frame.Heartbeat());
+        assertInstanceOf(Frame.HeartbeatAck.class, receive());
+    }
+
+    @Test
+    void rejectedCancellationPreservesNormalCompletion() throws Exception {
+        var request = request("rejected-cancel");
+        when(primary.submitRequest(anyString(), any(), any(), isNull(), any()))
+                .thenAnswer(invocation -> admit(invocation, request));
+        when(request.requestCancellation()).thenReturn(false);
+        connection.receive(new Frame.Request(2, id, null, "work"));
+        assertInstanceOf(Frame.RequestAccepted.class, receive());
+        connection.receive(new Frame.Cancel(3, 2));
+        assertEquals(new Frame.CancelResult(Frame.CancelStatus.REJECTED, 3), receive());
+        request.result().complete(AgentResult.success("done", Map.of()));
+        request.settled().complete(true);
+        assertEquals(2, assertInstanceOf(Frame.Done.class, receive()).seq());
+    }
+
+    @Test
+    void normalCompletionWinningDuringCancellationIsNotReportedAsCancelled() throws Exception {
+        var request = request("completed-cancel");
+        when(primary.submitRequest(anyString(), any(), any(), isNull(), any()))
+                .thenAnswer(invocation -> admit(invocation, request));
+        when(request.requestCancellation())
+                .thenAnswer(
+                        ignored -> {
+                            request.result().complete(AgentResult.success("done", Map.of()));
+                            request.settled().complete(true);
+                            return false;
+                        });
+        connection.receive(new Frame.Request(2, id, null, "work"));
+        assertInstanceOf(Frame.RequestAccepted.class, receive());
+        connection.receive(new Frame.Cancel(3, 2));
+        assertEquals(2, assertInstanceOf(Frame.Done.class, receive()).seq());
+        assertEquals(new Frame.CancelResult(Frame.CancelStatus.NO_ACTIVE_REQUEST, 3), receive());
     }
 
     @Test

@@ -1,6 +1,7 @@
 import React, { configure, LocaleScope, useI18n } from './runtime';
 import { ToolCallCard, ToolResultBody } from './ToolCards';
 import ToolConversationDetails, { toolHeaderField } from './ToolConversationDetails';
+import { ExpandableText } from './ExpandableText';
 import type { FrontendHost, ToolPresentationProps } from '../../../veto-api/frontend';
 import css from './style.css';
 export const tools = ['answer_with_citations','ask_user','cancel_group_task','cancel_monitor','create_group','create_mate','create_monitor','create_task','delete_path','disband_group','find_files','forget_memory','grep_search','input_task','inspect_group','inspect_monitor','list_dir','load_skill','move_path','pause_monitor','post_message','read_github_repository','recall_memory','remove_mate','remove_node','replace_file_content','resume_monitor','run_command','run_task','stop_task','submit_plan','view_file','view_task','web_fetch','web_search','write_memory','write_to_file'];
@@ -13,7 +14,7 @@ export function activate(host: FrontendHost) {
 }
 function Conversation({toolName='',args={},result}: ToolPresentationProps) {
  return <div className="min-w-0"><ToolConversationDetails toolName={toolName} args={args} headerField={toolHeaderField(toolName,args)} result={result}/>
- {['web_fetch','web_read'].includes(toolName)&&typeof args.objective==='string'&&<p className="p-3 whitespace-pre-wrap break-words">{args.objective}</p>}
+ {['web_fetch','web_read'].includes(toolName)&&typeof args.objective==='string'&&<ExpandableText text={args.objective}>{text => <p className="p-3 whitespace-pre-wrap break-words">{text}</p>}</ExpandableText>}
  {['codeContent','targetContent','replacementContent'].filter(key=>typeof args[key]==='string').map(key=><ContentPreview key={key} field={key} content={String(args[key])}/>)}
 
  </div>;

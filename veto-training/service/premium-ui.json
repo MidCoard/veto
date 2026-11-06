@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "sourceRoots": [
+    "web/src"
+  ],
+  "locale": "zh-CN",
+  "canonicalMap": "UX-CONTRACT.md",
+  "requiredCapabilities": [
+    "Scrollbar",
+    "Toast",
+    "CRUD",
+    "Form",
+    "Select/Listbox"
+  ],
+  "ownership": {
+    "Select/Listbox": "MUI"
+  },
+  "requiredCommands": [
+    "unit"
+  ],
+  "commands": {
+    "unit": "npm --prefix veto-training/service/web test"
+  },
+  "evidence": {
+    "crudFullFlow": "test_service.py",
+    "failurePaths": "test_service.py"
+  }
+}

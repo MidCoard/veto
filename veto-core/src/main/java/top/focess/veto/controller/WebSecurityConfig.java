@@ -63,6 +63,8 @@ public class WebSecurityConfig {
                                                 "/api/system/info",
                                                 "/actuator/health")
                                         .permitAll()
+                                        .requestMatchers(HttpMethod.GET, "/ws/veto/terminal")
+                                        .permitAll()
                                         .requestMatchers(
                                                 "/api/auth/users",
                                                 "/api/plugins",

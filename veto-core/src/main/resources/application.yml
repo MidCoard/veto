@@ -35,7 +35,6 @@ veto:
 
   terminal:
     enabled: true
-    bind-address: tcp://127.0.0.1:5555
 
   workspace:
     root: ""

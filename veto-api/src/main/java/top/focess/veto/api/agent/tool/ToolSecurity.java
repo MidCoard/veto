@@ -32,4 +32,7 @@ public @interface ToolSecurity {
      * @return whether this tool always requires semantic screening
      */
     boolean requiresSemanticScreening() default false;
+
+    /** Advertises this tool only when an Agent profile explicitly selects its name. */
+    boolean explicitSelectionOnly() default false;
 }
