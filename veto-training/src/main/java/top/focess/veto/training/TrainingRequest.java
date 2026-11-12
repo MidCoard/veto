@@ -32,7 +32,8 @@ public record TrainingRequest(
             double loraDropout,
             int sequenceLength,
             @NonNull PromptFormat promptFormat,
-            int checkpointSteps) {
+            int checkpointSteps,
+            int earlyStoppingPatience) {
         public Options {
             if (epochs <= 0
                     || !Double.isFinite(learningRate)
@@ -45,7 +46,8 @@ public record TrainingRequest(
                     || loraDropout < 0
                     || loraDropout >= 1
                     || sequenceLength <= 0
-                    || checkpointSteps <= 0) {
+                    || checkpointSteps <= 0
+                    || earlyStoppingPatience < 0) {
                 throw new IllegalArgumentException("Invalid training options");
             }
         }

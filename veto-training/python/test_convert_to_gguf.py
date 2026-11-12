@@ -67,15 +67,38 @@ class ConversionTest(unittest.TestCase):
             retained.write_bytes(b"retained")
             def run(command, check):
                 target = command[command.index("--outfile") + 1] if "--outfile" in command else command[2]
-                Path(target).write_bytes(b"new")
+                Path(target).write_bytes(b"GGUF-new")
             args = ["convert", "--model-dir", str(root / "merged"), "--output-dir", str(output),
                     "--llama-cpp-dir", str(root), "--model-name", "secret", "--log-file", str(root / "result.jsonl"),
                     "--retry"]
             with patch("sys.argv", args), patch("subprocess.run", side_effect=run):
                 main()
-            self.assertEqual(b"new", (output / "secret-f16.gguf").read_bytes())
-            self.assertEqual(b"new", (output / "secret-q4_k_m.gguf").read_bytes())
+            self.assertEqual(b"GGUF-new", (output / "secret-f16.gguf").read_bytes())
+            self.assertEqual(b"GGUF-new", (output / "secret-q4_k_m.gguf").read_bytes())
             self.assertEqual(b"retained", retained.read_bytes())
+
+    def test_quantizer_failure_publishes_no_partial_final_or_success_report(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "merged").mkdir()
+            (root / "convert_hf_to_gguf.py").touch()
+            (root / "llama-quantize.exe").touch()
+            output = root / "output"
+            report = root / "result.jsonl"
+            def run(command, check):
+                target = command[command.index("--outfile") + 1] if "--outfile" in command else command[2]
+                Path(target).write_bytes(b"GGUF-partial")
+                if "--outfile" not in command:
+                    raise subprocess.CalledProcessError(2, "quantizer")
+            args = ["convert", "--model-dir", str(root / "merged"), "--output-dir", str(output),
+                    "--llama-cpp-dir", str(root), "--model-name", "secret", "--log-file", str(report)]
+            with patch("sys.argv", args), patch("subprocess.run", side_effect=run):
+                with self.assertRaises(subprocess.CalledProcessError):
+                    main()
+            self.assertFalse((output / "secret-q4_k_m.gguf").exists())
+            self.assertEqual(b"GGUF-partial", (output / "secret-f16.gguf").read_bytes())
+            self.assertFalse(report.exists())
+            self.assertEqual([], list(output.glob("*.tmp.gguf")))
 
     def test_report_paths_are_relative(self):
         self.assertEqual("../models/model.gguf", relative_log_path("models/model.gguf", "logs/run.jsonl"))

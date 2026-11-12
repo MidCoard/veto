@@ -56,8 +56,7 @@ import top.focess.veto.vault.TestUsers;
 
 /** The model response is scripted; admission, tools, vault authority and hooks are real. */
 class SecretAgentWorkflowTest {
-    private static final @NonNull String IMPORT =
-            "plugin_top_focess_secret_protection__import_credential";
+    private static final @NonNull String IMPORT = "import_credential";
     private static final @NonNull String READ =
             "plugin_top_focess_secret_protection__read_credential";
 
@@ -218,7 +217,9 @@ class SecretAgentWorkflowTest {
                                                 public @NonNull CompletableFuture<AgentResult>
                                                         result() {
                                                     return CompletableFuture.completedFuture(
-                                                            AgentResult.success("DONE", Map.of()));
+                                                            AgentResult.success(
+                                                                    "{\"tool_calls\":[]}",
+                                                                    Map.of()));
                                                 }
 
                                                 public @NonNull CompletableFuture<Boolean>

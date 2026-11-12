@@ -83,7 +83,8 @@ public final class TrainingCli {
                         Double.parseDouble(properties.getProperty("lora.dropout", "0.05")),
                         Integer.parseInt(properties.getProperty("sequence.length", "1024")),
                         format,
-                        Integer.parseInt(properties.getProperty("checkpoint.steps", "100"))));
+                        Integer.parseInt(properties.getProperty("checkpoint.steps", "100")),
+                        Integer.parseInt(properties.getProperty("early.stopping.patience", "3"))));
     }
 
     private static @NonNull String required(@NonNull Properties properties, @NonNull String name) {

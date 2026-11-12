@@ -5,6 +5,8 @@ import json
 import math
 import os
 import platform
+import shutil
+import time
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -65,6 +67,65 @@ class ResumableTrainer(Trainer):
         seed = self.args.data_seed if self.args.data_seed is not None else self.args.seed
         return EpochSampler(len(dataset), seed, lambda: int(self.state.epoch or 0))
 
+    def training_step(self, model, inputs, num_items_in_batch=None):
+        optimizer_step = self.state.global_step + 1
+        if getattr(self, "diagnostic_optimizer_step", None) != optimizer_step:
+            self.diagnostic_optimizer_step = optimizer_step
+            self.diagnostic_micro_step = 0
+        self.diagnostic_micro_step += 1
+        inputs = dict(inputs)
+        diagnostics = inputs.pop("_veto_diagnostics", {})
+        sample_ids = inputs.pop("_veto_sample_id", None)
+        if sample_ids is not None:
+            diagnostics["sample_ids"] = sample_ids.tolist()
+        if "input_tokens" not in diagnostics and "input_ids" in inputs:
+            diagnostics["input_tokens"] = int(inputs["input_ids"].shape[-1])
+        event = {"timestamp": time.time(), "optimizer_step": optimizer_step,
+                 "micro_step": self.diagnostic_micro_step, **diagnostics}
+        monitor = getattr(self, "runtime_monitor", None)
+        if monitor:
+            monitor.progress(optimizer_step=optimizer_step, micro_step=self.diagnostic_micro_step,
+                             phase="forward_backward", **diagnostics)
+        started = time.perf_counter_ns()
+        process_started = time.process_time_ns()
+        thread_started = time.thread_time_ns()
+        try:
+            print(json.dumps({"type": "micro_start", **event}), flush=True)
+            result = super().training_step(model, inputs, num_items_in_batch)
+        except BaseException as error:
+            print(json.dumps({"type": "micro_error", **event, "timestamp": time.time(),
+                              "error": type(error).__name__}), flush=True)
+            raise
+        else:
+            print(json.dumps({"type": "micro_complete", **event, "timestamp": time.time(),
+                              "started_at": event["timestamp"], "ended_at": time.time(),
+                              "wall_ms": (time.perf_counter_ns() - started) / 1_000_000,
+                              "process_ms": (time.process_time_ns() - process_started) / 1_000_000,
+                              "thread_ms": (time.thread_time_ns() - thread_started) / 1_000_000}), flush=True)
+            if monitor:
+                monitor.progress(phase="micro_complete")
+            return result
+
+    def _rotate_checkpoints(self, use_mtime=False, output_dir=None):
+        return
+
+
+
+class StepStallWatchdog(TrainerCallback):
+    """Mark optimizer boundaries for the independent runtime watchdog."""
+    def __init__(self, monitor=None):
+        self.monitor = monitor
+
+    def on_step_begin(self, args, state, control, **kwargs):
+        if self.monitor:
+            self.monitor.progress(phase="optimizer_step", optimizer_step=state.global_step + 1)
+        return control
+
+    def on_step_end(self, args, state, control, **kwargs):
+        if self.monitor:
+            self.monitor.progress(phase="optimizer_complete", optimizer_step=state.global_step)
+        return control
+
 
 def digest(path):
     with Path(path).open("rb") as stream:
@@ -100,7 +161,8 @@ def run_signature(args):
         if args.eval_data_path else None,
         "options": {name: getattr(args, name) for name in (
             "epochs", "lr", "batch_size", "eval_batch_size", "gradient_accumulation_steps",
-            "lora_r", "lora_alpha", "lora_dropout", "max_seq_length", "prompt_format", "checkpoint_steps")},
+            "lora_r", "lora_alpha", "lora_dropout", "max_seq_length", "prompt_format", "checkpoint_steps",
+            "early_stopping_patience")},
         "code": {name: digest(Path(__file__).with_name(name))
                  for name in ("train.py", "training_state.py")},
         "versions": {name: importlib.metadata.version(name)
@@ -178,12 +240,34 @@ def prepare_run(args):
 
 
 class CheckpointControl(TrainerCallback):
-    def __init__(self, output, signature, interval):
+    def __init__(self, output, signature, interval, retention=2):
+        if retention <= 0:
+            raise ValueError("Checkpoint retention must be positive")
         self.output = Path(output)
         self.signature = signature
         self.interval = interval
+        self.retention = retention
         self.pause_requested = False
         self.paused_checkpoint = None
+
+    def rotate(self, state):
+        complete = []
+        for checkpoint in self.output.glob("checkpoint-*"):
+            step = checkpoint.name.removeprefix("checkpoint-")
+            if checkpoint.is_symlink() or not step.isdigit():
+                continue
+            try:
+                saved = json.loads((checkpoint / "complete.json").read_text(encoding="utf-8"))
+                if saved["signature"] != self.signature or saved["files"] != checkpoint_files(checkpoint):
+                    continue
+            except (OSError, KeyError, TypeError, ValueError):
+                continue
+            complete.append(checkpoint)
+        complete.sort(key=lambda path: int(path.name.removeprefix("checkpoint-")), reverse=True)
+        best = Path(state.best_model_checkpoint) if state.best_model_checkpoint else None
+        for checkpoint in complete[self.retention:]:
+            if checkpoint != best:
+                shutil.rmtree(checkpoint)
 
     def on_step_end(self, args, state, control, **kwargs):
         epoch = state.epoch or 0.0
@@ -209,6 +293,7 @@ class CheckpointControl(TrainerCallback):
             atomic_text(self.output / "paused.checkpoint", checkpoint.name + "\n")
         if self.pause_requested:
             (self.output / "pause.request").unlink(missing_ok=True)
+        self.rotate(state)
         return control
 
     def on_epoch_end(self, args, state, control, **kwargs):

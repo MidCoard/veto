@@ -1,8 +1,9 @@
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
-from train import relative_log_path, tokenize_function, select_supervised_logits
+from train import NativeToolCollator, relative_log_path, tokenize_function, select_supervised_logits
 
 
 class TrainingLogPathTest(unittest.TestCase):
@@ -53,7 +54,7 @@ class TrainingLogPathTest(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "No next-token training target"):
                 select_supervised_logits({"labels": labels})
 
-    def test_native_tools_supervise_calls_and_final_reply_only(self):
+    def test_native_tools_supervise_calls_and_empty_assistant_terminator(self):
         class Tokenizer:
             pad_token_id = 0
 
@@ -69,17 +70,30 @@ class TrainingLogPathTest(unittest.TestCase):
                     {"role": "user", "content": "password"},
                     {"role": "assistant", "content": "import(password)"},
                     {"role": "tool", "content": "cred_reference"},
-                    {"role": "assistant", "content": "DONE"}]
-        batch = {"messages": [messages], "tools": [[{"type": "function"}]]}
+                    {"role": "assistant", "content": ""}]
+        batch = {"messages": [messages], "tools": [[{"type": "function"}, {"type": "function"}]]}
         tokenizer = Tokenizer()
         result = tokenize_function(batch, tokenizer, 256, "native_tools")
         target = "".join(chr(value) for value in result["labels"][0] if value != -100)
-        self.assertEqual("import(password)!DONE!", target)
+        self.assertEqual("import(password)!!", target)
         self.assertEqual(batch["tools"][0], tokenizer.assert_tools)
+        self.assertEqual(2, len(tokenizer.assert_tools))
         self.assertLess(len(result["labels"][0]), 256)
         self.assertEqual(len(result["input_ids"][0]), len(result["labels"][0]))
         with self.assertRaisesRegex(ValueError, "refusing target truncation"):
             tokenize_function(batch, tokenizer, 20, "native_tools")
+        with patch("train.emit_progress") as emit:
+            tokenize_function(batch, tokenizer, 256, "native_tools", {"completed": 0, "total": 2})
+            emit.assert_called_once_with("prepare", prepare_step=1, prepare_total=2)
+
+    def test_collator_collects_cpu_token_metadata(self):
+        import torch
+        batch = {"input_ids": torch.tensor([[1, 2, 3]]),
+                 "labels": torch.tensor([[-100, 2, 3]])}
+        with patch("transformers.DataCollatorForSeq2Seq") as factory:
+            factory.return_value.return_value = batch
+            result = NativeToolCollator(object())([])
+        self.assertEqual({"input_tokens": 3, "supervised_tokens": 2}, result["_veto_diagnostics"])
 
     def test_raw_prompts_mask_input_and_padding_but_train_output_and_eos(self):
         class Tokenizer:

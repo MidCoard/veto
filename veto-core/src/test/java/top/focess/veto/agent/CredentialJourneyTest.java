@@ -58,8 +58,7 @@ import top.focess.veto.vault.*;
 import top.focess.veto.vault.TestUsers;
 
 class CredentialJourneyTest {
-    private static final @NonNull String IMPORT_TOOL =
-            "plugin_top_focess_secret_protection__import_credential";
+    private static final @NonNull String IMPORT_TOOL = "import_credential";
 
     @ParameterizedTest
     @ValueSource(booleans = {true, false})

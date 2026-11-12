@@ -71,6 +71,11 @@ public final class SecretProtectionPlugin extends VetoPlugin {
     }
 
     @Override
+    public String preferredToolName(@NonNull String localId) {
+        return localId.equals("import_credential") ? "import_credential" : null;
+    }
+
+    @Override
     public @NonNull Set<@NonNull String> historicalIds() {
         return Set.of("org.veto.secret-protection");
     }

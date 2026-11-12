@@ -10,8 +10,9 @@ from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 from http.server import ThreadingHTTPServer
 
+from atomic import replace_with_retry
 from budget import Budget
-from server import Manager, checkpoints, handler
+from server import Manager, atomic_json, checkpoints, handler
 from processes import Child
 from profiles import DEFAULTS, InvalidProfile, validate
 
@@ -73,7 +74,7 @@ class ServiceTest(unittest.TestCase):
         import io
         result = self.action("datasets/create", name="Manual", format="native_tools")
         identifier = result["id"]
-        record = b'{"messages":[],"tools":[]}\n'
+        record = b'{"messages":[{"role":"assistant","content":"done"}],"tools":[]}\n'
         for revision, split in enumerate(("train", "validation")):
             self.manager.upload_dataset(identifier, {"datasetRevision":[str(revision)], "split":[split]}, len(record), io.BytesIO(record))
         settings = self.custom_settings()
@@ -121,7 +122,7 @@ class ServiceTest(unittest.TestCase):
     def test_asset_registration_removal_preserves_files_and_tasks(self):
         self.custom_settings()
         path = self.root / "registered.jsonl"
-        path.write_text('{"messages":[],"tools":[]}\n')
+        path.write_text('{"messages":[{"role":"assistant","content":"done"}],"tools":[]}\n')
         original = path.read_bytes()
         self.action("assets/create", kind="dataset", name="Training", path=str(path))
         asset = self.manager.state["assets"][-1]
@@ -166,9 +167,10 @@ class ServiceTest(unittest.TestCase):
         model.mkdir(exist_ok=True)
         (model / "config.json").write_text('{}')
         for name in ("train.jsonl", "validation.jsonl"):
-            (self.root / name).write_text('{"messages":[],"tools":[]}\n', encoding="utf-8")
+            (self.root / name).write_text('{"messages":[{"role":"assistant","content":"done"}],"tools":[]}\n', encoding="utf-8")
         return dict(DEFAULTS, **{"base.model": str(model), "training.data": str(self.root / "train.jsonl"),
-                               "validation.data": str(self.root / "validation.jsonl")})
+                               "validation.data": str(self.root / "validation.jsonl"),
+                               "output.directory": str(self.root / "chosen-output")})
 
     def test_model_removal_deletes_managed_external_and_hf_cache_contents(self):
         managed = self.root / "veto-training/models/downloaded"
@@ -260,6 +262,21 @@ class ServiceTest(unittest.TestCase):
         self.assertEqual(original, Path(run["properties"]).read_bytes())
         self.assertEqual("5", self.manager.profile_settings(self.manager.profiles[profile["id"]])["epochs"])
 
+    def test_training_policy_persists_fixed_and_dynamic_patience(self):
+        settings = self.custom_settings()
+        settings["early.stopping.patience"] = "0"
+        self.action("profiles/create", name="Fixed policy", settings=settings)
+        profile = next(p for p in self.manager.profiles.values() if p["name"] == "Fixed policy")
+        recipe = Path(profile["properties"]).read_text(encoding="utf-8")
+        self.assertIn("early.stopping.patience=0", recipe)
+        settings["early.stopping.patience"] = "3"
+        self.action("profiles/" + profile["id"] + "/update", name="Dynamic policy", settings=settings)
+        updated = self.manager.profiles[profile["id"]]
+        self.assertIn("early.stopping.patience=3", Path(updated["properties"]).read_text(encoding="utf-8"))
+        settings["early.stopping.patience"] = "-1"
+        with self.assertRaises(ValueError):
+            self.action("profiles/" + profile["id"] + "/update", name="Invalid policy", settings=settings)
+
     def test_completed_models_registered_and_visible_on_run(self):
         run = self.start()
         output = Path(run["output"])
@@ -271,6 +288,8 @@ class ServiceTest(unittest.TestCase):
         self.assertEqual("completed", run["status"])
         self.assertIn(artifact.as_posix(), run["artifacts"])
         self.assertTrue(any(a["path"] == artifact.as_posix() for a in self.manager.state["assets"]))
+        artifact.unlink()
+        self.assertEqual([], self.manager.snapshot()["runs"][0]["artifacts"])
 
     def test_export_retry_uses_completed_adapter_without_training_resume(self):
         run = self.start()
@@ -298,6 +317,23 @@ class ServiceTest(unittest.TestCase):
         self.manager.tick()
         self.assertEqual("completed", run["status"])
 
+    def test_partial_gguf_from_failed_export_is_never_a_completion_shortcut(self):
+        run = self.start()
+        output = Path(run["output"])
+        adapter = output / "lora-adapter"
+        adapter.mkdir(parents=True)
+        (adapter / "adapter_config.json").write_text('{}')
+        (adapter / "adapter_model.safetensors").write_bytes(b'adapter')
+        self.manager.worker.code = 1
+        self.manager.tick()
+        gguf = output / "gguf"
+        gguf.mkdir()
+        (gguf / "model-q4_k_m.gguf").write_bytes(b"GGUF-partial")
+        self.action(f"runs/{run['id']}/export", confirmed=True)
+        self.assertEqual("exporting", run["status"])
+        self.assertNotIn("artifacts", run)
+        self.assertIsNotNone(self.manager.worker)
+
     def test_custom_recipe_persists_without_starting_training(self):
         settings = self.custom_settings()
         self.action("profiles/create", name="我的训练", settings=settings)
@@ -309,9 +345,10 @@ class ServiceTest(unittest.TestCase):
         identifier = profile["id"]
         self.action(f"profiles/{identifier}/start", confirmed=True)
         run = self.manager.state["runs"][-1]
-        self.assertIn("veto-training/models", Path(run["output"]).as_posix())
+        self.assertEqual((self.root / "chosen-output" / run["id"]).as_posix(), Path(run["output"]).as_posix())
         self.assertNotEqual(profile["properties"], run["properties"])
         self.assertIn("learning.rate=0.0001", Path(run["properties"]).read_text())
+        self.assertIn("output.directory=" + Path(run["output"]).as_posix(), Path(run["properties"]).read_text())
 
     def test_remove_task_persists_and_retains_frozen_run_and_model(self):
         run = self.start()
@@ -343,9 +380,12 @@ class ServiceTest(unittest.TestCase):
 
     def test_custom_recipe_rejects_command_injection_and_invalid_parameters(self):
         settings = self.custom_settings()
+        output_file = self.root / "output-file"
+        output_file.write_text("not a directory")
         for changes in ({"python":"malicious"}, {"epochs":"3\naction=train"},
                         {"learning.rate":"NaN"}, {"lora.dropout":"1"},
-                        {"batch.size":"0"}, {"sequence.length":"9999999"}):
+                        {"batch.size":"0"}, {"sequence.length":"9999999"},
+                        {"output.directory":str(output_file)}):
             with self.subTest(changes=changes), self.assertRaises(InvalidProfile):
                 validate(self.root,"任务",dict(settings,**changes))
         self.assertIsNone(self.manager.worker)
@@ -455,9 +495,78 @@ class ServiceTest(unittest.TestCase):
 
     def test_progress_never_exposes_input_or_raw_messages(self):
         run = self.start()
-        self.manager.progress(run, json.dumps({"step": 5, "loss": .25, "input": "SECRET", "message": "SECRET"}))
+        self.manager.progress(run, json.dumps({"type": "progress", "step": 5, "loss": .25,
+                                               "input": "SECRET", "message": "SECRET"}))
         self.assertNotIn("SECRET", json.dumps(self.manager.snapshot()))
-        self.assertEqual({"step": 5, "loss": .25}, run["progress"])
+        self.assertEqual({"completed_step": 5, "loss": .25}, run["progress"])
+
+    def test_step_start_and_complete_are_reported_immediately(self):
+        run = self.start()
+        self.manager.progress(run, json.dumps({"type": "step_start", "step": 1, "max_steps": 4}))
+        self.assertEqual("running", run["status"])
+        self.assertEqual("正在计算第 1 步。", run["message"])
+        self.assertEqual(1, run["progress"]["current_step"])
+        self.assertNotIn("completed_step", run["progress"])
+        self.manager.progress(run, json.dumps({"type": "step_complete", "step": 1, "max_steps": 4}))
+        self.assertEqual("已完成第 1 步。", run["message"])
+        self.assertEqual(1, run["progress"]["completed_step"])
+
+    def test_step_events_do_not_overwrite_pause_lifecycle(self):
+        run = self.start()
+        for status in ("pause_pending", "pausing"):
+            run["status"] = status
+            self.manager.progress(run, '{"type":"step_start","step":2,"max_steps":4}')
+            self.assertEqual(status, run["status"])
+            self.assertEqual(2, run["progress"]["current_step"])
+
+    def test_full_numeric_queue_cannot_drop_training_completion(self):
+        run = self.start()
+        for index in range(100):
+            self.manager.enqueue(run, json.dumps(
+                {"type": "prepare", "prepare_step": index, "prepare_total": 100}))
+        self.manager.enqueue(run, '{"type":"phase_complete","phase":"training"}')
+        self.manager.tick()
+        self.assertEqual("exporting", run["status"])
+        self.assertEqual(99, run["progress"]["prepare_step"])
+
+    def test_coalesced_steps_retain_completed_and_current_counts(self):
+        run = self.start()
+        self.manager.enqueue(run, '{"type":"step_complete","step":1,"max_steps":4}')
+        self.manager.enqueue(run, '{"type":"step_start","step":2,"max_steps":4}')
+        self.manager.tick()
+        self.assertEqual(1, run["progress"]["completed_step"])
+        self.assertEqual(2, run["progress"]["current_step"])
+        self.assertEqual("正在计算第 2 步。", run["message"])
+
+    def test_microbatch_diagnostics_never_change_training_metrics(self):
+        run = self.start()
+        self.manager.enqueue(run, '{"type":"micro_start","optimizer_step":7,"micro_step":1}')
+        self.manager.tick()
+        self.assertEqual({}, run["progress"])
+        self.assertEqual("starting", run["status"])
+        self.assertTrue(self.manager.metrics.empty())
+
+    def test_late_events_from_previous_launch_are_ignored(self):
+        run = self.start()
+        generation = self.manager.worker_generation
+        self.manager.worker_generation += 1
+        self.manager.progress(run, '{"type":"step_complete","step":9}', generation)
+        self.assertNotIn("completed_step", run["progress"])
+
+    def test_log_view_omits_repeated_map_progress_lines(self):
+        run = self.start()
+        path = Path(self.manager.state_dir) / (run["id"] + ".log")
+        path.write_text("Map: 10%|██| 1000/10000\n[OK] Loaded 10000 records\n", encoding="utf-8")
+        result = self.action("runs/" + run["id"] + "/logs")
+        self.assertNotIn("Map:", result["text"])
+        self.assertIn("Loaded 10000 records", result["text"])
+
+    def test_converter_tensor_lines_update_export_progress(self):
+        run = self.start()
+        run["status"] = "exporting"
+        self.manager.enqueue(run, "[ 5 / 338] blk.1.weight")
+        self.manager.tick()
+        self.assertEqual({"export_step": 5, "export_total": 338}, run["progress"])
 
     def test_disk_stop_preserves_recovery_files(self):
         run = self.start()
@@ -563,6 +672,37 @@ class ServiceTest(unittest.TestCase):
             server.server_close()
             thread.join()
 
+    def test_atomic_replace_retries_transient_windows_conflict(self):
+        source, target = self.root / "state.tmp", self.root / "state.json"
+        source.write_text("new", encoding="utf-8")
+        original = Path.replace
+        attempts = 0
+        def flaky(path, destination):
+            nonlocal attempts
+            attempts += 1
+            if attempts < 3:
+                raise PermissionError("temporary file sharing conflict")
+            return original(path, destination)
+        with patch("pathlib.Path.replace", new=flaky), patch("atomic.time.sleep", return_value=None):
+            replace_with_retry(source, target)
+        self.assertEqual(3, attempts)
+        self.assertEqual("new", target.read_text(encoding="utf-8"))
+
+    def test_concurrent_atomic_json_writes_use_independent_temp_files(self):
+        target = self.root / "state.json"
+        barrier = threading.Barrier(2)
+        def write(value):
+            barrier.wait()
+            atomic_json(target, {"value": value})
+        threads = [threading.Thread(target=write, args=(value,)) for value in ("first", "second")]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join(timeout=2)
+        self.assertTrue(all(not thread.is_alive() for thread in threads))
+        self.assertIn(json.loads(target.read_text(encoding="utf-8"))["value"], ("first", "second"))
+        self.assertEqual([], list(self.root.glob("state.json.*.tmp")))
+
     def test_scoped_accounting_preserves_other_roots(self):
         scope, other = self.root / "managed", self.root / "other"
         scope.mkdir()
@@ -576,6 +716,34 @@ class ServiceTest(unittest.TestCase):
         self.assertEqual(3, budget.state["files"][str(other / "keep")])
         budget.check()
         self.assertEqual(105, budget.state["used"])
+
+    def test_full_accounting_scan_retries_concurrent_scope_update(self):
+        scope = self.root / "managed"
+        scope.mkdir()
+        budget = Budget({"roots": [str(scope)], "chargedBytes": 100,
+                         "limitBytes": 10_000_000}, self.root)
+        import budget as budget_module
+        original = budget_module.inventory
+        started, release = threading.Event(), threading.Event()
+        first = True
+        def controlled(roots):
+            nonlocal first
+            if roots == budget.roots() and first:
+                first = False
+                started.set()
+                release.wait(timeout=2)
+            return original(roots)
+        with patch("budget.inventory", side_effect=controlled):
+            thread = threading.Thread(target=budget.check)
+            thread.start()
+            self.assertTrue(started.wait(timeout=2))
+            (scope / "new").write_bytes(b"12345")
+            budget.check_scope(scope)
+            release.set()
+            thread.join(timeout=2)
+        self.assertFalse(thread.is_alive())
+        self.assertEqual(105, budget.state["used"])
+        self.assertEqual(5, budget.state["files"][str(scope / "new")])
 
     def test_accounting_survives_restart_and_counts_recreated_files(self):
         scope = self.root / "scope"
@@ -602,8 +770,8 @@ class ServiceTest(unittest.TestCase):
         scripts.mkdir(parents=True)
         (self.root / "llama").mkdir()
         (self.root / "llama/convert_hf_to_gguf.py").touch()
-        (self.root / "train.jsonl").write_text('{"messages":[],"tools":[]}\n')
-        (self.root / "eval.jsonl").write_text('{"messages":[],"tools":[]}\n')
+        (self.root / "train.jsonl").write_text('{"messages":[{"role":"assistant","content":"done"}],"tools":[]}\n')
+        (self.root / "eval.jsonl").write_text('{"messages":[{"role":"assistant","content":"done"}],"tools":[]}\n')
         (self.root / "fixture").mkdir()
         for filename in ("config.json", "tokenizer.json", "model.safetensors"):
             (self.root / "fixture" / filename).write_text('{}')

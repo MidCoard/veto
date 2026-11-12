@@ -30,6 +30,15 @@ class SecretAgentTest {
             new Scope.AgentScope(UUID.randomUUID(), "session", "primary");
 
     @Test
+    void onlyEmptyAssistantContentCompletesTheWorkflow() {
+        assertTrue(SecretAgent.completed(""));
+        assertTrue(SecretAgent.completed(" \n "));
+        assertFalse(SecretAgent.completed("DONE"));
+        assertFalse(SecretAgent.completed("{\"tool_calls\":[]}"));
+        assertFalse(SecretAgent.completed("No credentials"));
+    }
+
+    @Test
     void explicitLocalArtifactPreservesTheSecretAgentContract() {
         var original = SecretAgent.profile(true);
         var configured = SecretAgent.profile(true, "D:/models/qwen-base.gguf");
@@ -238,7 +247,7 @@ class SecretAgentTest {
                                                                             .Visibility.PRIVATE,
                                                             "github",
                                                             "test credential"));
-                                            result.complete(AgentResult.success("DONE", Map.of()));
+                                            result.complete(AgentResult.success("", Map.of()));
                                         }
                                     } catch (Exception error) {
                                         result.completeExceptionally(error);

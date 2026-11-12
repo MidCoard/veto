@@ -5,6 +5,8 @@ import shutil
 import sys
 from pathlib import Path
 
+from atomic import replace_with_retry
+
 
 def emit(**values):
     print(json.dumps(values), flush=True)
@@ -44,7 +46,7 @@ def download(request):
         plan = {'repo': request['repo'], 'revision': model.sha, 'files': files, 'total': total}
         temp = plan_path.with_suffix('.tmp')
         temp.write_text(json.dumps(plan), encoding='utf-8')
-        temp.replace(plan_path)
+        replace_with_retry(temp, plan_path)
     total = plan['total']
     if total > request['maxBytes']:
         raise ValueError('模型超过本次下载上限。')

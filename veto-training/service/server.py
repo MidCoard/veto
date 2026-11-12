@@ -1,5 +1,6 @@
 """Local maintainer console. Training stays behind the shared Java API/CLI."""
 import argparse
+import faulthandler
 import json
 import os
 import queue
@@ -11,6 +12,7 @@ import socket
 import subprocess
 import threading
 import time
+import traceback
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
@@ -21,6 +23,7 @@ from datasets import Datasets
 from downloads import Downloads
 from profiles import DEFAULTS, InvalidProfile, validate
 from assets import describe, entry, identity, include_references, local_path, register, record_count
+from atomic import replace_with_retry
 from readiness import check
 
 ASSETS = Path(__file__).parent / "web" / "dist"
@@ -43,9 +46,9 @@ def atomic_json(path, value):
     data = json.dumps(value, ensure_ascii=False, indent=2)
     if len(data.encode("utf-8")) > 2_000_000:
         raise ValueError("State exceeds its size limit")
-    temporary = path.with_suffix(".tmp")
+    temporary = path.with_name(f"{path.name}.{os.getpid()}.{threading.get_ident()}.tmp")
     temporary.write_text(data, encoding="utf-8")
-    temporary.replace(path)
+    replace_with_retry(temporary, path)
 
 
 def properties(path):
@@ -143,7 +146,9 @@ class Manager:
         self.downloads = Downloads(self.root, self.state_dir, child_factory)
         self.worker = None
         self.worker_run = None
-        self.events = queue.Queue(maxsize=64)
+        self.worker_generation = 0
+        self.events = queue.Queue()
+        self.metrics = queue.Queue(maxsize=1)
         self.backend = None
         self.backend_restarts = []
         self.backend_status = "starting"
@@ -204,6 +209,9 @@ class Manager:
                 row.pop("properties", None)
                 row["checkpoints"] = checkpoints(Path(run["output"]))
                 row["exportReady"] = run["status"] in ("failed", "interrupted") and export_ready(Path(run["output"]))
+                row["artifacts"] = [path for path in run.get("artifacts", []) if Path(path).exists()]
+                if run["status"] in ("failed", "interrupted") and not row["checkpoints"] and not row["exportReady"] and not run.get("diagnostic"):
+                    row["message"] = "没有可用保存点或导出恢复；请查看日志。"
                 runs.append(row)
             return {"revision": self.state["revision"], "csrf": self.token,
                 "backend": self.backend_status, "frontend": self.frontend_status, "stopping": self.stopping,
@@ -293,7 +301,7 @@ class Manager:
         name, settings = validate(self.root, payload.get("name"), settings_input)
         if any(p["name"] == name and p["id"] != editing and p.get("enabled", True) for p in self.profiles.values()):
             raise InvalidProfile("name", "已有同名任务，请换一个名称。")
-        self.disk_check()
+        self.reserve_dataset(100_000)
         templates = {p["id"]: p for p in self.config["profiles"]}
         purpose = self.profiles[editing].get("purpose", editing if editing in templates else self.config["profiles"][0]["id"]) if editing else payload.get("template", self.config["profiles"][0]["id"])
         if purpose not in templates:
@@ -305,8 +313,7 @@ class Manager:
         runtime["model.name"] = source.get("model.name", identifier)
         runtime.update(settings)
         assets = include_references(self.root, self.state["assets"], settings)
-        runtime.update({"output.directory": (self.root / "veto-training/models" / identifier).as_posix(),
-                        "action": "train"})
+        runtime["action"] = "train"
         path = self.state_dir / (identifier + "-recipe-" + secrets.token_hex(4) + ".properties")
         path.write_text("\n".join(f"{k}={v}" for k, v in runtime.items()), encoding="utf-8")
         profile = {"id": identifier, "purpose": purpose, "name": name, "properties": str(path), "enabled": True,
@@ -347,6 +354,8 @@ class Manager:
 
     def launch(self, run, action, checkpoint=None):
         self.disk_check(Path(run["output"]))
+        if shutil.disk_usage(Path(run["output"]).resolve().anchor).free < self.config["reserveBytes"]:
+            raise ValueError("输出目录所在磁盘可用空间不足。")
         for other in self.state["runs"]:
             output = Path(other["output"])
             if locked(output / "training.lock") or locked(output / "worker.lock"):
@@ -361,24 +370,58 @@ class Manager:
             self.change(run, status="exporting", message="正在合并并导出模型，不会重新训练。")
         else:
             self.change(run, status="starting", message="正在加载模型和数据。")
+        self.worker_generation += 1
+        generation = self.worker_generation
         try:
             self.worker = self.factory(self.command(command_file), self.root, self.env(True),
-                self.state_dir / (run["id"] + ".log"), training_memory_limit=self.config.get("trainingMemoryLimitBytes"), on_line=lambda line: self.enqueue(run, line))
+                self.state_dir / (run["id"] + ".log"), training_memory_limit=self.config.get("trainingMemoryLimitBytes"),
+                on_line=lambda line: self.enqueue(run, line, generation))
             self.worker_run = run
             self.started = time.monotonic()
         except BaseException:
             self.change(run, status="failed", message="无法启动训练进程；检查本机日志。")
             raise
 
-    def enqueue(self, run, line):
+    def enqueue(self, run, line, generation=None):
         if not line.startswith("{"):
-            return
+            match = re.match(r"^\[\s*(\d+)\s*/\s*(\d+)\]", line)
+            if not match:
+                return
+            current, total = int(match[1]), int(match[2])
+            if total <= 0 or current > total:
+                return
+            line = json.dumps({"type": "export_progress", "export_step": current, "export_total": total})
         try:
-            self.events.put_nowait((run, line))
+            data = json.loads(line)
+        except ValueError:
+            return
+        if not isinstance(data, dict):
+            return
+        generation = self.worker_generation if generation is None else generation
+        event = (run, generation, line)
+        if data.get("type") not in ("prepare", "progress", "step_start", "step_complete", "export_progress",
+                                   "micro_start", "micro_complete", "micro_error"):
+            self.events.put_nowait(event)
+            return
+        if "step" in data:
+            data = dict(data)
+            key = "current_step" if data["type"] == "step_start" else "completed_step"
+            data[key] = data.pop("step")
+            event = (run, generation, json.dumps(data))
+        try:
+            self.metrics.put_nowait(event)
         except queue.Full:
-            pass  # Keep pipe draining; metrics never decide the training outcome.
+            try:
+                previous = self.metrics.get_nowait()
+            except queue.Empty:
+                previous = None
+            if previous and previous[:2] == event[:2]:
+                merged = json.loads(previous[2])
+                merged.update(data)
+                event = (run, generation, json.dumps(merged))
+            self.metrics.put_nowait(event)
 
-    def progress(self, run, line):
+    def progress(self, run, line, generation=None):
         try:
             data = json.loads(line)
         except ValueError:
@@ -386,18 +429,38 @@ class Manager:
         if not isinstance(data, dict):
             return
         with self.lock:
-            if run["status"] not in ACTIVE:
+            if run["status"] not in ACTIVE or generation is not None and generation != self.worker_generation:
                 return
+            if "step" in data and isinstance(data["step"], (int, float)):
+                data = dict(data)
+                key = "current_step" if data.get("type") == "step_start" else "completed_step"
+                data[key] = data.pop("step")
             # Only structured metrics; never return input text, credentials or raw logs.
             values = {key: value for key, value in data.items()
-                      if key in ("step", "epoch", "loss", "eval_loss", "max_steps")
+                      if key in ("current_step", "completed_step", "epoch", "loss", "eval_loss", "max_steps",
+                                 "batch_size", "accumulation_steps", "effective_batch", "learning_rate",
+                                 "export_step", "export_total", "prepare_step", "prepare_total")
                       and isinstance(value, (int, float))}
             run["progress"].update(values)
             if values:
                 run["updated"] = stamp()
             if values and run["status"] == "starting":
                 self.change(run, status="running", message="训练进行中。")
-            if data.get("type") == "phase_complete" and data.get("phase") == "training":
+            event_type = data.get("type")
+            if event_type == "runtime_diagnostic":
+                run["diagnostic"] = data
+                kind = data.get("kind", "unknown")
+                message = data.get("message", data.get("attribution", kind))
+                position = f"step={data.get('optimizer_step')}, micro={data.get('micro_step')}, tokens={data.get('input_tokens')}"
+                self.change(run, message=f"{kind}: {message} · {position} · {data.get('progress_state', 'unknown')} · CUDA code={data.get('cuda_error_code') if data.get('cuda_error_code') is not None else 'unknown'}")
+            step = data.get("current_step", data.get("completed_step"))
+            if event_type in ("step_start", "step_complete"):
+                if run["status"] in ("starting", "running"):
+                    message = f"正在计算第 {step} 步。" if event_type == "step_start" else f"已完成第 {step} 步。"
+                    self.change(run, status="running", message=message)
+                else:
+                    self.save()
+            if event_type == "phase_complete" and data.get("phase") == "training":
                 self.change(run, status="exporting", message="训练完成，正在合并并导出模型。")
 
     def upload_dataset(self, identifier, query, length, stream):
@@ -448,8 +511,16 @@ class Manager:
                 identifier, operation = parts[1:]
                 if operation == "browse":
                     return self.datasets.browse(identifier, payload)
-                if operation == "preview":
-                    return self.datasets.preview(identifier, payload.get("sample"))
+                if operation == "record":
+                    return self.datasets.record(identifier, payload.get("sample"), payload.get("index"))
+                if operation == "tool_groups":
+                    return self.datasets.tool_groups(identifier)
+                if operation == "add_tool":
+                    return self.datasets.add_tool(identifier, payload)
+                if operation == "bulk_tools":
+                    return self.datasets.start_bulk(identifier, payload)
+                if operation == "bulk_status":
+                    return self.datasets.bulk_status(payload)
                 source = local_path(self.root, payload.get("path")) if operation == "import" else None
                 return self.datasets.mutate(identifier, operation, payload, source)
             if parts == ["downloads", "create"] or len(parts) == 3 and parts[0] == "downloads":
@@ -547,7 +618,7 @@ class Manager:
                 if not readiness["ready"]:
                     raise ValueError("；".join(readiness["issues"]))
                 run_id = identifier + "-" + secrets.token_hex(6)
-                output = (self.root / values["output.directory"]).parent / run_id
+                output = (self.root / values["output.directory"]) / run_id
                 values["output.directory"] = output.as_posix()
                 values["action"] = "train"
                 path = self.state_dir / (run_id + ".properties")
@@ -572,7 +643,8 @@ class Manager:
                     stream.seek(max(0, path.stat().st_size - 64_000))
                     text = stream.read(64_000).decode("utf-8", errors="replace")
                 text = re.sub(r"hf_[A-Za-z0-9]+", "[redacted]", text)
-                return {"text": text}
+                text = "\n".join(line for line in text.splitlines() if not line.lstrip().startswith("Map:"))
+                return {"text": text or "暂无阶段日志。"}
             if action in ("archive", "restore"):
                 if run["status"] in ACTIVE:
                     raise ValueError("请先暂停训练。")
@@ -597,12 +669,6 @@ class Manager:
                 output = Path(run["output"])
                 if not export_ready(output):
                     raise ValueError("没有可用于导出的完整模型或优化完成保存点。")
-                profile = properties(Path(run["properties"]))
-                artifact = output / "gguf" / (profile.get("model.name", run["profile"]) + "-q4_k_m.gguf")
-                if artifact.is_file() and artifact.stat().st_size:
-                    self.register_outputs(run)
-                    self.change(run, status="completed", message="模型已导出；尚未通过质量验收或部署。")
-                    return
                 self.launch(run, "export")
             elif action == "resume":
                 if run.get("archived"):
@@ -639,6 +705,7 @@ class Manager:
 
     def tick(self):
         self.downloads.tick()
+        self.disk_check()
         with self.lock:
             for row in self.downloads.snapshot():
                 if row["status"] == "completed" and self.downloads.worker is None and not row.get("registered"):
@@ -651,8 +718,11 @@ class Manager:
                         next(r for r in self.downloads.rows if r["id"] == row["id"])["registered"] = True
                         self.downloads.save()
             while not self.events.empty():
-                run, line = self.events.get_nowait()
-                self.progress(run, line)
+                run, generation, line = self.events.get_nowait()
+                self.progress(run, line, generation)
+            if not self.metrics.empty():
+                run, generation, line = self.metrics.get_nowait()
+                self.progress(run, line, generation)
             if self.worker:
                 run = self.worker_run
                 code = self.worker.poll()
@@ -676,7 +746,8 @@ class Manager:
                     try:
                         if run["status"] == "pause_pending" and (Path(run["output"]) / "training.lock").exists():
                             self.pause(run)
-                        self.disk_check(Path(run["output"]))
+                        if directory_bytes(Path(run["output"])) > self.config["modelLimitBytes"]:
+                            raise ValueError("本轮模型输出额度已用完。")
                         self.save()
                         if time.monotonic() - self.started > 172800:
                             raise ValueError("运行已达到 48 小时上限。")
@@ -739,6 +810,7 @@ class Manager:
             setattr(self, name + "_status", "starting")
 
     def close(self):
+        self.datasets.close()
         self.downloads.close()
         if self.worker:
             self.worker.close()
@@ -825,20 +897,32 @@ def main():
     parser.add_argument("config", type=Path)
     args = parser.parse_args()
     config = read_json(args.config)
-    # Binding happens before any process launch; a second start cannot create duplicates.
-    server = ThreadingHTTPServer(("127.0.0.1", config["port"]), BaseHTTPRequestHandler)
-    server.daemon_threads = True
-    manager = Manager(config)
-    server.RequestHandlerClass = handler(manager)
-    thread = threading.Thread(target=server.serve_forever, daemon=True)
-    thread.start()
-    try:
-        while not manager.done.wait(2):
-            manager.tick()
-    finally:
-        server.shutdown()
-        server.server_close()
-        manager.close()
+    diagnostic_path = Path(config["stateDirectory"]) / "service-exception.log"
+    with diagnostic_path.open("a", encoding="utf-8") as diagnostics:
+        faulthandler.enable(file=diagnostics)
+        server = None
+        manager = None
+        try:
+            # Binding happens before any process launch; a second start cannot create duplicates.
+            server = ThreadingHTTPServer(("127.0.0.1", config["port"]), BaseHTTPRequestHandler)
+            server.daemon_threads = True
+            manager = Manager(config)
+            server.RequestHandlerClass = handler(manager)
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            while not manager.done.wait(2):
+                manager.tick()
+        except BaseException:
+            traceback.print_exc(file=diagnostics)
+            diagnostics.flush()
+            raise
+        finally:
+            if server is not None:
+                server.shutdown()
+                server.server_close()
+            if manager is not None:
+                manager.close()
+            faulthandler.disable()
 
 
 if __name__ == "__main__":

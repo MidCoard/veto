@@ -55,26 +55,45 @@ def main():
     executable = quantizer(args.llama_cpp_dir) if args.quantize_type != "f16" else None
     f16 = args.output_dir / f"{args.model_name}-f16.gguf"
     final = args.output_dir / f"{args.model_name}-{args.quantize_type}.gguf"
-    existing = [path for path in (f16, final) if path.exists() or path.is_symlink()]
+    existing = [path for path in dict.fromkeys((f16, final)) if path.exists() or path.is_symlink()]
     if existing and not args.retry:
         raise FileExistsError("Use a fresh conversion directory; existing models are never reused")
     for path in existing:
         if path.is_symlink() or not path.is_file():
             raise ValueError("Conversion outputs must be regular files")
-        path.unlink()
     args.output_dir.mkdir(parents=True, exist_ok=True)
-    subprocess.run([sys.executable, str(converter), str(args.model_dir), "--outfile", str(f16), "--outtype", "f16"], check=True)
-    if not f16.is_file() or not f16.stat().st_size:
-        raise RuntimeError("Converter did not produce a nonempty GGUF")
-    if executable is not None:
-        subprocess.run([str(executable), str(f16), str(final), args.quantize_type], check=True)
-    if not final.is_file() or not final.stat().st_size:
-        raise RuntimeError("Quantizer did not produce a nonempty GGUF")
-    args.log_file.parent.mkdir(parents=True, exist_ok=True)
-    report = {"gguf_path": relative_log_path(final, args.log_file), "quantize_type": args.quantize_type, "status": "completed"}
-    with args.log_file.open("a", encoding="utf-8") as stream:
-        stream.write(json.dumps(report) + "\n")
-    print(json.dumps(report), flush=True)
+    temporary_f16 = f16.with_name(f".{f16.name}.{os.getpid()}.tmp.gguf")
+    temporary_final = (temporary_f16 if final == f16 else
+                       final.with_name(f".{final.name}.{os.getpid()}.tmp.gguf"))
+
+    def valid_output(path):
+        with path.open("rb") as stream:
+            return stream.read(4) == b"GGUF"
+
+    for path in dict.fromkeys((temporary_f16, temporary_final)):
+        if path.is_symlink() or path.exists() and not path.is_file():
+            raise ValueError("Temporary conversion outputs must be regular files")
+        path.unlink(missing_ok=True)
+    try:
+        subprocess.run([sys.executable, str(converter), str(args.model_dir), "--outfile",
+                        str(temporary_f16), "--outtype", "f16"], check=True)
+        if not temporary_f16.is_file() or not valid_output(temporary_f16):
+            raise RuntimeError("Converter did not produce a valid GGUF")
+        temporary_f16.replace(f16)
+        if executable is not None:
+            subprocess.run([str(executable), str(f16), str(temporary_final), args.quantize_type], check=True)
+            if not temporary_final.is_file() or not valid_output(temporary_final):
+                raise RuntimeError("Quantizer did not produce a valid GGUF")
+            temporary_final.replace(final)
+        args.log_file.parent.mkdir(parents=True, exist_ok=True)
+        report = {"gguf_path": relative_log_path(final, args.log_file),
+                  "quantize_type": args.quantize_type, "status": "completed"}
+        with args.log_file.open("a", encoding="utf-8") as stream:
+            stream.write(json.dumps(report) + "\n")
+        print(json.dumps(report), flush=True)
+    finally:
+        temporary_f16.unlink(missing_ok=True)
+        temporary_final.unlink(missing_ok=True)
 
 
 if __name__ == "__main__":

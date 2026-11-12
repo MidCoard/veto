@@ -24,3 +24,15 @@ credential handling remain unchanged. Validate the chosen model before deploymen
 Runtime integration passes its automated checks. The earlier extraction-only model
 is not a validated model for this tool-calling workflow. Release assembly requires the new
 model artifact and its verified checksum; model files remain outside Git.
+
+Native SFT positive records end at the assistant's exact import tool calls; they do not
+supervise subsequent tool results or a text completion marker. When no call is needed,
+the assistant target and runtime completion message have empty content and no tool_calls
+property. This applies to no-credential input and to completion after successful imports.
+The public tool name is `import_credential` through the plugin's preferred-name contract;
+the generated plugin-prefix alias is not used by the Agent, SFT data or evaluator.
+
+The local Qwen2.5 model uses its Hermes-style chat template to represent native tool calls.
+This is not provider-enforced structured output; the host validates empty assistant content
+for no-call completion. Template support and automated tests do not establish small-model
+generation quality; that requires separate held-out model acceptance.

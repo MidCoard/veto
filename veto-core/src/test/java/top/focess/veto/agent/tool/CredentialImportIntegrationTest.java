@@ -32,8 +32,7 @@ import top.focess.veto.vault.KeysteadVault;
 import top.focess.veto.vault.TestUsers;
 
 class CredentialImportIntegrationTest {
-    private static final @NonNull String IMPORT_TOOL =
-            "plugin_top_focess_secret_protection__import_credential";
+    private static final @NonNull String IMPORT_TOOL = "import_credential";
 
     @AfterEach
     void clearContext() {

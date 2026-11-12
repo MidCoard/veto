@@ -115,10 +115,14 @@ public final class ImportCredentialTool extends PreparedTool<ImportCredentialToo
 
     /** Exact value and nonsecret descriptive metadata. */
     public record Args(
-            @NonNull @Doc("Exact source substring; include complete private-key delimiters.")
+            @NonNull
+                    @Doc(
+                            "Exact source substring, copied verbatim including delimiters and newlines.")
                     String value,
-            @NonNull @Doc("PRIVATE by default; PUBLIC only for explicit model-readable disclosure.")
+            @NonNull
+                    @Doc(
+                            "PRIVATE hides the value from the main model; PUBLIC requires host approval.")
                     Visibility visibility,
-            @NonNull @Doc("Short service name without secret material.") String service,
-            @NonNull @Doc("Short nonsecret label.") String label) {}
+            @NonNull @Doc("Nonsecret service name, up to 80 characters.") String service,
+            @NonNull @Doc("Nonsecret purpose, up to 80 characters.") String label) {}
 }

@@ -71,6 +71,10 @@ public final class SecretAgent {
         this.modelPath = modelPath;
     }
 
+    static boolean completed(@NonNull String message) {
+        return message.isBlank();
+    }
+
     void protect(@NonNull BeforeTextCommitEvent event) throws Exception {
         if (event.options().bypassedProcessors().contains(PROCESSOR)) {
             event.setText(event.text());
@@ -112,7 +116,7 @@ public final class SecretAgent {
                             childId, event.scope().agent(), profile(work.userInput, modelPath));
             var request = child.submit(sourceInput(event.text()));
             var result = request.result().get(120, TimeUnit.SECONDS);
-            if (!result.success() || !"DONE".equals(result.message().strip()))
+            if (!result.success() || !completed(result.message()))
                 throw new IllegalStateException(
                         "Secret Agent did not complete its import contract");
             if (!Boolean.TRUE.equals(request.settled().get(10, TimeUnit.SECONDS)))
@@ -280,7 +284,7 @@ public final class SecretAgent {
                 --- END UNTRUSTED SOURCE ---
 
                 Perform credential import only. After successful imports, or if no credentials exist, \
-                respond exactly DONE.
+                finish with empty assistant content and no tool calls.
                 """;
     }
 
@@ -295,7 +299,7 @@ public final class SecretAgent {
                 "secret-import",
                 "Import credentials from incoming content",
                 "SECRET",
-                Set.of("plugin_top_focess_secret_protection__import_credential"),
+                Set.of("import_credential"),
                 null,
                 new AgentProfile.Prompt(
                         "secret-agent",

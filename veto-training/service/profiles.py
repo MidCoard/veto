@@ -1,4 +1,4 @@
-"""Editable training recipes; executable and output ownership stay with the host."""
+"""Editable training recipes; executables stay host-owned and users choose output locations."""
 import json
 import math
 from pathlib import Path
@@ -7,11 +7,13 @@ DEFAULTS = {
     "base.model": "", "training.data": "", "validation.data": "",
     "prompt.format": "native_tools", "epochs": "3", "learning.rate": "0.0001",
     "batch.size": "1", "accumulation.steps": "8", "sequence.length": "16384",
+    "early.stopping.patience": "3",
     "lora.rank": "16", "lora.alpha": "32", "lora.dropout": "0.05", "checkpoint.steps": "100",
+    "output.directory": "",
 }
 INTEGERS = {"epochs": (1, 100), "batch.size": (1, 128), "accumulation.steps": (1, 1024),
             "sequence.length": (32, 65536), "lora.rank": (1, 512), "lora.alpha": (1, 1024),
-            "checkpoint.steps": (1, 100000)}
+            "early.stopping.patience": (0, 100), "checkpoint.steps": (1, 100000)}
 
 
 class InvalidProfile(ValueError):
@@ -72,6 +74,10 @@ def validate(root, name, values, check_data=True):
             except (OSError, UnicodeError, ValueError):
                 raise InvalidProfile(key, "首行不是所选格式的有效 JSON 记录；请检查文件内容。") from None
         result[key] = path.as_posix()
+    output = (root / result["output.directory"].replace("\\", "/")).resolve()
+    if output == Path(output.anchor) or output == root.resolve() or output.is_symlink() or output.is_junction() or (output.exists() and not output.is_dir()):
+        raise InvalidProfile("output.directory", "请选择可创建运行子目录的本机目录，不能使用磁盘或仓库根目录。")
+    result["output.directory"] = output.as_posix()
     if check_data and Path(result["training.data"]).samefile(result["validation.data"]):
         raise InvalidProfile("validation.data", "验证集必须与训练集分开，不能使用同一个文件。")
     return name.strip(), result

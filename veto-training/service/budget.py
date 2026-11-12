@@ -2,6 +2,9 @@
 import json
 import os
 from pathlib import Path
+import threading
+
+from atomic import replace_with_retry
 
 
 def inventory(roots):
@@ -40,6 +43,8 @@ class Budget:
                                         for path in Path(directory).iterdir() if path.is_file()]
 
     def __init__(self, config, state_dir):
+        self.lock = threading.RLock()
+        self.version = 0
         self.config = config
         self.path = state_dir / "accounting.json"
         if config["chargedBytes"] >= config["limitBytes"] - 8_000_000:
@@ -53,19 +58,29 @@ class Budget:
         self.check()
 
     def check(self):
-        self.record(inventory(self.roots()))
+        while True:
+            with self.lock:
+                version = self.version
+            current = inventory(self.roots())
+            with self.lock:
+                if version != self.version:
+                    continue
+                self.record(current)
+                return
 
     def check_scope(self, root):
-        prefix = os.path.normcase(os.path.normpath(root)) + os.sep
-        current = {path: size for path, size in self.state["files"].items()
-                   if not os.path.normcase(os.path.normpath(path)).startswith(prefix)}
-        current.update(inventory([root]))
-        self.record(current)
+        with self.lock:
+            prefix = os.path.normcase(os.path.normpath(root)) + os.sep
+            current = {path: size for path, size in self.state["files"].items()
+                       if not os.path.normcase(os.path.normpath(path)).startswith(prefix)}
+            current.update(inventory([root]))
+            self.record(current)
 
     def record(self, current):
         previous = self.state["files"]
         self.state["used"] += sum(max(0, size - previous.get(path, 0)) for path, size in current.items())
         self.state["files"] = current
+        self.version += 1
         self.persist()
         if self.state["used"] >= self.config["limitBytes"] - 8_000_000:
             raise ValueError("累计非模型产出额度已用完，不能继续启动或写入训练输出。")
@@ -78,4 +93,4 @@ class Budget:
         # allowance in chargedBytes; roots must not include the state directory.
         temp = self.path.with_suffix(".tmp")
         temp.write_text(data, encoding="utf-8")
-        temp.replace(self.path)
+        replace_with_retry(temp, self.path)

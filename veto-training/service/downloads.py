@@ -7,6 +7,8 @@ import threading
 import time
 from pathlib import Path
 
+from atomic import replace_with_retry
+
 
 class Downloads:
     def __init__(self, root, state_dir, factory):
@@ -23,7 +25,7 @@ class Downloads:
     def save(self):
         temp = self.path.with_suffix('.tmp')
         temp.write_text(json.dumps(self.rows, ensure_ascii=False), encoding='utf-8')
-        temp.replace(self.path)
+        replace_with_retry(temp, self.path)
 
     def snapshot(self):
         with self.lock:

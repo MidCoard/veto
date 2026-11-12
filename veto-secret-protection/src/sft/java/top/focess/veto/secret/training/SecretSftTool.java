@@ -170,13 +170,9 @@ public final class SecretSftTool {
                         function.put("name", name);
                         function.set("arguments", item);
                     }
-                    for (int index = 0; index < count; index++)
-                        messages.addObject()
-                                .put("role", "tool")
-                                .put("tool_call_id", "import_" + index)
-                                .put("content", "cred_training_" + index);
+                } else {
+                    messages.addObject().put("role", "assistant").put("content", "");
                 }
-                messages.addObject().put("role", "assistant").put("content", "DONE");
                 var encoded = mapper.writeValueAsString(result);
                 bytes += encoded.getBytes(StandardCharsets.UTF_8).length + 1;
                 if (bytes > 384_000_000) throw new IllegalStateException("Export exceeds 384 MB");

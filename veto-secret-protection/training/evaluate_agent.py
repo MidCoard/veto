@@ -1,7 +1,7 @@
 """Score native Secret Agent traces; no model inference or credential execution.
 
 Predictions are JSONL {id, tool_calls: [OpenAI function calls], completed: bool}.
-completed means the evaluated agent finished with DONE after successful imports.
+completed means the evaluated agent returned empty assistant content without tool calls after successful imports or when no credentials exist.
 Use the same held-out export and execution settings for baseline and SFT traces.
 """
 
@@ -11,7 +11,7 @@ import hashlib
 import json
 from pathlib import Path
 
-IMPORT = "plugin_top_focess_secret_protection__import_credential"
+IMPORT = "import_credential"
 FIELDS = ("value", "visibility", "service", "label")
 
 

@@ -50,6 +50,8 @@ def parse_args():
     parser.add_argument("--lora-dropout", type=float, default=0.05)
     parser.add_argument("--max-seq-length", type=int, default=1024)
     parser.add_argument("--checkpoint-steps", type=int, default=100)
+    parser.add_argument("--early-stopping-patience", type=int, default=3,
+                        help="0 runs every epoch; positive values stop after non-improving evaluation epochs")
     parser.add_argument("--resume-from-checkpoint", type=str, default=None)
     parser.add_argument("--prompt-format", choices=("instruction", "raw", "native_tools"), default="instruction",
                         help="Use raw for production-compiled MDC prompts")
@@ -155,10 +157,10 @@ def format_instruction(record: dict) -> str:
     return f"### Instruction:\n{record['instruction']}\n\n### Response:\n{record['output']}"
 
 
-def tokenize_function(examples, tokenizer, max_length: int, prompt_format="instruction"):
-    """Tokenize instruction-output pairs."""
+def tokenize_function(examples, tokenizer, max_length: int, prompt_format="instruction", progress=None):
+    """Tokenize instruction-output pairs and optionally report completed records."""
     if prompt_format == "native_tools":
-        return tokenize_tool_messages(examples, tokenizer, max_length)
+        return tokenize_tool_messages(examples, tokenizer, max_length, progress)
     prompts = [
         instruction if prompt_format == "raw" else f"### Instruction:\n{instruction}\n\n### Response:\n"
         for instruction in examples["instruction"]
@@ -190,10 +192,13 @@ def tokenize_function(examples, tokenizer, max_length: int, prompt_format="instr
             tokenized["input_ids"], tokenized["attention_mask"], prompt_token_ids
         )
     ]
+    if progress:
+        progress["completed"] += len(examples["instruction"])
+        emit_progress("prepare", prepare_step=progress["completed"], prepare_total=progress["total"])
     return tokenized
 
 
-def tokenize_tool_messages(examples, tokenizer, max_length):
+def tokenize_tool_messages(examples, tokenizer, max_length, progress=None):
     """Use the model's native chat/tool template; supervise assistant turns only."""
     result = {"input_ids": [], "attention_mask": [], "labels": []}
     for messages, tools in zip(examples["messages"], examples["tools"], strict=True):
@@ -222,6 +227,9 @@ def tokenize_tool_messages(examples, tokenizer, max_length):
         result["input_ids"].append(ids)
         result["attention_mask"].append([1] * len(ids))
         result["labels"].append(labels)
+        if progress:
+            progress["completed"] += 1
+            emit_progress("prepare", prepare_step=progress["completed"], prepare_total=progress["total"])
     return result
 
 
@@ -246,7 +254,16 @@ class NativeToolCollator:
             tokenizer, label_pad_token_id=-100, pad_to_multiple_of=8)
 
     def __call__(self, features):
-        return select_supervised_logits(self.collator(features))
+        sample_ids = [feature.get("_veto_sample_id") for feature in features]
+        features = [{key: value for key, value in feature.items() if key != "_veto_sample_id"}
+                    for feature in features]
+        batch = select_supervised_logits(self.collator(features))
+        batch["_veto_diagnostics"] = {
+            "sample_ids": sample_ids,
+            "input_tokens": int(batch["input_ids"].shape[-1]),
+            "supervised_tokens": int((batch["labels"] != -100).sum()),
+        }
+        return batch
 
 
 def train(args):
@@ -280,7 +297,20 @@ def train(args):
 
         def on_epoch_begin(self, training_args, state, control, **kwargs):
             if emit_structured_output:
-                emit_progress("epoch_start", epoch=int(state.epoch or 0) + 1)
+                emit_progress("epoch_start", epoch=int(state.epoch or 0) + 1,
+                              max_steps=state.max_steps,
+                              batch_size=args.batch_size,
+                              accumulation_steps=args.gradient_accumulation_steps,
+                              effective_batch=args.batch_size * args.gradient_accumulation_steps,
+                              learning_rate=training_args.learning_rate)
+
+        def on_step_begin(self, training_args, state, control, **kwargs):
+            if emit_structured_output:
+                emit_progress("step_start", step=state.global_step + 1, max_steps=state.max_steps)
+
+        def on_step_end(self, training_args, state, control, **kwargs):
+            if emit_structured_output:
+                emit_progress("step_complete", step=state.global_step, max_steps=state.max_steps)
 
         def on_epoch_end(self, training_args, state, control, **kwargs):
             if emit_structured_output:
@@ -335,7 +365,7 @@ def train(args):
         if "logits_to_keep" not in inspect.signature(model.get_base_model().forward).parameters:
             raise ValueError("Native tool training requires a model with logits_to_keep support")
 
-    from training_state import CheckpointControl, ResumableTrainer, prepare_run
+    from training_state import CheckpointControl, ResumableTrainer, StepStallWatchdog, prepare_run
     signature, resume_checkpoint = prepare_run(args)
     checkpoint_control = CheckpointControl(out_dir, signature, args.checkpoint_steps)
 
@@ -343,11 +373,20 @@ def train(args):
     eval_path = Path(args.eval_data_path) if args.eval_data_path else None
     datasets = load_dataset(Path(args.data_path), eval_path)
 
+    progress = {"completed": 0, "total": sum(len(split) for split in datasets.values())}
+    emit_progress("prepare", prepare_step=0, prepare_total=progress["total"])
+
+    def tokenize_rows(examples, indices):
+        result = tokenize_function(examples, tokenizer, args.max_seq_length, args.prompt_format, progress)
+        result["_veto_sample_id"] = indices
+        return result
+
+    # IDs are frozen split row offsets, never record text or arbitrary user identifiers.
     # Metadata may differ between splits; remove each split's own columns.
     tokenized_datasets = type(datasets)({
         name: split.map(
-            lambda x: tokenize_function(x, tokenizer, args.max_seq_length, args.prompt_format),
-            batched=True, remove_columns=split.column_names)
+            tokenize_rows, with_indices=True,
+            batched=True, batch_size=100, remove_columns=split.column_names)
         for name, split in datasets.items()
     })
 
@@ -392,8 +431,9 @@ def train(args):
         processing_class=tokenizer,
         data_collator=(NativeToolCollator(tokenizer)
                        if args.prompt_format == "native_tools" else None),
-        callbacks=[checkpoint_control] + (
-            [EarlyStoppingCallback(early_stopping_patience=1)]
+        callbacks=[checkpoint_control, StepStallWatchdog(getattr(args, "runtime_monitor", None))] + (
+            ([EarlyStoppingCallback(early_stopping_patience=args.early_stopping_patience)]
+             if args.early_stopping_patience > 0 else [])
             + ([StructuredProgressCallback()] if args.structured_output else [])
             if tokenized_datasets.get("eval") is not None
             else ([StructuredProgressCallback()] if args.structured_output else [])
@@ -410,6 +450,7 @@ def train(args):
 
     emit_progress("phase", phase="training", message="Starting QLoRA fine-tuning...")
     training_started = time.monotonic()
+    trainer.runtime_monitor = getattr(args, "runtime_monitor", None)
     train_result = trainer.train(
         resume_from_checkpoint=str(resume_checkpoint) if resume_checkpoint else None)
     training_seconds = time.monotonic() - training_started
@@ -460,6 +501,7 @@ def train(args):
         "lora_alpha": args.lora_alpha,
         "batch_size": args.batch_size,
         "gradient_accumulation_steps": args.gradient_accumulation_steps,
+        "early_stopping_patience": args.early_stopping_patience,
         "train_samples": len(datasets["train"]),
         "eval_samples": len(datasets.get("eval", [])),
         "prompt_format": args.prompt_format,
@@ -488,5 +530,34 @@ def train(args):
 if __name__ == "__main__":
     from training_state import worker_lock
     arguments = parse_args()
+    from runtime_monitor import RuntimeMonitor
+    import threading
+    evidence_lock = threading.Lock()
+    evidence_path = Path(arguments.output_dir) / "runtime-diagnostics.jsonl"
+
+    def record_diagnostic(record):
+        line = json.dumps(record, ensure_ascii=True)
+        with evidence_lock:
+            # Bound evidence storage; never silently pretend monitoring succeeded.
+            if evidence_path.exists() and evidence_path.stat().st_size > 16_000_000:
+                print(json.dumps({"type": "runtime_diagnostic", "kind": "monitor_incomplete",
+                                  "message": "Evidence file limit reached", "timestamp": time.time()}), flush=True)
+            else:
+                with evidence_path.open("a", encoding="utf-8") as stream:
+                    stream.write(line + "\n")
+                    stream.flush()
+            print(line, flush=True)
+
     with worker_lock(arguments.output_dir):
-        train(arguments)
+        monitor = RuntimeMonitor(Path(arguments.output_dir).name, record_diagnostic,
+                                 float(os.environ.get("VETO_SLOW_STEP_SECONDS", "120")),
+                                 float(os.environ.get("VETO_NO_PROGRESS_SECONDS", "600")))
+        arguments.runtime_monitor = monitor
+        monitor.start()
+        try:
+            train(arguments)
+        except BaseException as error:
+            monitor.exception(error)
+            raise
+        finally:
+            monitor.close()

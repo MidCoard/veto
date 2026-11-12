@@ -266,7 +266,17 @@ class PythonModelTrainerTest {
                 root.resolve(mode),
                 "model",
                 new TrainingRequest.Options(
-                        1, 0.0001, 1, 1, 16, 32, 0.05, 256, TrainingRequest.PromptFormat.RAW, 100));
+                        1,
+                        0.0001,
+                        1,
+                        1,
+                        16,
+                        32,
+                        0.05,
+                        256,
+                        TrainingRequest.PromptFormat.RAW,
+                        100,
+                        3));
     }
 
     /** A real child process replacing Python; no GPU, dependencies or model writes. */

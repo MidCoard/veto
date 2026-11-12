@@ -181,6 +181,8 @@ public final class PythonModelTrainer implements ModelTrainer {
                                 "--prompt-format",
                                         options.promptFormat().name().toLowerCase(Locale.ROOT),
                                 "--checkpoint-steps", Integer.toString(options.checkpointSteps()),
+                                "--early-stopping-patience",
+                                        Integer.toString(options.earlyStoppingPatience()),
                                 "--log-file", output.resolve("training.jsonl").toString()));
         if (checkpoint != null) {
             arguments.add("--resume-from-checkpoint");

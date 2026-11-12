@@ -9,10 +9,11 @@ export const active = new Set(['starting','running','pause_pending','pausing','e
 export const status:Record<string,string> = {starting:'加载中',running:'训练中',pause_pending:'等待暂停',pausing:'正在保存',paused:'已暂停',completed:'已导出',failed:'失败',interrupted:'已中断',exporting:'导出中'};
 export const formats = {native_tools:'工具调用',instruction:'指令与回答',raw:'原始提示词与回答'};
 export const fields: {key:string;label:string;min?:number;max?:number;step?:number|string}[] = [
- {key:'base.model',label:'训练模型'}, {key:'training.data',label:'训练集（JSONL）'}, {key:'validation.data',label:'验证集（JSONL）'},
- {key:'prompt.format',label:'数据格式'}, {key:'epochs',label:'训练轮数',min:1,max:100},
+ {key:'base.model',label:'训练模型'}, {key:'training.data',label:'训练集（JSONL）'}, {key:'validation.data',label:'验证集（JSONL）'}, {key:'output.directory',label:'输出目录'},
+ {key:'prompt.format',label:'数据格式'}, {key:'epochs',label:'训练轮数（Epoch）',min:1,max:100},
  {key:'learning.rate',label:'学习率',min:0.000000001,max:0.999999999,step:'any'},
- {key:'batch.size',label:'批大小',min:1,max:128}, {key:'accumulation.steps',label:'梯度累积',min:1,max:1024},
+ {key:'batch.size',label:'单批样本数',min:1,max:128}, {key:'accumulation.steps',label:'梯度累积次数',min:1,max:1024},
+ {key:'early.stopping.patience',label:'连续无改善轮数',min:0,max:100},
  {key:'sequence.length',label:'序列长度',min:32,max:65536}, {key:'lora.rank',label:'LoRA Rank',min:1,max:512},
  {key:'lora.alpha',label:'LoRA Alpha',min:1,max:1024}, {key:'lora.dropout',label:'LoRA Dropout',min:0,max:0.999999999,step:'any'},
  {key:'checkpoint.steps',label:'保存间隔（步）',min:1,max:100000}

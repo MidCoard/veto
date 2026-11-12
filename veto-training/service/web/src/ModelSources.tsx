@@ -1,6 +1,7 @@
 import {useState, type FormEvent} from 'react';
 import {Accordion,AccordionDetails,AccordionSummary,Alert,Box,Button,Dialog,DialogActions,DialogContent,DialogTitle,LinearProgress,MenuItem,Paper,Stack,TextField,Typography} from '@mui/material';
 import {action,type Snapshot} from './api';
+import Tooltip from './Hint';
 
 const labels:Record<string,string>={discovering:'读取模型信息',downloading:'下载中',paused:'已暂停',failed:'下载失败',completed:'已下载'};
 export default function ModelSources({snapshot,disabled,onRefresh}:{snapshot:Snapshot;disabled:boolean;onRefresh:()=>Promise<void>}) {
@@ -21,7 +22,7 @@ export default function ModelSources({snapshot,disabled,onRefresh}:{snapshot:Sna
  }
  const invalid=resume?!repo.trim():source==='hub'?!repo.trim()||!revision.trim():!name.trim()||!path.trim();
  return <>
-  <Stack direction="row" sx={{justifyContent:'flex-end'}}><Button variant="contained" disabled={disabled||snapshot.busy} onClick={()=>{setOpen(true);setSource('hub');setResume('');setRepo('');setRevision('main');setToken('');setName('');setPath('');setError('');}}>添加模型</Button></Stack>
+  <Stack direction="row" sx={{justifyContent:'flex-end'}}><Tooltip title="从 Hugging Face 或本地添加模型"><Button variant="contained" disabled={disabled||snapshot.busy} onClick={()=>{setOpen(true);setSource('hub');setResume('');setRepo('');setRevision('main');setToken('');setName('');setPath('');setError('');}}>添加模型</Button></Tooltip></Stack>
   {!!snapshot.downloads?.length&&<Stack spacing={1.5} sx={{mt:2,mb:2}}>{snapshot.downloads.map(row=><Paper variant="outlined" key={row.id} sx={{p:2}}>
    <Stack direction="row" sx={{justifyContent:'space-between',gap:1,alignItems:'center'}}><Typography sx={{overflowWrap:'anywhere'}}>{row.repo}</Typography><Typography variant="body2" sx={{whiteSpace:'nowrap'}}>{labels[row.status]}</Typography></Stack>
    {['discovering','downloading'].includes(row.status)&&<LinearProgress sx={{my:1.5}} variant={row.total?'determinate':'indeterminate'} value={row.total?100*row.downloaded/row.total:0}/>}

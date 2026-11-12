@@ -7,7 +7,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from training_state import (CheckpointControl, ResumableTrainer, complete_checkpoint,
+from training_state import (CheckpointControl, ResumableTrainer, StepStallWatchdog, complete_checkpoint,
                             prepare_run, run_signature, validate_checkpoint, worker_lock)
 
 
@@ -24,7 +24,8 @@ class TrainingStateTest(unittest.TestCase):
             args = SimpleNamespace(base_model=str(model), hf_token=None, output_dir=str(root / "run"),
                 data_path=str(data), eval_data_path=None, epochs=2, lr=.001, batch_size=1,
                 eval_batch_size=1, gradient_accumulation_steps=2, lora_r=2, lora_alpha=4,
-                lora_dropout=.1, max_seq_length=16, prompt_format="raw", checkpoint_steps=2)
+                lora_dropout=.1, max_seq_length=16, prompt_format="raw", checkpoint_steps=2,
+                early_stopping_patience=2)
             with patch("transformers.utils.hub.cached_file", return_value=str(model / "config.json")), \
                     patch("torch.cuda.is_available", return_value=False), \
                     patch("torch.cuda.device_count", return_value=0):
@@ -33,6 +34,9 @@ class TrainingStateTest(unittest.TestCase):
                 data.write_text("changed")
                 self.assertNotEqual(original["training_data"], run_signature(args)["training_data"])
                 args.batch_size = 2
+                self.assertNotEqual(original["options"], run_signature(args)["options"])
+                args.batch_size = 1
+                args.early_stopping_patience = 3
                 self.assertNotEqual(original["options"], run_signature(args)["options"])
                 args.output_dir = str(root / "another-run")
                 self.assertNotEqual(original["output_directory"], run_signature(args)["output_directory"])
@@ -107,6 +111,74 @@ with open(sys.argv[1], 'r+b') as stream:
                 with self.assertRaisesRegex(ValueError, "does not match"):
                     prepare_run(args)
 
+    def test_checkpoint_rotation_waits_for_completion_and_preserves_best(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory)
+            signature = {"fixture": "rotation"}
+            control = CheckpointControl(output, signature, 100)
+            callback_control = SimpleNamespace(should_training_stop=False)
+
+            def populate(step):
+                checkpoint = output / f"checkpoint-{step}"
+                checkpoint.mkdir(exist_ok=True)
+                for name in ("adapter_model.safetensors", "adapter_config.json", "optimizer.pt",
+                             "scheduler.pt", "rng_state.pth"):
+                    (checkpoint / name).write_bytes(b"fixture")
+                (checkpoint / "trainer_state.json").write_text(json.dumps(
+                    {"global_step": step, "max_steps": 1000}))
+                return checkpoint
+
+            for step in (100, 200):
+                complete_checkpoint(populate(step), signature)
+            populate(300)
+            (output / "checkpoint-300/optimizer.pt").unlink()
+            state = SimpleNamespace(global_step=300, best_model_checkpoint=None)
+            with self.assertRaisesRegex(ValueError, "missing training state"):
+                control.on_save(None, state, callback_control)
+            self.assertTrue((output / "checkpoint-100").exists())
+            self.assertTrue((output / "checkpoint-200").exists())
+            (output / "checkpoint-300/optimizer.pt").write_bytes(b"fixture")
+            control.on_save(None, state, callback_control)
+            self.assertFalse((output / "checkpoint-100").exists())
+            self.assertTrue((output / "checkpoint-200").exists())
+            self.assertTrue((output / "checkpoint-300").exists())
+
+            for step in (400, 500):
+                complete_checkpoint(populate(step), signature)
+                state = SimpleNamespace(global_step=step,
+                                        best_model_checkpoint=str(output / "checkpoint-200"))
+                control.rotate(state)
+            self.assertTrue((output / "checkpoint-200").exists())
+            self.assertFalse((output / "checkpoint-300").exists())
+            self.assertTrue((output / "checkpoint-400").exists())
+            self.assertTrue((output / "checkpoint-500").exists())
+
+    def test_microbatch_diagnostics_preserve_inputs_and_report_timing(self):
+        trainer = object.__new__(ResumableTrainer)
+        trainer.state = SimpleNamespace(global_step=6)
+        expected = object()
+        inputs = {"labels": "fixture",
+                  "_veto_diagnostics": {"input_tokens": 4400, "supervised_tokens": 54}}
+        with patch("transformers.trainer.Trainer.training_step", return_value=expected) as training_step, \
+                patch("builtins.print") as output:
+            self.assertIs(expected, trainer.training_step(None, inputs))
+        self.assertEqual((None, {"labels": "fixture"}, None), training_step.call_args.args)
+        events = [json.loads(call.args[0]) for call in output.call_args_list]
+        self.assertEqual(["micro_start", "micro_complete"], [event["type"] for event in events])
+        self.assertTrue(all(event["optimizer_step"] == 7 and event["micro_step"] == 1 for event in events))
+        self.assertEqual(54, events[0]["supervised_tokens"])
+        self.assertIn("wall_ms", events[1])
+
+    def test_optimizer_step_watchdog_covers_post_microbatch_waits(self):
+        from unittest.mock import Mock
+        monitor = Mock()
+        watchdog = StepStallWatchdog(monitor)
+        state = SimpleNamespace(global_step=4)
+        watchdog.on_step_begin(None, state, None)
+        monitor.progress.assert_called_with(phase="optimizer_step", optimizer_step=5)
+        watchdog.on_step_end(None, state, None)
+        monitor.progress.assert_called_with(phase="optimizer_complete", optimizer_step=4)
+
     def test_actual_trainer_pause_resume_matches_uninterrupted_optimizer_rng_and_weights(self):
         import torch
         from peft import LoraConfig, get_peft_model
@@ -140,12 +212,14 @@ with open(sys.argv[1], 'r+b') as stream:
                     r=2, lora_alpha=4, lora_dropout=0.1, target_modules="all-linear", task_type="CAUSAL_LM"))
             options = TrainingArguments(output_dir=str(output), use_cpu=True, num_train_epochs=2,
                 per_device_train_batch_size=1, per_device_eval_batch_size=1, gradient_accumulation_steps=2,
+                gradient_checkpointing=True,
                 learning_rate=0.001, save_strategy="epoch", eval_strategy="epoch", save_total_limit=2,
                 load_best_model_at_end=True, metric_for_best_model="eval_loss", greater_is_better=False,
                 restore_callback_states_from_checkpoint=True, dataloader_num_workers=0,
                 report_to="none", logging_strategy="no", disable_tqdm=True, seed=42)
             control = CheckpointControl(output, signature, 2)
-            callbacks = ([PauseAtStep(pause_at)] if pause_at else []) + [control, EarlyStoppingCallback(2)]
+            callbacks = (([PauseAtStep(pause_at)] if pause_at else [])
+                         + [control, StepStallWatchdog(), EarlyStoppingCallback(2)])
             trainer = ResumableTrainer(model=model, args=options, train_dataset=records, eval_dataset=records,
                 data_collator=default_data_collator, callbacks=callbacks)
             return trainer, control

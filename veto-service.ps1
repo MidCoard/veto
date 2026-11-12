@@ -64,13 +64,18 @@ switch ($Action) {
             try { $owned = $mutex.WaitOne(0) } catch [System.Threading.AbandonedMutexException] { $owned = $true }
             if (-not $owned) { exit 0 }
             $script = Join-Path $PSScriptRoot 'veto-training/service/server.py'
-            for ($attempt = 0; $attempt -lt 3; $attempt++) {
+            if (-not (Test-Path -LiteralPath $settings.stateDirectory)) { New-Item -ItemType Directory -Path $settings.stateDirectory | Out-Null }
+            $supervisorLog = Join-Path $settings.stateDirectory 'service-supervisor.log'
+            $serviceOut = Join-Path $settings.stateDirectory 'service-out.log'
+            $serviceError = Join-Path $settings.stateDirectory 'service-error.log'
+            for ($attempt = 1;; $attempt++) {
+                Add-Content -LiteralPath $supervisorLog -Value "$(Get-Date -Format o) starting Trainer process (attempt $attempt)" -Encoding UTF8
                 $child = Start-Process -FilePath $settings.servicePython -WorkingDirectory $PSScriptRoot -WindowStyle Hidden `
-                    -ArgumentList "-B `"$script`" `"$configPath`"" -PassThru -Wait -ErrorAction Stop
+                    -ArgumentList "-B `"$script`" `"$configPath`"" -RedirectStandardOutput $serviceOut -RedirectStandardError $serviceError -PassThru -Wait -ErrorAction Stop
+                Add-Content -LiteralPath $supervisorLog -Value "$(Get-Date -Format o) Trainer process exited with code $($child.ExitCode)" -Encoding UTF8
                 if ($child.ExitCode -eq 0) { exit 0 }
-                if ($attempt -lt 2) { Start-Sleep -Seconds 60 }
+                if ($attempt -lt 3) { Start-Sleep -Seconds 60 } else { Start-Sleep -Seconds 300; $attempt = 0 }
             }
-            exit 1
         } finally {
             if ($owned) { $mutex.ReleaseMutex() }
             $mutex.Dispose()

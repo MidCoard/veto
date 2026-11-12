@@ -249,7 +249,8 @@ public final class SecretAgentHostFixture implements PluginAgentHostFactory {
                                                             }
                                                             result.complete(
                                                                     AgentResult.success(
-                                                                            "DONE", Map.of()));
+                                                                            "{\"tool_calls\":[]}",
+                                                                            Map.of()));
                                                         } catch (Throwable failure) {
                                                             result.completeExceptionally(failure);
                                                         } finally {
